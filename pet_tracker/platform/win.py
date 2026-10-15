@@ -4,6 +4,8 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,7 +18,7 @@ __all__ = [
     "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "autostart_command", "autostart_is_enabled",
+    "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap",
 ]
@@ -172,6 +174,17 @@ def read_credentials(claude_dir: str) -> dict:
 # ---------------------------------------------------------------- session
 def focus_session(sess: dict) -> tuple:
     return _focus.focus_session(sess)
+
+
+def open_terminal(cwd: str, args: list, title: str, env: dict) -> tuple:
+    """Mở cửa sổ terminal mới chạy args trong cwd (Windows Terminal nếu có, không thì console mới)."""
+    wt = shutil.which("wt")
+    if wt:
+        subprocess.Popen([wt, "-w", "new", "--title", title, "-d", cwd] + args, env=env,
+                         creationflags=0x00000008 | 0x00000200)  # DETACHED | NEW_PROCESS_GROUP
+    else:
+        subprocess.Popen(args, cwd=cwd, env=env, creationflags=0x00000010)  # CREATE_NEW_CONSOLE
+    return True, "đã mở terminal"
 
 
 # ---------------------------------------------------------------- khởi động cùng Windows

@@ -251,7 +251,7 @@ class PetApp:
         self.cfg = load_config()
         self.state = load_state()
         self.q: queue.Queue = queue.Queue()
-        self._ops_done: queue.Queue = queue.Queue()   # (tên, ok, thông báo, cwd) từ thread thao tác session
+        self._ops_done: queue.Queue = queue.Queue()   # (tên, ok, thông báo, cwd, mục đã đóng) từ thread thao tác
         self.snap = None
         self.sig = None
 
@@ -847,6 +847,8 @@ class PetApp:
                                 session_ops.state_text(s.get("git")))
                                for s in snap.get("sessions", [])),
                          snap.get("error")),
+            "closed": tuple((c.get("session_id"), c.get("handoff"), fmt_ago(c.get("closed_at")))
+                            for c in self._closed_list()),
             "local": tuple(fmt_k(local_total(snap.get("local", {}).get(k))) for k in ("5h", "7d")),
         }
 
@@ -900,6 +902,7 @@ class PetApp:
             "update": lambda p: self._build_update_banner(p, cpad, inner_w),
             "quota": lambda p: self._build_quota(p, snap, cpad, inner_w),
             "sessions": lambda p: self._build_sessions(p, snap, cpad, inner_w),
+            "closed": lambda p: self._build_closed(p, cpad, inner_w),
             "local": lambda p: self._build_local(p, snap, cpad, inner_w),
         }
         for name, holder in self._parts.items():
@@ -1129,6 +1132,36 @@ class PetApp:
     @staticmethod
     def _git_label(st: dict, text: str) -> str:
         return f"⎇ {'worktree' if st['linked'] else (st['branch'] or 'git')}: {text}"
+
+    def _build_closed(self, parent, padx, inner_w):
+        items = self._closed_list()
+        if not items:
+            return
+        S = self.S
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=padx)
+        self._section_title(sec, "ĐÃ ĐÓNG GẦN ĐÂY", "resume không tốn token tới khi gõ tiếp")
+        card = tk.Frame(sec, bg=SURFACE, pady=int(4 * S))
+        card.pack(fill="x")
+        for i, c in enumerate(items):
+            if i:
+                tk.Frame(card, bg=LINE, height=1).pack(fill="x", padx=int(12 * S))
+            row = tk.Frame(card, bg=SURFACE)
+            row.pack(fill="x", padx=int(12 * S), pady=int(6 * S))
+            self._icon_btn(row, ICON_CLOSE, lambda sid=c["session_id"]: self._forget_closed(sid),
+                           hover_fg=FG, fg=FAINT, font=self.f_icon_sm).pack(side="right", padx=(int(8 * S), 0))
+            self._text_btn(row, "Resume", lambda c=c: self._resume_closed(c), hover_fg=FG, fg=ACCENT).pack(side="right")
+            if c.get("handoff") and os.path.isfile(c["handoff"]):
+                self._text_btn(row, "Handoff", lambda f=c["handoff"]: self._open_file(f), hover_fg=FG,
+                               fg=BLUE).pack(side="right", padx=(0, int(10 * S)))
+            left = tk.Frame(row, bg=SURFACE)
+            left.pack(side="left", fill="x", expand=True)
+            name_w = inner_w - int(170 * S)
+            self._lbl(left, self._ellipsis(c.get("name") or "?", self.f_sm, name_w), font=self.f_sm,
+                      fg=FG).pack(anchor="w")
+            where = os.path.basename((c.get("cwd") or "").rstrip("/" + chr(92))) or "?"
+            self._lbl(left, self._ellipsis(f"{where} · đóng {fmt_ago(c.get('closed_at'))}", self.f_xs, name_w),
+                      font=self.f_xs, fg=FAINT).pack(anchor="w")
 
     def _build_local(self, parent, snap, padx, inner_w):
         loc = snap.get("local") or {}
@@ -1617,9 +1650,12 @@ class PetApp:
         desktop = sess.get("entrypoint") == "claude-desktop"
         no_close = "đóng trong Claude app" if desktop else ""
         self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
-        self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "ghi handoff trước",
+        self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "transcript + git, 0 token",
                         act(lambda: self._run_op(sess, "handoff")), enabled=not desktop,
-                        confirm="Viết handoff rồi đóng?")
+                        confirm="Ghi handoff rồi đóng?")
+        self._sheet_row(body, ICON_EXIT, "Handoff AI rồi đóng", no_close or "Claude tóm tắt, tốn token",
+                        act(lambda: self._run_op(sess, "handoff_ai")), enabled=not desktop,
+                        confirm="Tốn token 1 lượt. Tiếp tục?")
         self._sheet_row(body, ICON_EXIT, "Đóng session", no_close or "không handoff",
                         act(lambda: self._run_op(sess, "close")), enabled=not desktop,
                         confirm="Đóng session này?")
@@ -1635,20 +1671,23 @@ class PetApp:
         self._finish_sheet(top, body, W, x, y)
 
     def _run_op(self, sess: dict, op: str):
-        """handoff | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process thoát);
-        kết quả về qua _ops_done."""
+        """handoff | handoff_ai | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process
+        thoát); kết quả về qua _ops_done."""
         name = sess.get("name") or "?"
-        self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff" else "đang xử lý…"), MUTED, 300)
+        self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff_ai" else "đang xử lý…"), MUTED, 300)
 
         def work():
+            path = None
             try:
                 ok, msg = True, ""
-                if op == "handoff":  # handoff lỗi thì không đóng, tránh mất ngữ cảnh
-                    ok, path = session_ops.write_handoff(sess, STATE_DIR / "handoffs")
-                    msg = path
-                if ok:
+                if op == "handoff":
+                    ok, msg = session_ops.write_local_handoff(sess, STATE_DIR / "handoffs")
+                elif op == "handoff_ai":
+                    ok, msg = session_ops.write_handoff(sess, STATE_DIR / "handoffs")
+                path = msg if ok and op.startswith("handoff") else None
+                if ok:  # handoff lỗi thì không đóng, tránh mất ngữ cảnh
                     ok, msg = session_ops.close_session(sess)
-                    if ok and op == "handoff":
+                    if ok and path:
                         msg = f"đã đóng, handoff ở {path}"
                 if ok and op == "delete":
                     ok, msg = session_ops.delete_transcript(sess, self.cfg["claude_dir"])
@@ -1657,9 +1696,47 @@ class PetApp:
             except Exception as e:
                 ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
             log(f"session op {op} {name!r} pid={sess.get('pid')} cwd={sess.get('cwd')!r}: ok={ok} {msg}")
-            self._ops_done.put((name, ok, msg, sess.get("cwd")))
+            # chỉ nhớ session còn resume được: còn transcript và còn thư mục
+            closed = None
+            if ok and op in ("handoff", "handoff_ai", "close"):
+                closed = {"session_id": sess.get("session_id"), "name": name, "cwd": sess.get("cwd"),
+                          "home_cwd": sess.get("home_cwd") or sess.get("cwd"), "closed_at": time.time(),
+                          "handoff": path}
+            self._ops_done.put((name, ok, msg, sess.get("cwd"), closed))
 
         threading.Thread(target=work, daemon=True, name=f"op-{op}").start()
+
+    def _closed_list(self) -> list:
+        """Session đã đóng gần đây còn resume được (bỏ cái đang chạy lại)."""
+        active = {s["session_id"] for s in (self.snap or {}).get("sessions") or []}
+        return [c for c in self.state.get("closed_sessions") or [] if c.get("session_id") not in active]
+
+    def _forget_closed(self, sid):
+        self.state["closed_sessions"] = [c for c in self.state.get("closed_sessions") or []
+                                         if c.get("session_id") != sid]
+        save_state(self.state)
+        self._render_panel()
+
+    def _resume_closed(self, c: dict):
+        cwd = c.get("home_cwd") or c.get("cwd")
+        if not cwd or not os.path.isdir(cwd):
+            self._flash(f"{c.get('name')}: thư mục không còn, không resume được", YELLOW)
+            return
+        try:
+            ok, msg = plat.open_terminal(cwd, [session_ops.claude_command(), "--resume", c["session_id"]],
+                                         f"resume: {(c.get('name') or '')[:40]}", procenv.clean_env())
+        except Exception as e:
+            ok, msg = False, f"không mở được terminal: {type(e).__name__}: {e}"
+        log(f"resume {c.get('name')!r} sid={c.get('session_id')}: ok={ok} {msg}")
+        self._flash(f"{c.get('name')}: {msg}", GREEN if ok else YELLOW)
+        if ok:
+            self._forget_closed(c["session_id"])
+
+    def _open_file(self, path):
+        try:
+            plat.open_path(path)
+        except Exception as e:
+            self._flash(f"không mở được {path}: {e}", YELLOW)
 
     # ---------- loop
     def request_show(self):
@@ -1681,8 +1758,13 @@ class PetApp:
             self._flash("Wisp đang chạy rồi", ACCENT, 3)
         try:
             while True:
-                name, ok, msg, cwd = self._ops_done.get_nowait()
+                name, ok, msg, cwd, closed = self._ops_done.get_nowait()
                 self._flash(f"{name}: {msg}", GREEN if ok else YELLOW)
+                if closed:
+                    rest = [c for c in self.state.get("closed_sessions") or []
+                            if c.get("session_id") != closed["session_id"]]
+                    self.state["closed_sessions"] = [closed] + rest[:9]
+                    save_state(self.state)
                 self.collector._git_cache.pop(cwd, None)
                 self.collector.refresh_now()
         except queue.Empty:

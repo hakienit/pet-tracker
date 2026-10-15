@@ -24,7 +24,7 @@ __all__ = [
     "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "autostart_command", "autostart_is_enabled",
+    "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap",
 ]
@@ -153,6 +153,16 @@ def _ancestor_app(pid: int, limit: int = 12):
 
 def _osascript(script: str) -> subprocess.CompletedProcess:
     return _run(["osascript", "-e", script], timeout=10)
+
+
+def open_terminal(cwd: str, args: list, title: str, env: dict) -> tuple:
+    """Mở cửa sổ Terminal.app mới chạy args trong cwd (cần quyền Automation cho Terminal)."""
+    cmd = "cd " + shlex.quote(cwd) + " && " + " ".join(shlex.quote(a) for a in args)
+    quoted = '"' + cmd.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    r = _osascript(f'tell application "Terminal"\n  do script {quoted}\n  activate\nend tell')
+    if r.returncode != 0:
+        return False, f"không mở được Terminal: {r.stderr.strip()[:120]}"
+    return True, "đã mở Terminal"
 
 
 _TERMINAL_SELECT = '''

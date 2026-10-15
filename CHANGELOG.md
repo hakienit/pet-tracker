@@ -14,11 +14,15 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Phần token cuối panel chỉ còn tổng token 5 giờ / 7 ngày (không tách input/output/cache).
 
 ### Added
-- Nút ⋯ và chuột phải trên card session để dọn dẹp: **Handoff rồi đóng** (session tự viết bản handoff
-  theo quy định lưu của repo, không có quy định thì vào `%APPDATA%\Wisp\handoffs`; handoff lỗi thì không
-  đóng), **Đóng session** (giữ transcript), **Xoá session**
-  (đóng + xoá transcript), **Xoá worktree** (chỉ khi worktree sạch và branch đã merge/push; worktree của
-  Orca chỉ hiện trạng thái). Thao tác xoá phải bấm hai lần để xác nhận.
+- Nút ⋯ và chuột phải trên card session để dọn dẹp:
+  - **Handoff rồi đóng**: Wisp ghép file handoff từ transcript và git (yêu cầu gần nhất, trả lời cuối,
+    commit, file chưa commit, lệnh resume), không tốn token. Lưu ở `%APPDATA%\Wisp\handoffs`.
+  - **Handoff AI rồi đóng**: session tự viết handoff theo quy định lưu của repo (tốn token một lượt).
+  - **Đóng session** (giữ transcript), **Xoá session** (đóng + xoá transcript), **Xoá worktree** (chỉ khi
+    worktree sạch và branch đã merge/push; worktree của Orca chỉ hiện trạng thái).
+  - Handoff lỗi thì không đóng. Mọi thao tác phải bấm hai lần để xác nhận.
+- Mục **Đã đóng gần đây** (10 session cuối Wisp đóng): nút **Resume** mở terminal chạy
+  `claude --resume <id>` ở đúng thư mục, nút mở file handoff, nút bỏ khỏi danh sách.
 - Card session hiện trạng thái git của thư mục: số thay đổi chưa commit, commit chưa push, hoặc "✓ xong".
 
 ### Removed
