@@ -6,6 +6,10 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+### Changed
+- Kiểm tra bản mới mỗi giờ thay vì mỗi 24 giờ (`update_interval_hours` mặc định 1): bản vừa publish
+  hiện banner trong vòng một giờ, không phải chờ tới hôm sau hoặc mở lại app.
+
 ## [0.1.2] - 2026-10-15
 
 ### Fixed

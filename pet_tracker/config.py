@@ -44,7 +44,8 @@ DEFAULTS = {
     "bubble_size": 64,
     # Kiểm tra bản mới trên GitHub Releases khi mở app và mỗi update_interval_hours giờ
     "update_check": True,
-    "update_interval_hours": 24,
+    # 1 giờ: bản vừa publish hiện banner trong ngày; API GitHub không xác thực cho 60 request/giờ
+    "update_interval_hours": 1,
     # Ghi đè URL API (chỉ dùng để test); None = https://api.github.com/repos/hakienit/pet-tracker/releases/latest
     "update_api_url": None,
 }

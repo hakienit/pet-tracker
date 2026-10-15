@@ -1529,7 +1529,7 @@ class PetApp:
     def _start_update_checker(self):
         auto = bool(self.cfg.get("update_check", True))
         api = self.cfg.get("update_api_url") or updater.API_LATEST
-        hours = max(1.0, float(self.cfg.get("update_interval_hours") or 24))
+        hours = max(1.0, float(self.cfg.get("update_interval_hours") or 1))
 
         def loop():
             # lần đầu chờ vài giây cho app lên xong; nếu tắt auto thì chỉ chạy khi bấm "Kiểm tra cập nhật"

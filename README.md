@@ -85,7 +85,7 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
 
 ## Cập nhật
 
-- Khi mở app và mỗi 24 giờ, widget hỏi GitHub Releases
+- Khi mở app và mỗi giờ, widget hỏi GitHub Releases
   (`https://api.github.com/repos/hakienit/pet-tracker/releases/latest`; API này đã bỏ qua draft và
   pre-release). Có bản mới hơn `__version__` thì bóng hiện chấm xanh ở góc trên-trái và đầu panel có
   dòng "Có bản mới x.y.z", kèm nút "Cập nhật" và link "Xem thay đổi". Click phải vào bóng →
@@ -195,7 +195,7 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `warn_percent` / `danger_percent` | 60 / 85 | ngưỡng đổi màu vàng / đỏ |
 | `bubble_size` | 64 | đường kính bóng (px logic, tự nhân theo DPI) |
 | `update_check` | true | tự kiểm tra bản mới khi mở app và mỗi `update_interval_hours` giờ |
-| `update_interval_hours` | 24 | chu kỳ kiểm tra bản mới |
+| `update_interval_hours` | 1 | chu kỳ kiểm tra bản mới |
 | `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
 
 Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log`.
