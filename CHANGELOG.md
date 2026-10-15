@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-16
+
 ### Added
 - Chuột phải vào header của panel mở cùng menu với bóng: Làm mới, Mở thư mục ~/.claude, Kiểm tra
   cập nhật, Chạy cùng Windows, Thoát.
@@ -112,7 +114,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hakienit/pet-tracker/releases/tag/v0.1.0
