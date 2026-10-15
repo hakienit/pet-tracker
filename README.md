@@ -90,8 +90,9 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
   pre-release). Có bản mới hơn `__version__` thì bóng hiện chấm xanh ở góc trên-trái và đầu panel có
   dòng "Có bản mới x.y.z", kèm nút "Cập nhật" và link "Xem thay đổi". Click phải vào bóng →
   "Kiểm tra cập nhật" để hỏi ngay.
-- Nút "Cập nhật" (bản exe): tải `wisp-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release, so
-  SHA256 (sai thì huỷ), giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên
+- Nút "Cập nhật" (bản exe): tải `wisp-<ver>-win-x64.zip`, `SHA256SUMS.txt` và `SHA256SUMS.txt.sig` của
+  release, kiểm chữ ký Ed25519 của `SHA256SUMS.txt` bằng khoá công khai trong `pet_tracker/updater.py`, so
+  SHA256 (sai hoặc thiếu chữ ký thì huỷ), giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên
   thư mục cài thành `<thư mục>.old`, chép bản mới vào, giữ lại `config.json` cũ, mở lại app và xoá bản
   cũ. Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Log: `%APPDATA%\Wisp\update.log`.
   Vị trí bóng, kích thước panel, auto-start nằm ngoài thư mục cài nên không mất.
@@ -116,8 +117,15 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
    ```
 
 4. Workflow `.github/workflows/release.yml` (GitHub Actions, `windows-latest`, Python 3.13) kiểm tra
-   tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy `build.ps1`, tạo `SHA256SUMS.txt`, rồi
-   tạo GitHub Release dạng **draft** kèm zip và checksum, release notes lấy từ CHANGELOG.
+   tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy `build.ps1`, tạo `SHA256SUMS.txt`, ký nó
+   thành `SHA256SUMS.txt.sig` bằng secret `WISP_SIGNING_KEY`, rồi tạo GitHub Release dạng **draft** kèm
+   zip, checksum và chữ ký, release notes lấy từ CHANGELOG. Thiếu secret thì job release lỗi.
+   - Khoá ký: tạo một lần bằng `python tools/release_sign.py keygen <file ngoài repo>`. Đặt khoá công
+     khai vào `SIGNING_PUBLIC_KEY` (`pet_tracker/updater.py`), nội dung file khoá bí mật vào secret
+     `WISP_SIGNING_KEY` của repo (Settings → Secrets and variables → Actions). Mất khoá bí mật thì bản đã
+     cài không nhận bản cập nhật ký bằng khoá mới, người dùng phải tải tay một lần.
+   - Action trong workflow được pin theo commit SHA; khi nâng version, lấy SHA mới bằng
+     `git ls-remote https://github.com/actions/<tên> refs/tags/<tag>`.
 5. Mở draft trên GitHub, tải zip về thử, rồi bấm **Publish**. Chỉ sau khi publish thì app của mọi
    người mới thấy bản mới.
 

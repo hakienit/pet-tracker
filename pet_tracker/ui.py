@@ -1926,4 +1926,10 @@ def run(instance=None):
         plat.autostart_refresh()
     except Exception as e:
         log(f"autostart refresh failed: {e}")
+    if plat.IS_WINDOWS:
+        from .platform.win_single import legacy_running
+        if legacy_running():
+            log("legacy pet-tracker is still running")
+            app.root.after(1500, lambda: app._flash("Bản Claude PET cũ vẫn đang chạy: thoát nó để khỏi hiện hai bóng",
+                                                     YELLOW, 20))
     app.mainloop()

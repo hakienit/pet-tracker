@@ -168,6 +168,10 @@ def write_handoff(sess: dict, fallback_dir: Path, timeout: float = 300.0) -> tup
             "--strict-mcp-config", "--tools", *tools, "--allowedTools", *tools]
     if _MODEL_RE.match(sess.get("model") or "") and sess["model"] != "?":
         args += ["--model", sess["model"]]
+    # claude.cmd (bản npm) chạy qua cmd.exe: ký tự đặc biệt của cmd trong tham số (vd đường dẫn APPDATA có &)
+    # có thể bị diễn giải thành lệnh; không chạy trong trường hợp đó
+    if args[0].lower().endswith((".cmd", ".bat")) and any(re.search(r'[%&|<>^"!\r\n]', a) for a in args[1:]):
+        return False, "claude là bản npm (claude.cmd) và đường dẫn có ký tự đặc biệt; cài bản native để dùng handoff"
     started = time.time()
     try:
         p = subprocess.run(args, cwd=cwd, input=HANDOFF_PROMPT.format(fallback=fallback), capture_output=True,
@@ -197,16 +201,33 @@ def write_handoff(sess: dict, fallback_dir: Path, timeout: float = 300.0) -> tup
     return True, str(path.resolve())
 
 
-def _is_claude_process(pid: int) -> bool:
-    """macOS không so được procStart: kiểm tra tên process trước khi gửi tín hiệu (pid có thể đã bị dùng lại)."""
+def _process_name(pid: int) -> str:
     if sys.platform == "win32":
-        return True
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ""
+        try:
+            buf, n = ctypes.create_unicode_buffer(1024), ctypes.c_ulong(1024)
+            ok = k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n))
+            return os.path.basename(buf.value) if ok else ""
+        finally:
+            k32.CloseHandle(h)
     try:
         out = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
-        return False
-    name = os.path.basename(out.strip()).lower()
-    return "claude" in name or name == "node"
+        return ""
+    return os.path.basename(out.strip())
+
+
+def _is_claude_process(pid: int, proc_start) -> bool:
+    """Windows có procStart thì process_alive đã loại pid bị dùng lại. Thiếu nó (hoặc macOS, không so được
+    thời điểm tạo) thì kiểm tra tên process trước khi tắt."""
+    if sys.platform == "win32" and proc_start:
+        return True
+    name = _process_name(pid).lower()
+    return "claude" in name or name in ("node", "node.exe")
 
 
 def _kill(pid: int) -> None:
@@ -227,8 +248,8 @@ def close_session(sess: dict, claude_dir: str, wait: float = 8.0) -> tuple:
         procs.add((sess["pid"], sess.get("proc_start")))
     if not procs:
         return True, "session đã đóng"
-    for pid, _start in procs:
-        if not _is_claude_process(pid):
+    for pid, start in procs:
+        if not _is_claude_process(pid, start):
             return False, f"pid {pid} không còn là Claude Code, không đóng"
         try:
             _kill(pid)

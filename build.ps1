@@ -22,7 +22,7 @@ $version = (& $Python -c "import sys; sys.path.insert(0, '.'); import pet_tracke
 $pyver = (& $Python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
 Write-Host "Wisp $version, Python $pyver"
 
-& $Python -m pip install --upgrade "pyinstaller>=6.10" | Out-Host
+& $Python -m pip install --upgrade "pyinstaller==6.22.3" | Out-Host
 
 # Icon (tạo lại nếu thiếu)
 if (-not (Test-Path "assets\wisp.ico")) { & $Python tools\make_icon.py | Out-Host }

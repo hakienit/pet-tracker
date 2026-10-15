@@ -14,6 +14,7 @@ k32 = ctypes.windll.kernel32
 k32.CreateMutexW.restype = w.HANDLE
 k32.CreateEventW.restype = w.HANDLE
 k32.OpenEventW.restype = w.HANDLE
+k32.OpenMutexW.restype = w.HANDLE
 
 ERROR_ALREADY_EXISTS = 183
 EVENT_MODIFY_STATE = 0x0002
@@ -21,10 +22,18 @@ SYNCHRONIZE = 0x00100000
 WAIT_OBJECT_0 = 0
 
 
-def _names() -> tuple:
+def _names(app: str = "wisp") -> tuple:
     user = "".join(ch for ch in (os.environ.get("USERNAME") or "user") if ch.isalnum()) or "user"
-    base = f"Local\\wisp-{user}"
+    base = f"Local\\{app}-{user}"
     return base + "-mutex", base + "-show"
+
+
+def legacy_running() -> bool:
+    """Bản cũ (pet-tracker / Claude PET) dùng mutex tên khác nên không chặn được Wisp: chỉ báo để người dùng thoát."""
+    h = k32.OpenMutexW(SYNCHRONIZE, False, _names("pet-tracker")[0])
+    if h:
+        k32.CloseHandle(h)
+    return bool(h)
 
 
 class SingleInstance:

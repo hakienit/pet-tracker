@@ -45,7 +45,13 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Không còn gửi token OAuth theo redirect; deep link Claude desktop kiểm tra id chặt hơn; tên session có `;`
   không làm hỏng Resume (Windows Terminal); `state.json` ghi nguyên tử; giữ `CLAUDE_CONFIG_DIR` và các biến
   cấu hình Claude Code khi chạy `claude` từ Wisp.
-- Workflow release: quyền ghi chỉ ở job tạo release, tên tag không còn dán thẳng vào script.
+- Workflow release: quyền ghi chỉ ở job tạo release, tên tag không còn dán thẳng vào script, action pin
+  theo commit SHA, PyInstaller pin `6.22.3`.
+- Cập nhật một chạm kiểm chữ ký Ed25519 của `SHA256SUMS.txt` (file `SHA256SUMS.txt.sig`, ký trong CI bằng
+  secret `WISP_SIGNING_KEY`); release bị sửa hoặc không có chữ ký thì không cài.
+- Không tắt process khi không xác minh được đó là Claude Code (thiếu thời điểm tạo process thì kiểm tên);
+  handoff từ chối chạy qua `claude.cmd` (npm) khi tham số có ký tự đặc biệt của cmd.
+- Cảnh báo khi bản Claude PET (pet-tracker) cũ vẫn đang chạy song song.
 - Thông báo ở footer (kết quả focus, cập nhật, auto-start…) không còn biến mất khi panel tự vẽ lại.
 - Bóng đặt được trên màn hình thứ hai: vị trí được giữ trong vùng dùng được của màn hình chứa bóng
   (trước đây luôn bị kéo về màn hình chính); panel và popup mở trên đúng màn hình đó.

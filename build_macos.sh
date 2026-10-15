@@ -13,7 +13,7 @@ PY="${PYTHON:-python3}"
 VER="$("$PY" -c 'import pet_tracker; print(pet_tracker.__version__)')"
 echo "Wisp $VER, $("$PY" -c 'import platform, sys; print(sys.version.split()[0], platform.machine())')"
 
-"$PY" -m pip install --upgrade "pyinstaller>=6.10"
+"$PY" -m pip install --upgrade "pyinstaller==6.22.3"
 
 # Icon .icns từ hình vẽ bằng tools/make_icon.py
 mkdir -p build

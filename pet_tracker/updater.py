@@ -28,7 +28,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from . import __version__
+from . import __version__, ed25519
 from . import platform as plat
 
 REPO = "hakienit/pet-tracker"
@@ -36,6 +36,11 @@ API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 EXE_NAME = "wisp.exe"
 SUMS_NAME = "SHA256SUMS.txt"
+SIG_NAME = SUMS_NAME + ".sig"
+# Khoá công khai Ed25519 ký SHA256SUMS.txt (khoá bí mật là secret WISP_SIGNING_KEY của repo, xem
+# tools/release_sign.py). SHA256SUMS nằm cùng release với zip nên chỉ bắt được file hỏng; chữ ký mới chống
+# được bản release bị sửa khi token/tài khoản GitHub bị lộ.
+SIGNING_PUBLIC_KEY = "3ec5b41b06657d5c40e13f89dae347f127ccbfbd20c1f7602e1c4e3f2ceec527"
 USER_AGENT = f"Wisp/{__version__} (update check)"
 
 
@@ -140,6 +145,7 @@ def check(api_url: str = API_LATEST, current: str = __version__, timeout: float 
     assets = {a.get("name"): a.get("browser_download_url") for a in data.get("assets") or []}
     out["zip_url"] = assets.get(asset_name(tag))
     out["sums_url"] = assets.get(SUMS_NAME)
+    out["sig_url"] = assets.get(SIG_NAME)
     out["available"] = is_newer(tag, current)
     return out
 
@@ -163,13 +169,21 @@ def sha256_file(path: Path) -> str:
 
 def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
     """Tải + kiểm tra + giải nén. Trả thư mục chứa bản mới (có wisp.exe). Lỗi -> ValueError/OSError."""
-    if not info.get("zip_url") or not info.get("sums_url"):
-        raise ValueError(f"release {info.get('tag')} thiếu {asset_name(info.get('tag', ''))} hoặc {SUMS_NAME}")
+    if not info.get("zip_url") or not info.get("sums_url") or not info.get("sig_url"):
+        raise ValueError(f"release {info.get('tag')} thiếu {asset_name(info.get('tag', ''))}, {SUMS_NAME} "
+                         f"hoặc {SIG_NAME}")
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="pet-update-"))
     work.mkdir(parents=True, exist_ok=True)
     zname = asset_name(info["tag"])
     zpath = work / zname
-    sums = _get(info["sums_url"], 30).decode("utf-8", "replace")
+    sums_raw = _get(info["sums_url"], 30)
+    try:
+        sig = bytes.fromhex(_get(info["sig_url"], 30).decode("ascii").strip())
+    except ValueError:
+        sig = b""
+    if not ed25519.verify(bytes.fromhex(SIGNING_PUBLIC_KEY), sums_raw, sig):
+        raise ValueError(f"chữ ký {SUMS_NAME} không hợp lệ, đã huỷ cập nhật")
+    sums = sums_raw.decode("utf-8", "replace")
     want = expected_sha256(sums, zname)
     if not want:
         raise ValueError(f"{SUMS_NAME} không có dòng cho {zname}")

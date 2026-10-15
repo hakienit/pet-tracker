@@ -150,12 +150,14 @@ def process_alive(pid: int, proc_start=None) -> bool:
             return False
         if proc_start:
             ct, et, kt, ut = _FILETIME(), _FILETIME(), _FILETIME(), _FILETIME()
-            if k32.GetProcessTimes(h, ctypes.byref(ct), ctypes.byref(et), ctypes.byref(kt), ctypes.byref(ut)):
-                try:
-                    if abs(ct.value() - int(proc_start)) > 100_000_000:  # lệch > 10 giây
-                        return False
-                except ValueError:
-                    pass
+            # không kiểm được thời điểm tạo thì coi như không phải process đó (tránh tắt nhầm pid bị dùng lại)
+            if not k32.GetProcessTimes(h, ctypes.byref(ct), ctypes.byref(et), ctypes.byref(kt), ctypes.byref(ut)):
+                return False
+            try:
+                if abs(ct.value() - int(proc_start)) > 100_000_000:  # lệch > 10 giây
+                    return False
+            except ValueError:
+                return False
         return True
     finally:
         k32.CloseHandle(h)
