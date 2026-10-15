@@ -29,7 +29,23 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
   giữ nguyên. Khoá `keep_default_model` không còn dùng.
 
 ### Fixed
-- Panel không còn chớp và giật khi làm mới: chỉ phần có số liệu đổi được vẽ lại.
+- Panel không còn chớp và giật khi làm mới: chỉ phần có số liệu đổi được vẽ lại; số liệu của card session
+  được sửa tại chỗ. Đồng hồ "reset sau…" của quota chạy đúng.
+- Cập nhật một chạm từ chối chạy nếu thư mục cài có file khác ngoài bản build (trước đây nếu `wisp.exe` nằm
+  thẳng trong Downloads/Desktop, cập nhật sẽ xoá cả thư mục đó).
+- Xoá worktree an toàn hơn: đếm cả file chưa track khi git config ẩn chúng, báo trước file bị .gitignore
+  (vd `.env`) sẽ mất, kiểm tra lại session khác đang dùng worktree, branch chưa merge chỉ coi là "đã push"
+  khi remote còn đúng commit đó, và chỉ xoá branch local khi đã merge.
+- Đóng session tắt cả cây process (Windows) và mọi process đang chạy cùng session; macOS kiểm tra tên process
+  trước khi gửi tín hiệu.
+- Handoff: fork chỉ có công cụ đọc/ghi file (không Bash, không MCP), prompt đi qua stdin, chỉ nhận file `.md`
+  vừa ghi trong repo hoặc thư mục handoff của Wisp.
+- Xác nhận bấm hai lần không còn bị một cú double-click vượt qua; click trong panel khi popup đang mở chỉ đóng
+  popup.
+- Không còn gửi token OAuth theo redirect; deep link Claude desktop kiểm tra id chặt hơn; tên session có `;`
+  không làm hỏng Resume (Windows Terminal); `state.json` ghi nguyên tử; giữ `CLAUDE_CONFIG_DIR` và các biến
+  cấu hình Claude Code khi chạy `claude` từ Wisp.
+- Workflow release: quyền ghi chỉ ở job tạo release, tên tag không còn dán thẳng vào script.
 - Thông báo ở footer (kết quả focus, cập nhật, auto-start…) không còn biến mất khi panel tự vẽ lại.
 - Bóng đặt được trên màn hình thứ hai: vị trí được giữ trong vùng dùng được của màn hình chứa bóng
   (trước đây luôn bị kéo về màn hình chính); panel và popup mở trên đúng màn hình đó.

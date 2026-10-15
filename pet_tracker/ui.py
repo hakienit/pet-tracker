@@ -174,7 +174,8 @@ class Collector(threading.Thread):
         self.stop = threading.Event()
         self.kick = threading.Event()
         self.quota_kick = threading.Event()
-        self._git_cache: dict = {}   # cwd -> (lúc lấy, git_state); xoá để lấy lại ngay sau khi dọn dẹp
+        self._git_cache: dict = {}   # cwd -> (lúc lấy, git_state); chỉ thread collector đọc/ghi
+        self._git_stale: set = set()  # cwd cần lấy lại (main thread thêm vào, collector lấy ra)
         self._quota = None
         self._account = account_info(cfg["claude_dir"])
 
@@ -211,6 +212,11 @@ class Collector(threading.Thread):
             self.quota_kick.wait(wait)
             self.quota_kick.clear()
 
+    def invalidate_git(self, cwd):
+        """Gọi từ main thread sau khi dọn dẹp: lần thu thập sau lấy lại trạng thái git của thư mục này."""
+        self._git_stale.add(cwd)
+        self.refresh_now()
+
     def _git_state(self, cwd, now):
         """git_state có cache 30 giây cho mỗi thư mục: mỗi lần là vài lệnh git."""
         hit = self._git_cache.get(cwd)
@@ -224,6 +230,8 @@ class Collector(threading.Thread):
                 self.store.poll_all()
                 sessions = self.store.active_sessions(self.cfg["context_windows"])
                 now = time.time()
+                while self._git_stale:
+                    self._git_cache.pop(self._git_stale.pop(), None)
                 for s in sessions:
                     s["git"] = self._git_state(s.get("cwd"), now)
                 local = {
@@ -251,7 +259,7 @@ class PetApp:
         self.cfg = load_config()
         self.state = load_state()
         self.q: queue.Queue = queue.Queue()
-        self._ops_done: queue.Queue = queue.Queue()   # (tên, ok, thông báo, cwd, mục đã đóng) từ thread thao tác
+        self._ops_done: queue.Queue = queue.Queue()   # (sid, tên, ok, thông báo, cwd, mục đã đóng) từ thread thao tác
         self.snap = None
         self.sig = None
 
@@ -274,6 +282,8 @@ class PetApp:
         self._flash_msg = ("", FAINT)
         self.footer_lbl = None
         self._hdr_key = None
+        self._busy_sids: set = set()   # session đang có thao tác chạy nền (handoff có thể mất vài phút)
+        self._bub_cache: dict = {}     # khoá bóng -> ảnh đã render (hover bật/tắt không render lại)
         self._parts: dict = {}       # tên phần nội dung -> khung chứa nó trong panel
         self._modal = False
         self._sheet = None
@@ -464,15 +474,24 @@ class PetApp:
         sub = "7 ngày" if weekly else f"{len(sessions)} agent"
         if key != self._bub_key:
             self._bub_key = key
+            img = self._bub_cache.get(key)
+            if img is None:
+                if len(self._bub_cache) > 8:
+                    self._bub_cache.clear()
+                if self._alpha_bubble:
+                    png = render.bubble_png(s, S, pct, prog, ACCENT if busy else None, warn_col,
+                                            self._hover_bubble, BUBBLE_PALETTE, update=upd)
+                    img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
+                else:
+                    img = render.to_photo_data(render.bubble_rows(s, S, pct, prog, ACCENT if busy else None,
+                                                                  warn_col, self._hover_bubble, BUBBLE_PALETTE,
+                                                                  update=upd))
+                self._bub_cache[key] = img
             if self._alpha_bubble:
-                png = render.bubble_png(s, S, pct, prog, ACCENT if busy else None, warn_col,
-                                        self._hover_bubble, BUBBLE_PALETTE, update=upd)
-                self._bub_img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
+                self._bub_img = img
                 self.canvas.itemconfigure(self._bub_item, image=self._bub_img)
             else:
-                rows = render.bubble_rows(s, S, pct, prog, ACCENT if busy else None, warn_col,
-                                          self._hover_bubble, BUBBLE_PALETTE, update=upd)
-                self._bub_img.put(render.to_photo_data(rows))
+                self._bub_img.put(img)
         c.delete("txt")
         cx = cy = s / 2
         n = len(sessions)
@@ -563,7 +582,11 @@ class PetApp:
                 focused = self.root.focus_get()
             except Exception:
                 focused = None
-            if focused is not None or self._modal or self._resize:
+            if self._modal or self._resize:
+                return
+            if focused is not None:
+                if self._sheet is not None and focused.winfo_toplevel() is not self._sheet:
+                    self._close_sheet()
                 return
             if self._sheet is not None:
                 self._close_sheet()
@@ -584,7 +607,10 @@ class PetApp:
         self.panel.attributes("-alpha", 0.0)
         self._place_panel()
         self.panel.deiconify()
+        rounded = self._rounded
         self._apply_dwm()
+        if self._rounded != rounded:
+            self._render_panel(force=True)
         self.panel.attributes("-topmost", True)
         self.panel.lift()
         self.panel_visible = True
@@ -667,7 +693,11 @@ class PetApp:
         vh = self._view_h()
         self._scrollable = ch > vh + 1
         self._scv.configure(scrollregion=(0, 0, cw, max(ch, vh)))
-        self._scroll_to(self._offset(), animate=False)
+        if self._scroll_target is not None:  # đang cuộn: giữ đích (kẹp lại theo chiều cao mới)
+            self._scroll_target = max(0.0, min(self._max_offset(), self._scroll_target))
+            self._update_thumb()
+        else:
+            self._scroll_to(self._offset(), animate=False)
 
     def _max_offset(self) -> float:
         return max(0.0, self._content_h - self._view_h())
@@ -782,9 +812,28 @@ class PetApp:
         img = self._photo(("bar", width, h, round(frac, 3), color, TRACK, bg),
                           lambda: render.capsule_rows(width, h, frac, color, TRACK, bg))
         c = tk.Canvas(parent, width=width, height=h, bg=bg, highlightthickness=0, bd=0)
-        c.create_image(0, 0, anchor="nw", image=img)
+        c._item = c.create_image(0, 0, anchor="nw", image=img)
         c._img = img
+        c._spec = (width, h, bg)
         return c
+
+    def _set_bar(self, c, pct: float, color: str):
+        width, h, bg = c._spec
+        frac = max(0.0, min(100.0, pct)) / 100.0
+        img = self._photo(("bar", width, h, round(frac, 3), color, TRACK, bg),
+                          lambda: render.capsule_rows(width, h, frac, color, TRACK, bg))
+        c.itemconfigure(c._item, image=img)
+        c._img = img
+
+    def _guarded(self, fn):
+        """Click trong panel khi popup đang mở chỉ đóng popup (Tk gửi click tới widget bên dưới trước khi
+        _pump kịp thấy), không chạy thao tác của widget đó."""
+        def run(*a):
+            if self._sheet is not None:
+                self._close_sheet()
+                return "break"
+            return fn(*a)
+        return run
 
     def _pill(self, parent, text: str, color: str, fg: str = "#15161a", font=None):
         font = font or self.f_xsb
@@ -804,14 +853,14 @@ class PetApp:
                      padx=int(5 * self.S), pady=int(3 * self.S))
         b.bind("<Enter>", lambda e: b.configure(fg=hover_fg))
         b.bind("<Leave>", lambda e: b.configure(fg=fg))
-        b.bind("<Button-1>", lambda e: cmd())
+        b.bind("<Button-1>", self._guarded(lambda e: cmd()))
         return b
 
     def _text_btn(self, parent, text: str, cmd, hover_fg=FG, fg=MUTED):
         b = tk.Label(parent, text=text, font=self.f_xs, fg=fg, bg=parent["bg"], cursor="hand2")
         b.bind("<Enter>", lambda e: b.configure(fg=hover_fg))
         b.bind("<Leave>", lambda e: b.configure(fg=fg))
-        b.bind("<Button-1>", lambda e: cmd())
+        b.bind("<Button-1>", self._guarded(lambda e: cmd()))
         return b
 
     def _section_title(self, parent, text, right=None, right_fg=FAINT, top=14):
@@ -831,26 +880,30 @@ class PetApp:
         """Khoá dữ liệu của từng phần nội dung: phần nào đổi khoá thì mới dựng lại phần đó."""
         q = snap.get("quota") or {}
         upd = self._update or {}
-        now_min = int(time.time() // 60)
         return {
             "notice": self.cfg.get("config_error"),
             "update": (upd.get("version"), upd.get("available"), upd.get("apply_error"), self._update_busy),
             # giờ lấy số liệu chỉ hiện khi đang dùng số liệu cũ: không đổi số thì làm mới không vẽ lại
-            "quota": (tuple((w["key"], round(w["percent"], 1), int((w.get("resets_at") or 0) // 60))
-                            for w in q.get("windows", [])),
+            "quota": (tuple((w["key"], round(w["percent"], 1), fmt_reset(w.get("resets_at")),
+                             fmt_clock(w.get("resets_at"))) for w in q.get("windows", [])),
                       q.get("ok"), q.get("error"), q.get("stale_error"),
                       int((q.get("fetched_at") or 0) // 60) if q.get("stale_error") else None),
-            "sessions": (tuple((s["session_id"], s["status"], s["model"], s.get("effort"), s["context_tokens"],
-                                s["context_limit"], s["cwd"], s.get("git_branch"), s["name"], s.get("entrypoint"),
-                                s["subagents"], s["totals"]["messages"],
-                                int((now_min * 60 - (s.get("last_activity") or 0)) // 60),
-                                session_ops.state_text(s.get("git")))
-                               for s in snap.get("sessions", [])),
-                         snap.get("error")),
+            "sessions": (tuple(self._card_key(s) for s in snap.get("sessions", [])), snap.get("error")),
             "closed": tuple((c.get("session_id"), c.get("handoff"), fmt_ago(c.get("closed_at")))
                             for c in self._closed_list()),
             "local": tuple(fmt_k(local_total(snap.get("local", {}).get(k))) for k in ("5h", "7d")),
         }
+
+    @staticmethod
+    def _card_key(s: dict) -> tuple:
+        """(cấu trúc, số liệu) của một card. Chỉ số liệu đổi thì sửa chữ tại chỗ, không dựng lại card."""
+        ago = fmt_ago(s.get("last_activity"))
+        gtxt = session_ops.state_text(s.get("git"))
+        struct = (s["session_id"], s["status"], s["model"], s.get("effort"), s["cwd"], s.get("git_branch"),
+                  s["name"], s.get("entrypoint"), s["has_transcript"], bool(ago), bool(gtxt[0]))
+        live = (s["context_tokens"], s["context_limit"], s["totals"]["messages"], s["totals"]["output"],
+                s["subagents"], ago, gtxt, s.get("git", {}) and s["git"].get("linked"))
+        return struct, live
 
     def _render_panel(self, force=False):
         snap = self.snap or {}
@@ -859,7 +912,6 @@ class PetApp:
             self._update_footer()
             return
         prev = {} if force else (self.sig or {})
-        self.sig = sig
         S = self.S
         padx = int(16 * S)
         # nội dung nằm trong canvas rộng (pw - bar_w); lề phải bớt đi bar_w để hai bên cân nhau
@@ -916,6 +968,8 @@ class PetApp:
             for w in holder.winfo_children():
                 w.destroy()
             builders[name](holder)
+        # ghi khoá sau khi dựng xong: builder lỗi giữa chừng thì lần sau dựng lại phần đó
+        self.sig = sig
         tk.Misc.lift(self._grip)
 
         if self.panel_visible:
@@ -928,10 +982,13 @@ class PetApp:
         False nếu danh sách, trạng thái hoặc lỗi đổi: khi đó dựng lại cả phần (tiêu đề đếm số đang chạy)."""
         (old_cards, old_err), (new_cards, new_err) = old, new
         if (old_err != new_err or len(self._cards) != len(new_cards)
-                or [k[:2] for k in old_cards] != [k[:2] for k in new_cards]):  # (session_id, status)
+                or [k[0][:2] for k in old_cards] != [k[0][:2] for k in new_cards]):  # (session_id, status)
             return False
         for i, (ok, nk, s) in enumerate(zip(old_cards, new_cards, snap.get("sessions") or [])):
             if ok == nk:
+                continue
+            if ok[0] == nk[0]:  # chỉ số liệu đổi: sửa tại chỗ (dựng lại card làm Tk layout lại cả panel)
+                self._update_card(self._cards[i][0], s)
                 continue
             old_card = self._cards[i][0]
             if self._hot and self._hot[0] is old_card:
@@ -1089,37 +1146,39 @@ class PetApp:
         r3 = tk.Frame(inner, bg=SURFACE)
         r3.pack(fill="x", pady=(int(10 * S), int(5 * S)))
         self._lbl(r3, "Context", font=self.f_xs, fg=MUTED).pack(side="left")
+        refs = {}
         if s["has_transcript"]:
-            self._lbl(r3, f"{s['context_pct']:.0f}%", font=self.f_xsb, fg=col).pack(side="right")
-            self._lbl(r3, f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}", font=self.f_xs,
-                      fg=FG2).pack(side="right", padx=(0, int(8 * S)))
+            refs["pct"] = self._lbl(r3, f"{s['context_pct']:.0f}%", font=self.f_xsb, fg=col)
+            refs["pct"].pack(side="right")
+            refs["tok"] = self._lbl(r3, f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}",
+                                    font=self.f_xs, fg=FG2)
+            refs["tok"].pack(side="right", padx=(0, int(8 * S)))
         else:
             self._lbl(r3, "chưa có transcript", font=self.f_xs, fg=FAINT).pack(side="right")
-        self._bar(inner, s["context_pct"], col, cw, 5).pack(fill="x")
+        refs["bar"] = self._bar(inner, s["context_pct"], col, cw, 5)
+        refs["bar"].pack(fill="x")
 
         # dòng 4: trạng thái + số liệu
         r4 = tk.Frame(inner, bg=SURFACE)
         r4.pack(fill="x", pady=(int(8 * S), 0))
         self._lbl(r4, "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"])),
                   font=self.f_xsb, fg=status_col).pack(side="left")
-        bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
-        if s["subagents"]:
-            bits.append(f"{s['subagents']} subagent")
-        ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
-        if ep:
-            bits.append(ep)
-        self._lbl(r4, "  ·  ".join(bits), font=self.f_xs, fg=MUTED).pack(side="left", padx=(int(8 * S), 0))
+        refs["stats"] = self._lbl(r4, self._card_stats(s), font=self.f_xs, fg=MUTED)
+        refs["stats"].pack(side="left", padx=(int(8 * S), 0))
         ago = fmt_ago(s.get("last_activity"))
         if ago:
-            self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
+            refs["ago"] = self._lbl(r4, ago, font=self.f_xs, fg=FAINT)
+            refs["ago"].pack(side="right")
 
         # trạng thái git của thư mục session: xong (sạch + đã merge/push) thì dọn được
         gtxt, gkind = session_ops.state_text(s.get("git"))
         if gtxt:
             r5 = tk.Frame(inner, bg=SURFACE)
             r5.pack(fill="x", pady=(int(4 * S), 0))
-            self._lbl(r5, self._git_label(s["git"], gtxt), font=self.f_xs,
-                      fg=GREEN if gkind == "done" else YELLOW).pack(side="left")
+            refs["git"] = self._lbl(r5, self._git_label(s["git"], gtxt), font=self.f_xs,
+                                    fg=GREEN if gkind == "done" else YELLOW)
+            refs["git"].pack(side="left")
+        card._refs = refs
 
         self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
         menu = lambda ev, sess=s: self._session_menu(sess, ev.x_root, ev.y_root)
@@ -1128,6 +1187,31 @@ class PetApp:
         more.bind("<Enter>", lambda ev: more.configure(fg=FG))
         more.bind("<Leave>", lambda ev: more.configure(fg=MUTED))
         return card, arrow
+
+    @staticmethod
+    def _card_stats(s: dict) -> str:
+        bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
+        if s["subagents"]:
+            bits.append(f"{s['subagents']} subagent")
+        ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
+        if ep:
+            bits.append(ep)
+        return "  ·  ".join(bits)
+
+    def _update_card(self, card, s: dict):
+        """Sửa các ô số liệu của card có sẵn (context, msg, thời gian, git) mà không dựng lại."""
+        refs = card._refs
+        col = level_color(s["context_pct"], self.cfg["warn_percent"], self.cfg["danger_percent"])
+        if "pct" in refs:
+            refs["pct"].configure(text=f"{s['context_pct']:.0f}%", fg=col)
+            refs["tok"].configure(text=f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}")
+        self._set_bar(refs["bar"], s["context_pct"], col)
+        refs["stats"].configure(text=self._card_stats(s))
+        if "ago" in refs:
+            refs["ago"].configure(text=fmt_ago(s.get("last_activity")))
+        if "git" in refs:
+            gtxt, gkind = session_ops.state_text(s.get("git"))
+            refs["git"].configure(text=self._git_label(s["git"], gtxt), fg=GREEN if gkind == "done" else YELLOW)
 
     @staticmethod
     def _git_label(st: dict, text: str) -> str:
@@ -1277,14 +1361,16 @@ class PetApp:
         self._flash_msg = (text, color)
         self._update_footer()
 
-    def _bind_click(self, widget, fn):
+    def _bind_click(self, widget, fn, _guard=True):
+        if _guard:
+            fn = self._guarded(fn)
         try:
             widget.configure(cursor="hand2")
         except Exception:
             pass
         widget.bind("<Button-1>", fn)
         for ch in widget.winfo_children():
-            self._bind_click(ch, fn)
+            self._bind_click(ch, fn, _guard=False)
 
     def _bind_events(self, widget, events, fn):
         for ev in events:
@@ -1365,8 +1451,10 @@ class PetApp:
                 paint(SHEET_BG)
 
         def click(_e=None):
-            if confirm and not armed:
-                armed.append(1)
+            if confirm and (not armed or time.time() - armed[0] < 0.6):
+                if armed:  # lần bấm thứ hai của một double-click: bỏ qua
+                    return
+                armed.append(time.time())
                 lb.configure(text=confirm, fg=RED)
                 ht.configure(text="bấm lần nữa", fg=RED)
                 paint(DANGER_BG)
@@ -1504,7 +1592,7 @@ class PetApp:
         c._imgs = (im_n, im_h)
         c.bind("<Enter>", lambda e: c.itemconfigure(it, image=im_h))
         c.bind("<Leave>", lambda e: c.itemconfigure(it, image=im_n))
-        c.bind("<Button-1>", lambda e: cmd())
+        c.bind("<Button-1>", self._guarded(lambda e: cmd()))
         return c
 
     def _build_update_banner(self, parent, cpad, inner_w):
@@ -1648,7 +1736,9 @@ class PetApp:
 
         # pid của session Claude desktop thuộc app desktop: không tắt từ ngoài
         desktop = sess.get("entrypoint") == "claude-desktop"
-        no_close = "đóng trong Claude app" if desktop else ""
+        busy = sess.get("session_id") in self._busy_sids
+        no_close = "đóng trong Claude app" if desktop else ("đang xử lý…" if busy else "")
+        desktop = desktop or busy
         self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
         self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "theo rule repo, tốn token",
                         act(lambda: self._run_op(sess, "handoff")), enabled=not desktop,
@@ -1661,9 +1751,13 @@ class PetApp:
                         confirm="Xoá hẳn? Không resume được")
         if st and st["linked"]:
             why = session_ops.worktree_block_reason(sess, (self.snap or {}).get("sessions") or [])
-            self._sheet_row(body, ICON_FOLDER, "Xoá worktree", why or "đóng session + xoá",
+            ign = st.get("ignored") or []
+            # git worktree remove xoá cả file bị .gitignore (.env, build...): nói trước trong câu xác nhận
+            lost = f" Mất {len(ign)} mục ignore: {', '.join(ign[:2])}{'…' if len(ign) > 2 else ''}" if ign else ""
+            self._sheet_row(body, ICON_FOLDER, "Xoá worktree", why or no_close or (
+                f"kèm {len(ign)} mục ignore" if ign else "đóng session + xoá"),
                             act(lambda: self._run_op(sess, "worktree")), enabled=why is None and not desktop,
-                            danger=True, confirm="Đóng session, xoá worktree?")
+                            danger=True, confirm=("Xoá worktree?" + lost)[:60])
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
         self._finish_sheet(top, body, W, x, y)
 
@@ -1671,7 +1765,13 @@ class PetApp:
         """handoff | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process thoát);
         kết quả về qua _ops_done."""
         name = sess.get("name") or "?"
+        sid = sess.get("session_id")
+        if sid in self._busy_sids:
+            self._flash(f"{name}: đang có thao tác khác chạy", YELLOW)
+            return
+        self._busy_sids.add(sid)
         self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff" else "đang xử lý…"), MUTED, 300)
+        claude_dir = self.cfg["claude_dir"]
 
         def work():
             path = None
@@ -1681,13 +1781,13 @@ class PetApp:
                     ok, msg = session_ops.write_handoff(sess, STATE_DIR / "handoffs")
                     path = msg if ok else None
                 if ok:  # handoff lỗi thì không đóng, tránh mất ngữ cảnh
-                    ok, msg = session_ops.close_session(sess)
+                    ok, msg = session_ops.close_session(sess, claude_dir)
                     if ok and path:
                         msg = f"đã đóng, handoff ở {path}"
                 if ok and op == "delete":
-                    ok, msg = session_ops.delete_transcript(sess, self.cfg["claude_dir"])
+                    ok, msg = session_ops.delete_transcript(sess, claude_dir)
                 elif ok and op == "worktree":
-                    ok, msg = session_ops.remove_worktree(sess)
+                    ok, msg = session_ops.remove_worktree(sess, claude_dir)
             except Exception as e:
                 ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
             log(f"session op {op} {name!r} pid={sess.get('pid')} cwd={sess.get('cwd')!r}: ok={ok} {msg}")
@@ -1697,7 +1797,7 @@ class PetApp:
                 closed = {"session_id": sess.get("session_id"), "name": name, "cwd": sess.get("cwd"),
                           "home_cwd": sess.get("home_cwd") or sess.get("cwd"), "closed_at": time.time(),
                           "handoff": path}
-            self._ops_done.put((name, ok, msg, sess.get("cwd"), closed))
+            self._ops_done.put((sid, name, ok, msg, sess.get("cwd"), closed))
 
         threading.Thread(target=work, daemon=True, name=f"op-{op}").start()
 
@@ -1753,15 +1853,15 @@ class PetApp:
             self._flash("Wisp đang chạy rồi", ACCENT, 3)
         try:
             while True:
-                name, ok, msg, cwd, closed = self._ops_done.get_nowait()
+                sid, name, ok, msg, cwd, closed = self._ops_done.get_nowait()
+                self._busy_sids.discard(sid)
                 self._flash(f"{name}: {msg}", GREEN if ok else YELLOW)
                 if closed:
                     rest = [c for c in self.state.get("closed_sessions") or []
                             if c.get("session_id") != closed["session_id"]]
                     self.state["closed_sessions"] = [closed] + rest[:9]
                     save_state(self.state)
-                self.collector._git_cache.pop(cwd, None)
-                self.collector.refresh_now()
+                self.collector.invalidate_git(cwd)
         except queue.Empty:
             pass
         got = False

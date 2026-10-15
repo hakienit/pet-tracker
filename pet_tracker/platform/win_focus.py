@@ -26,6 +26,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes as w
 import os
+import re
 import subprocess
 import time
 
@@ -234,22 +235,19 @@ def bring_to_front(hwnd: int) -> bool:
 
 
 def open_deeplink(url: str) -> bool:
+    # không lùi về `cmd /c start`: cmd diễn giải &, | trong URL
     try:
         os.startfile(url)
         return True
     except Exception:
-        try:
-            subprocess.Popen(["cmd", "/c", "start", "", url], creationflags=0x08000000)
-            return True
-        except Exception:
-            return False
+        return False
 
 
 def focus_session(sess: dict) -> tuple:
     """Trả (ok, message). Ưu tiên deep link cho Claude desktop, rồi cửa sổ host."""
     msgs = []
     host = sess.get("host_session_id") or ""
-    if sess.get("entrypoint") == "claude-desktop" and host.startswith("local_"):
+    if sess.get("entrypoint") == "claude-desktop" and re.fullmatch(r"local_[A-Za-z0-9-]{1,64}", host):
         if open_deeplink(f"claude://code/continue?session={host}"):
             msgs.append("deep link Claude desktop")
     win = None

@@ -53,6 +53,16 @@ def _parse_iso(s):
         return None
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib chép cả header Authorization sang URL redirect (kể cả host khác): không theo redirect."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
 def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:
     tok, err = _read_token(claude_dir)
     if not tok:
@@ -67,7 +77,7 @@ def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _NO_REDIRECT.open(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:

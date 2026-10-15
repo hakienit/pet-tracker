@@ -11,35 +11,35 @@ EXE_NAME = "wisp.exe"
 SWAP_PS1 = r"""
 param([int]$WaitPid, [string]$Stage, [string]$Install, [string]$Exe, [string]$Log)
 $ErrorActionPreference = 'Stop'
-function L($m) { Add-Content -Path $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m) -Encoding utf8 }
+function L($m) { Add-Content -LiteralPath $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m) -Encoding utf8 }
 L "update: waiting for pid $WaitPid"
 try { Wait-Process -Id $WaitPid -Timeout 60 -ErrorAction SilentlyContinue } catch {}
 Start-Sleep -Milliseconds 500
 $backup = "$Install.old"
 try {
-  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-  Rename-Item -Path $Install -NewName (Split-Path $backup -Leaf)
+  if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
+  Rename-Item -LiteralPath $Install -NewName (Split-Path $backup -Leaf)
   L "update: moved $Install -> $backup"
   try {
-    Copy-Item -Path $Stage -Destination $Install -Recurse -Force
-    if (Test-Path "$backup\config.json") { Copy-Item "$backup\config.json" "$Install\config.json" -Force }
+    Copy-Item -LiteralPath $Stage -Destination $Install -Recurse -Force
+    if (Test-Path -LiteralPath "$backup\config.json") { Copy-Item -LiteralPath "$backup\config.json" "$Install\config.json" -Force }
     L "update: copied new version into $Install"
   } catch {
     L "update: copy failed: $_ ; restoring backup"
-    if (Test-Path $Install) { Remove-Item $Install -Recurse -Force }
-    Rename-Item -Path $backup -NewName (Split-Path $Install -Leaf)
+    if (Test-Path -LiteralPath $Install) { Remove-Item -LiteralPath $Install -Recurse -Force }
+    Rename-Item -LiteralPath $backup -NewName (Split-Path $Install -Leaf)
     throw
   }
   Start-Process -FilePath (Join-Path $Install $Exe) -WorkingDirectory $Install
   L "update: started new version"
   Start-Sleep -Seconds 3
-  Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item (Split-Path $Stage -Parent) -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (Split-Path $Stage -Parent) -Recurse -Force -ErrorAction SilentlyContinue
   L "update: done"
 } catch {
   L "update: FAILED: $_"
   try {
-    if (Test-Path (Join-Path $Install $Exe)) {
+    if (Test-Path -LiteralPath (Join-Path $Install $Exe)) {
       Start-Process -FilePath (Join-Path $Install $Exe) -WorkingDirectory $Install
       L "update: restarted previous version"
     } else { L "update: previous version not found at $Install" }

@@ -1,14 +1,16 @@
 """Dọn dẹp session: đóng process, xoá transcript, xoá git worktree đã xong; trạng thái git của thư mục session.
 
 Worktree chỉ được xoá khi "xong": sạch (không thay đổi chưa commit, kể cả file mới) và branch đã merge vào
-nhánh chính hoặc đã push hết lên upstream. Xoá bằng `git worktree remove` không --force (git tự từ chối nếu
-còn thay đổi), rồi `git branch -d` (git tự từ chối nếu branch chưa merge). Worktree do Orca quản lý chỉ hiện
-trạng thái, không xoá từ đây (xoá ngoài Orca để lại workspace "ma" trong Orca).
+nhánh chính hoặc đã push đúng commit hiện tại lên remote. Xoá bằng `git worktree remove` không --force (git tự
+từ chối nếu còn thay đổi), rồi `git branch -d` chỉ khi đã merge. Worktree do Orca quản lý chỉ hiện trạng thái,
+không xoá từ đây (xoá ngoài Orca để lại workspace "ma" trong Orca).
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -41,7 +43,8 @@ def is_orca(path: str) -> bool:
 
 def git_state(cwd: str):
     """Trạng thái git của thư mục session, None nếu không phải git repo.
-    {top, common, linked, orca, branch, dirty, upstream, ahead, merged, base, done}"""
+    {top, common, linked, orca, branch, dirty, ignored, upstream, ahead, merged, base, done}
+    dirty: số file đổi/chưa track; ignored: đường dẫn bị .gitignore (git worktree remove xoá luôn mà không hỏi)."""
     if not cwd or not os.path.isdir(cwd):
         return None
     rc, out = _git(cwd, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir")
@@ -49,10 +52,11 @@ def git_state(cwd: str):
         return None
     top, gitdir, common = (os.path.abspath(x) for x in out.splitlines()[:3])
     linked = os.path.normcase(gitdir) != os.path.normcase(common)
-    rc, out = _git(cwd, "status", "--porcelain=v2", "--branch")
+    # ghi rõ cờ untracked/ignored: không để config git của người dùng (status.showUntrackedFiles=no) giấu file
+    rc, out = _git(cwd, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "--ignored=matching")
     if rc != 0:
         return None
-    branch, upstream, ahead, dirty = None, None, None, 0
+    branch, upstream, ahead, dirty, ignored = None, None, None, 0, []
     for line in out.splitlines():
         if line.startswith("# branch.head "):
             branch = line[14:]
@@ -60,6 +64,8 @@ def git_state(cwd: str):
             upstream = line[18:]
         elif line.startswith("# branch.ab "):
             ahead = int(line.split()[2].lstrip("+"))
+        elif line.startswith("! "):
+            ignored.append(line[2:])
         elif line and not line.startswith("#"):
             dirty += 1
     base = None
@@ -74,7 +80,7 @@ def git_state(cwd: str):
     return {
         "top": str(Path(top)), "common": common, "linked": linked, "orca": is_orca(top),
         "branch": branch if branch and branch != "(detached)" else None,
-        "dirty": dirty, "upstream": upstream, "ahead": ahead, "merged": merged, "base": base,
+        "dirty": dirty, "ignored": ignored, "upstream": upstream, "ahead": ahead, "merged": merged, "base": base,
         "done": dirty == 0 and (merged or pushed),
     }
 
@@ -101,20 +107,42 @@ def worktree_block_reason(sess: dict, sessions: list):
         return "worktree Orca: xoá trong Orca"
     if not st["done"]:
         return state_text(st)[0]
-    top = os.path.normcase(st["top"])
     for o in sessions:
-        cwd = os.path.normcase(o.get("cwd") or "")
-        if o["session_id"] != sess["session_id"] and (cwd == top or cwd.startswith(top + os.sep)):
+        if o["session_id"] != sess["session_id"] and (_under(o.get("cwd"), st["top"])
+                                                       or _under(o.get("home_cwd"), st["top"])):
             return "session khác đang dùng"
     return None
+
+
+def live_session_files(claude_dir: str) -> list:
+    """sessions/<pid>.json của các process Claude Code còn sống (pid + procStart khớp)."""
+    out = []
+    for p in glob.glob(os.path.join(claude_dir, "sessions", "*.json")):
+        try:
+            d = json.loads(Path(p).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if d.get("pid") and d.get("sessionId") and process_alive(d["pid"], d.get("procStart")):
+            out.append(d)
+    return out
+
+
+def _under(path, top: str) -> bool:
+    if not path:
+        return False
+    path, top = os.path.normcase(os.path.abspath(path)), os.path.normcase(os.path.abspath(top))
+    return path == top or path.startswith(top.rstrip(os.sep) + os.sep)
 
 
 # ---------------------------------------------------------------- thao tác (chạy trên thread nền)
 HANDOFF_PROMPT = """Viết bản handoff cho phiên làm việc này để một phiên sau tiếp tục được ngay: mục tiêu, \
 những gì đã làm (commit, file chính), trạng thái hiện tại, việc còn dở, bước tiếp theo, lưu ý và rủi ro.
-Lưu file theo quy định của repo này (CLAUDE.md, AGENTS.md, rules, docs) về nơi và cách lưu handoff hay ghi chú. \
-Nếu repo không quy định thì lưu vào {fallback}.
+Lưu file markdown (.md) theo quy định của repo này (CLAUDE.md, AGENTS.md, rules, docs) về nơi và cách lưu \
+handoff hay ghi chú. Nếu repo không quy định thì lưu vào {fallback}.
 Không commit, không sửa file nào khác. Câu trả lời cuối chỉ gồm đường dẫn tuyệt đối của file đã ghi."""
+
+_SID_RE = re.compile(r"^[0-9A-Za-z-]{8,64}$")
+_MODEL_RE = re.compile(r"^[0-9A-Za-z._:\[\]-]{1,80}$")
 
 
 def claude_command() -> str:
@@ -125,22 +153,26 @@ def claude_command() -> str:
 def write_handoff(sess: dict, fallback_dir: Path, timeout: float = 300.0) -> tuple:
     """Fork session ở chế độ không tương tác (session gốc không bị đụng tới, bản fork không lưu lại) để nó tự
     viết handoff theo quy định của repo. (ok, đường dẫn file | lỗi)."""
-    sid = sess.get("session_id")
+    sid = sess.get("session_id") or ""
     cwd = sess.get("home_cwd") or sess.get("cwd")
-    if not sid or not cwd or not os.path.isdir(cwd):
+    if not _SID_RE.match(sid) or not cwd or not os.path.isdir(cwd):
         return False, "thiếu sessionId hoặc thư mục không tồn tại"
     name = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in (sess.get("name") or sid[:8]))[:60]
     fallback = Path(fallback_dir) / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.md"
     fallback.parent.mkdir(parents=True, exist_ok=True)
+    # --tools giới hạn hẳn công cụ (không Bash, không MCP); --allowedTools chỉ duyệt sẵn chúng. Prompt đi qua
+    # stdin, không qua dòng lệnh (claude.cmd của npm chạy qua cmd.exe: xuống dòng, %, & bị diễn giải).
+    tools = ["Read", "Glob", "Grep", "Write", "Edit"]
     args = [claude_command(), "-p", "--resume", sid, "--fork-session", "--no-session-persistence",
             "--output-format", "json", "--permission-mode", "acceptEdits", "--add-dir", str(fallback.parent),
-            "--allowedTools", "Read", "Glob", "Grep", "Write", "Edit"]
-    if sess.get("model") and sess["model"] != "?":
+            "--strict-mcp-config", "--tools", *tools, "--allowedTools", *tools]
+    if _MODEL_RE.match(sess.get("model") or "") and sess["model"] != "?":
         args += ["--model", sess["model"]]
-    args += ["--", HANDOFF_PROMPT.format(fallback=fallback)]
+    started = time.time()
     try:
-        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           timeout=timeout, creationflags=_NO_WINDOW, env=clean_env(), stdin=subprocess.DEVNULL)
+        p = subprocess.run(args, cwd=cwd, input=HANDOFF_PROMPT.format(fallback=fallback), capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                           creationflags=_NO_WINDOW, env=clean_env())
     except subprocess.TimeoutExpired:
         return False, "viết handoff quá lâu, chưa đóng session"
     except OSError as e:
@@ -151,25 +183,60 @@ def write_handoff(sess: dict, fallback_dir: Path, timeout: float = 300.0) -> tup
         failed = res.get("is_error")
     except ValueError:
         text, failed = (p.stderr or p.stdout).strip(), True
-    path = text.strip("`\"' \n").splitlines()[-1].strip("`\"' ") if text else ""
-    if failed or p.returncode != 0 or not path or not os.path.isfile(path):
+    line = text.strip("`\"' \n").splitlines()[-1].strip("`\"' ") if text else ""
+    if failed or p.returncode != 0 or not line:
         return False, f"handoff lỗi, chưa đóng session: {(text or p.stderr or p.returncode)!s:.200}"
-    return True, path
-
-
-def close_session(sess: dict, wait: float = 6.0) -> tuple:
-    """Kết thúc process Claude Code của session. Kiểm tra lại pid + procStart để không giết nhầm process khác
-    đã nhận lại pid đó."""
-    pid = sess.get("pid")
-    if not pid or not process_alive(pid, sess.get("proc_start")):
-        return True, "session đã đóng"
+    path = Path(line) if os.path.isabs(line) else Path(cwd) / line
+    # chỉ nhận file .md vừa ghi, nằm trong repo hoặc thư mục handoff của Wisp (nút Handoff sẽ mở file này)
     try:
-        os.kill(pid, signal.SIGTERM)  # Windows: TerminateProcess
-    except OSError as e:
-        return False, f"không đóng được: {e}"
+        fresh = path.is_file() and path.stat().st_mtime >= started - 2
+    except OSError:
+        fresh = False
+    if path.suffix.lower() != ".md" or not fresh or not (_under(str(path), cwd) or _under(str(path), str(fallback.parent))):
+        return False, f"handoff không ra file .md mới trong repo, chưa đóng session: {line[:160]}"
+    return True, str(path.resolve())
+
+
+def _is_claude_process(pid: int) -> bool:
+    """macOS không so được procStart: kiểm tra tên process trước khi gửi tín hiệu (pid có thể đã bị dùng lại)."""
+    if sys.platform == "win32":
+        return True
+    try:
+        out = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    name = os.path.basename(out.strip()).lower()
+    return "claude" in name or name == "node"
+
+
+def _kill(pid: int) -> None:
+    if sys.platform == "win32":
+        # /T: cả cây process (bash nền, MCP, dev server); nếu không, chúng giữ khoá thư mục worktree
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=15,
+                       creationflags=_NO_WINDOW)
+    else:
+        os.kill(pid, signal.SIGTERM)
+
+
+def close_session(sess: dict, claude_dir: str, wait: float = 8.0) -> tuple:
+    """Kết thúc mọi process Claude Code đang chạy session này (một session có thể được resume ở hai terminal).
+    Kiểm tra lại pid + procStart để không giết nhầm process khác đã nhận lại pid đó."""
+    procs = {(d["pid"], d.get("procStart")) for d in live_session_files(claude_dir)
+             if d.get("sessionId") == sess.get("session_id")}
+    if sess.get("pid") and process_alive(sess["pid"], sess.get("proc_start")):
+        procs.add((sess["pid"], sess.get("proc_start")))
+    if not procs:
+        return True, "session đã đóng"
+    for pid, _start in procs:
+        if not _is_claude_process(pid):
+            return False, f"pid {pid} không còn là Claude Code, không đóng"
+        try:
+            _kill(pid)
+        except (OSError, subprocess.SubprocessError) as e:
+            return False, f"không đóng được: {e}"
     end = time.time() + wait
     while time.time() < end:
-        if not process_alive(pid, sess.get("proc_start")):
+        if not any(process_alive(pid, start) for pid, start in procs):
             return True, "đã đóng session"
         time.sleep(0.2)
     return False, "process chưa thoát"
@@ -195,17 +262,38 @@ def delete_transcript(sess: dict, claude_dir: str) -> tuple:
     return True, "đã xoá session"
 
 
-def remove_worktree(sess: dict) -> tuple:
+def _remote_has_head(st: dict) -> bool:
+    """Branch chưa merge nhưng "đã push": hỏi thẳng remote (ref tracking local có thể cũ, branch đã bị xoá)."""
+    b = st["branch"]
+    if not b:
+        return False
+    rc_r, remote = _git(st["top"], "config", f"branch.{b}.remote")
+    rc_m, merge = _git(st["top"], "config", f"branch.{b}.merge")
+    rc_h, head = _git(st["top"], "rev-parse", "HEAD")
+    if rc_r or rc_m or rc_h:
+        return False
+    rc, out = _git(st["top"], "ls-remote", remote.strip(), merge.strip(), timeout=20)
+    return rc == 0 and bool(out) and out.split()[0] == head.strip()
+
+
+def remove_worktree(sess: dict, claude_dir: str) -> tuple:
     """Xoá worktree (sau khi đã đóng session) và branch local nếu đã merge."""
     st = git_state(sess.get("cwd"))  # kiểm tra lại ngay trước khi xoá, không tin số liệu cũ
     if not st or not st["linked"] or st["orca"] or not st["done"]:
         return False, "worktree không còn ở trạng thái xong, không xoá"
+    for d in live_session_files(claude_dir):  # session khác mở trong worktree sau khi menu đã hiện
+        if d.get("sessionId") != sess.get("session_id") and _under(d.get("cwd"), st["top"]):
+            return False, "có session khác đang chạy trong worktree, không xoá"
+    if not st["merged"] and not _remote_has_head(st):
+        return False, "branch chưa merge và remote không còn đúng commit này, không xoá"
     # chạy git từ thư mục .git chung: process con không được đứng trong thư mục sắp xoá (Windows khoá thư mục)
-    rc, out = _git(st["common"], "worktree", "remove", st["top"], timeout=60)
+    rc, out = _git(st["common"], "-c", "status.showUntrackedFiles=all", "worktree", "remove", st["top"], timeout=60)
     if rc != 0:
         return False, f"git worktree remove: {out.splitlines()[-1] if out else rc}"
     msg = f"đã xoá worktree {os.path.basename(st['top'])}"
-    if st["branch"]:
+    if st["branch"] and st["merged"]:
         rc, out = _git(st["common"], "branch", "-d", st["branch"])
-        msg += f", xoá branch {st['branch']}" if rc == 0 else f", giữ branch {st['branch']} (chưa merge)"
+        msg += f", xoá branch {st['branch']}" if rc == 0 else f", giữ branch {st['branch']}"
+    elif st["branch"]:
+        msg += f", giữ branch {st['branch']} (đã push, chưa merge)"
     return True, msg

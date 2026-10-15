@@ -84,7 +84,8 @@ def _migrate_legacy_state() -> None:
 def load_state() -> dict:
     _migrate_legacy_state()
     try:
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        d = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
     except Exception:
         return {}
 
@@ -92,6 +93,8 @@ def load_state() -> dict:
 def save_state(state: dict) -> None:
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        tmp = STATE_FILE.with_suffix(".tmp")  # ghi rồi đổi tên: tắt máy giữa chừng không làm hỏng state
+        tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        os.replace(tmp, STATE_FILE)
     except Exception:
         pass

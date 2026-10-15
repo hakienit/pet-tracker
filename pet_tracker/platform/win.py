@@ -180,7 +180,9 @@ def open_terminal(cwd: str, args: list, title: str, env: dict) -> tuple:
     """Mở cửa sổ terminal mới chạy args trong cwd (Windows Terminal nếu có, không thì console mới)."""
     wt = shutil.which("wt")
     if wt:
-        subprocess.Popen([wt, "-w", "new", "--title", title, "-d", cwd] + args, env=env,
+        # wt tách lệnh con theo ";" trong mọi tham số: escape thành "\;" (tên session do AI đặt có thể chứa ";")
+        esc = [a.replace(";", "\\;") for a in ["--title", title, "-d", cwd] + args]
+        subprocess.Popen([wt, "-w", "new"] + esc, env=env,
                          creationflags=0x00000008 | 0x00000200)  # DETACHED | NEW_PROCESS_GROUP
     else:
         subprocess.Popen(args, cwd=cwd, env=env, creationflags=0x00000010)  # CREATE_NEW_CONSOLE

@@ -116,7 +116,7 @@ class Transcript:
             return
         msg = d.get("message") or {}
         usage = msg.get("usage")
-        if not usage:
+        if not usage or msg.get("model") == "<synthetic>":  # record giả khi lỗi API / ngắt: không có model thật
             return
         mid = msg.get("id") or d.get("requestId") or d.get("uuid")
         ts = _parse_ts(d.get("timestamp")) or time.time()

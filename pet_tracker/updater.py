@@ -75,6 +75,28 @@ def install_dir() -> Path:
     return plat.install_dir()
 
 
+def _release_page(url) -> str:
+    """Chỉ mở trang release của đúng repo (URL lấy từ API hoặc từ update_api_url trong config)."""
+    return url if isinstance(url, str) and url.startswith(f"https://github.com/{REPO}/") else RELEASES_PAGE
+
+
+# Thư mục cài chỉ được chứa bản build: script cập nhật đổi tên cả thư mục rồi xoá bản cũ, nên nếu wisp.exe
+# nằm lẫn trong Downloads/Desktop thì cập nhật sẽ xoá luôn file của người dùng.
+_INSTALL_ENTRIES = {EXE_NAME.lower(), "_internal", "config.json", "config.example.json", "readme.md"}
+
+
+def install_dir_problem(target: Path):
+    """None nếu thư mục cài chỉ có file của Wisp, ngược lại là thông báo lỗi."""
+    try:
+        extra = sorted(p.name for p in Path(target).iterdir() if p.name.lower() not in _INSTALL_ENTRIES)
+    except OSError as e:
+        return f"không đọc được thư mục cài: {e}"
+    if extra:
+        return (f"thư mục cài {target} có file khác ({', '.join(extra[:3])}{'…' if len(extra) > 3 else ''}); "
+                "chuyển Wisp vào thư mục riêng rồi cập nhật lại")
+    return None
+
+
 # ---------------------------------------------------------------- http
 def _get(url: str, timeout: float, accept: str = "application/octet-stream") -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
@@ -111,7 +133,7 @@ def check(api_url: str = API_LATEST, current: str = __version__, timeout: float 
         out["error"] = f"{type(e).__name__}: {e}"[:160]
         return out
     tag = data.get("tag_name") or ""
-    out.update(ok=True, tag=tag, version=tag.lstrip("vV"), html_url=data.get("html_url") or RELEASES_PAGE,
+    out.update(ok=True, tag=tag, version=tag.lstrip("vV"), html_url=_release_page(data.get("html_url")),
                notes=(data.get("body") or "").strip())
     if data.get("draft") or data.get("prerelease"):
         return out
@@ -178,4 +200,7 @@ def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EX
     """Thay thư mục cài sau khi wait_pid thoát (Windows: script PowerShell, xem platform/win_update.py)."""
     if not plat.CAN_SELF_UPDATE:
         raise RuntimeError("nền tảng này chưa hỗ trợ cập nhật một chạm")
+    problem = install_dir_problem(target_dir)
+    if problem:
+        raise RuntimeError(problem)
     return plat.launch_swap(stage, target_dir, wait_pid, exe_name=exe_name, log_file=log_file, env=env)
