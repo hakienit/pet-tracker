@@ -51,8 +51,8 @@ jobs:
         run: ./build.ps1 -Python python
       - uses: actions/upload-artifact@v4
         with:
-          name: pet-tracker-windows
-          path: dist/pet-tracker-*-win-x64.zip
+          name: wisp-windows
+          path: dist/wisp-*-win-x64.zip
 
   macos:
     needs: check
@@ -75,8 +75,8 @@ jobs:
           ./build_macos.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: pet-tracker-macos
-          path: dist/pet-tracker-*-macos-universal2.dmg
+          name: wisp-macos
+          path: dist/wisp-*-macos-universal2.dmg
 
   release:
     needs: [windows, macos]
@@ -102,4 +102,4 @@ jobs:
           fi
           printf '%s%s\n' "$(cat notes.md)" "$extra" > release-notes.md
           gh release create "${{ github.ref_name }}" out/* --repo "${{ github.repository }}" \
-            --draft --title "Claude PET ${{ github.ref_name }}" --notes-file release-notes.md
+            --draft --title "Wisp ${{ github.ref_name }}" --notes-file release-notes.md

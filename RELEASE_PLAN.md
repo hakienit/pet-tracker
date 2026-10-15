@@ -1,4 +1,4 @@
-# Release plan: pet-tracker cho macOS và Windows
+# Release plan: Wisp (repo pet-tracker) cho macOS và Windows
 
 Trạng thái: **chỉ là kế hoạch**. Chưa ký, chưa publish, chưa tạo tài khoản hay mua chứng chỉ nào.
 Viết ngày 2026-10-15, dựa trên code hiện tại (v0.1.0, Python + tkinter, chỉ chạy trên Windows).
@@ -40,7 +40,7 @@ GitHub runner ARM64 cho Windows và Python ARM64 vẫn cần thử.
 | `.pkg` | cần khi cài LaunchAgent hệ thống | không cần, auto-start làm trong app |
 
 Info.plist cần `LSUIElement = true` để app không hiện icon trên Dock (widget nổi), cùng bundle id,
-ví dụ `sg.vinova.pet-tracker`.
+ví dụ `sg.vinova.wisp`.
 
 ## 3. Ký số và notarization
 
@@ -72,7 +72,7 @@ ví dụ `sg.vinova.pet-tracker`.
 - **Nếu không ký:** SmartScreen hiện "Windows protected your PC", người dùng phải bấm "More info"
   → "Run anyway". Antivirus dễ báo nhầm file PyInstaller hơn. Một số máy công ty chặn hẳn file
   chưa ký. Kể cả khi đã ký, SmartScreen vẫn cần thời gian tích luỹ reputation cho chứng chỉ mới.
-- Ký cả `pet-tracker.exe` lẫn installer, có timestamp (`signtool sign /tr … /td sha256 /fd sha256`).
+- Ký cả `wisp.exe` lẫn installer, có timestamp (`signtool sign /tr … /td sha256 /fd sha256`).
 
 ## 4. Việc phải làm trước khi release (khác biệt nền tảng)
 
@@ -97,12 +97,12 @@ module.
 | Vùng màn hình, vị trí chuột | `SystemParametersInfo`, `GetCursorPos` | `winfo_vrootwidth`/`height`, `winfo_pointerxy`; trừ menu bar và Dock qua NSScreen.visibleFrame (PyObjC) hoặc trừ một khoảng cố định | thấp |
 | Kiểm tra process còn sống | `OpenProcess`, `GetProcessTimes` | đã có nhánh `os.kill(pid, 0)`. So `procStart` cần định dạng khác (cần xem Claude Code ghi gì trên macOS) | thấp |
 | **Đọc token để lấy quota** | `~/.claude/.credentials.json` | trên macOS, Claude Code lưu OAuth token trong **Keychain**, nhiều khả năng không có file này. Cần đọc qua `security find-generic-password -s "<tên service>" -w`; tên service phải kiểm trên một máy Mac thật. Lần đầu macOS sẽ hỏi quyền truy cập Keychain | **cao**, quota là tính năng chính |
-| Đường dẫn dữ liệu | `~/.claude`, `~/.claude.json`, `%APPDATA%\pet-tracker` | `~/.claude` giống hệt. State và log chuyển sang `~/Library/Application Support/pet-tracker` | thấp |
+| Đường dẫn dữ liệu | `~/.claude`, `~/.claude.json`, `%APPDATA%\Wisp` | `~/.claude` giống hệt. State và log chuyển sang `~/Library/Application Support/Wisp` | thấp |
 | **Focus cửa sổ session** | `AttachConsole` → cửa sổ Windows Terminal; đi ngược process cha; deep link `claude://` | pid → tty (`ps -o tty= -p <pid>`) → AppleScript chọn đúng tab theo tty trong Terminal.app hoặc iTerm2 (cần quyền **Automation** cho từng app). VS Code, Cursor: activate app qua `NSRunningApplication` (không cần quyền). Raise đúng cửa sổ cụ thể cần quyền **Accessibility**. Deep link `claude://code/continue?session=…` cho Claude desktop có lẽ dùng chung, cần thử | **cao** |
 | **Gõ lệnh vào session** (`/model`, `/effort`, `/clear`, `/exit`) | `WriteConsoleInputW` vào console | macOS không có tương đương sạch. Hướng khả thi: AppleScript `write text` trong iTerm2, hoặc `do script … in tab` của Terminal.app (cần quyền Automation). `TIOCSTI` không dùng được ổn định. Có thể **bỏ tính năng này ở bản macOS đầu tiên** | **cao**, đề xuất hoãn |
 | Handoff | `wt.exe -w new … claude --resume <id> --fork-session` | `osascript` mở cửa sổ Terminal hoặc iTerm2 mới chạy cùng lệnh | thấp |
 | Mở thư mục, link | `os.startfile` | `subprocess.run(["open", …])` | thấp |
-| Auto-start | shortcut trong `shell:startup`, hoặc installer ghi `HKCU\…\Run` | LaunchAgent `~/Library/LaunchAgents/sg.vinova.pet-tracker.plist`, hoặc `SMAppService` (macOS 13+, cần app đã ký) | thấp |
+| Auto-start | shortcut trong `shell:startup`, hoặc installer ghi `HKCU\…\Run` | LaunchAgent `~/Library/LaunchAgents/sg.vinova.wisp.plist`, hoặc `SMAppService` (macOS 13+, cần app đã ký) | thấp |
 | Font | Segoe UI Variable, Segoe Fluent Icons | SF Pro (`.AppleSystemUIFont`). Icon đổi sang ký tự Unicode hoặc ảnh nhỏ, vì không có Fluent Icons | thấp |
 
 Cách tổ chức code đề xuất: tách module `platform/` gồm `win.py` và `mac.py`, cùng một interface
@@ -139,7 +139,7 @@ trong quy trình.
   version làm release notes (đã làm 2026-10-15).
 - **`build.ps1`:** đã chuyển sang `--onedir`, có icon và version info (đã làm 2026-10-15). Bản macOS
   sẽ cần thêm `.spec` cho Info.plist.
-- **Icon app:** đã có `assets/pet-tracker.ico` (tạo bằng `tools/make_icon.py`). macOS cần thêm `.icns` từ cùng hình.
+- **Icon app:** đã có `assets/wisp.ico` (tạo bằng `tools/make_icon.py`). macOS cần thêm `.icns` từ cùng hình.
 
 ## 6. Auto-update và kênh phân phối
 

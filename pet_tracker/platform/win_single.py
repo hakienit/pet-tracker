@@ -1,4 +1,4 @@
-"""Chỉ cho chạy một bản pet-tracker mỗi user (Windows named mutex + event).
+"""Chỉ cho chạy một bản Wisp mỗi user (Windows named mutex + event).
 
 Bản chạy sau phát hiện mutex đã tồn tại thì bật event "show" rồi thoát; bản đang chạy có một
 thread chờ event đó và mở panel lên, nên người dùng thấy ngay widget đang chạy.
@@ -23,7 +23,7 @@ WAIT_OBJECT_0 = 0
 
 def _names() -> tuple:
     user = "".join(ch for ch in (os.environ.get("USERNAME") or "user") if ch.isalnum()) or "user"
-    base = f"Local\\pet-tracker-{user}"
+    base = f"Local\\wisp-{user}"
     return base + "-mutex", base + "-show"
 
 

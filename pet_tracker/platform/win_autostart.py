@@ -6,7 +6,8 @@ import winreg
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-VALUE_NAME = "ClaudePET"
+VALUE_NAME = "Wisp"
+LEGACY_VALUE_NAMES = ("ClaudePET",)  # tên cũ: đổi sang VALUE_NAME khi khởi động
 
 
 def launch_command() -> str:
@@ -51,7 +52,12 @@ def disable(value_name: str = VALUE_NAME) -> None:
 
 
 def refresh_if_enabled(value_name: str = VALUE_NAME) -> None:
-    """Nếu đã bật nhưng đường dẫn cũ (vd. chuyển từ source sang exe, hoặc dời thư mục) thì cập nhật."""
+    """Nếu đã bật nhưng đường dẫn cũ (vd. chuyển từ source sang exe, hoặc dời thư mục) thì cập nhật.
+    Mục auto-start mang tên cũ (ClaudePET) được đổi sang tên mới."""
+    for old in LEGACY_VALUE_NAMES:
+        if current_command(old) is not None:
+            disable(old)
+            enable(value_name)
     cur = current_command(value_name)
     if cur is not None and cur != launch_command():
         enable(value_name)

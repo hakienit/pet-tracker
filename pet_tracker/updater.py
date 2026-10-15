@@ -4,12 +4,12 @@
   GitHub đã bỏ qua release draft và pre-release; widget vẫn kiểm tra lại hai cờ đó cho chắc.
   So tag (vd. "v0.2.0") với __version__.
 - Cài (chỉ khi chạy từ exe đã build bằng PyInstaller, hiện chỉ Windows; macOS mở trang release):
-  1. tải asset `pet-tracker-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release vào thư mục tạm;
+  1. tải asset `wisp-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release vào thư mục tạm;
   2. so SHA256 của zip với dòng tương ứng trong SHA256SUMS.txt, sai thì dừng;
-  3. giải nén vào thư mục tạm, kiểm tra có `pet-tracker.exe`;
+  3. giải nén vào thư mục tạm, kiểm tra có `wisp.exe`;
   4. chạy script PowerShell (ẩn) chờ process hiện tại thoát, đổi tên thư mục cài thành bản dự phòng,
      chép bản mới vào, giữ lại `config.json` cũ, mở lại exe; lỗi thì khôi phục bản dự phòng.
-  Widget thoát ngay sau khi chạy script. Log của script: %APPDATA%\\pet-tracker\\update.log.
+  Widget thoát ngay sau khi chạy script. Log của script: %APPDATA%\\Wisp\\update.log.
 - Chạy từ source: chỉ mở trang release (không tự thay code).
 """
 from __future__ import annotations
@@ -34,9 +34,9 @@ from . import platform as plat
 REPO = "hakienit/pet-tracker"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
-EXE_NAME = "pet-tracker.exe"
+EXE_NAME = "wisp.exe"
 SUMS_NAME = "SHA256SUMS.txt"
-USER_AGENT = f"pet-tracker/{__version__} (update check)"
+USER_AGENT = f"Wisp/{__version__} (update check)"
 
 
 # ---------------------------------------------------------------- version
@@ -140,7 +140,7 @@ def sha256_file(path: Path) -> str:
 
 
 def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
-    """Tải + kiểm tra + giải nén. Trả thư mục chứa bản mới (có pet-tracker.exe). Lỗi -> ValueError/OSError."""
+    """Tải + kiểm tra + giải nén. Trả thư mục chứa bản mới (có wisp.exe). Lỗi -> ValueError/OSError."""
     if not info.get("zip_url") or not info.get("sums_url"):
         raise ValueError(f"release {info.get('tag')} thiếu {asset_name(info.get('tag', ''))} hoặc {SUMS_NAME}")
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="pet-update-"))

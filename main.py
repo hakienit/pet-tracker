@@ -1,4 +1,4 @@
-"""pet-tracker entry point. Chạy: pythonw main.py  (hoặc pet-tracker.cmd)"""
+"""Wisp entry point. Chạy: pythonw main.py  (hoặc wisp.cmd)"""
 from __future__ import annotations
 
 import os

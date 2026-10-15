@@ -1,10 +1,16 @@
 # Changelog
 
-Mọi thay đổi đáng chú ý của Claude PET (pet-tracker) được ghi ở đây.
+Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet-tracker) được ghi ở đây.
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version theo
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Changed
+- Đổi tên app thành **Wisp**, logo mới (đốm lửa có mắt trong vòng quota), cũng hiện trên header panel.
+  File chạy là `wisp.exe`, gói phát hành `wisp-<version>-win-x64.zip` / `wisp-<version>-macos-universal2.dmg`,
+  launcher `wisp.cmd`. State và log chuyển sang `%APPDATA%\Wisp` (macOS: `~/Library/Application Support/Wisp`);
+  vị trí bóng, kích thước panel và mục auto-start của bản cũ được chuyển sang tự động.
 
 ### Removed
 - Popup thao tác session (nút ⋯ và chuột phải trên card): đổi model, đổi effort, compact, clear, thoát,

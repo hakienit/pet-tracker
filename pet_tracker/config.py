@@ -3,20 +3,24 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sys
 from pathlib import Path
 
-APP_NAME = "pet-tracker"
-import sys
+APP_NAME = "Wisp"
+LEGACY_APP_NAME = "pet-tracker"  # tên cũ (Claude PET): thư mục state cũ, chuyển sang một lần
 
-# Khi chạy từ exe (PyInstaller), config.json đặt cạnh pet-tracker.exe; khi chạy source thì ở gốc dự án.
+# Khi chạy từ exe (PyInstaller), config.json đặt cạnh wisp.exe; khi chạy source thì ở gốc dự án.
 PROJECT_DIR = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
                else Path(__file__).resolve().parent.parent)
 if sys.platform == "win32":
-    STATE_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
+    _STATE_BASE = Path(os.environ.get("APPDATA", str(Path.home())))
 elif sys.platform == "darwin":
-    STATE_DIR = Path.home() / "Library" / "Application Support" / APP_NAME
+    _STATE_BASE = Path.home() / "Library" / "Application Support"
 else:
-    STATE_DIR = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / APP_NAME
+    _STATE_BASE = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+STATE_DIR = _STATE_BASE / APP_NAME
+LEGACY_STATE_DIR = _STATE_BASE / LEGACY_APP_NAME
 STATE_FILE = STATE_DIR / "state.json"
 CONFIG_FILE = PROJECT_DIR / "config.json"
 
@@ -65,7 +69,20 @@ def load_config() -> dict:
     return cfg
 
 
+def _migrate_legacy_state() -> None:
+    """Bản cũ (pet-tracker / Claude PET) lưu vị trí bóng, kích thước panel ở thư mục khác: chép sang một lần."""
+    old = LEGACY_STATE_DIR / "state.json"
+    if STATE_FILE.exists() or not old.exists():
+        return
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(old, STATE_FILE)
+    except OSError:
+        pass
+
+
 def load_state() -> dict:
+    _migrate_legacy_state()
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except Exception:

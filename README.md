@@ -1,6 +1,9 @@
-# pet-tracker — bóng nổi theo dõi Claude Code agents (Windows 11)
+<p align="center"><img src="assets/wisp.png" width="128" alt="Wisp"></p>
 
-Widget "PET" nổi trên màn hình, luôn ở trên cùng, không khung cửa sổ. Bóng hiện % của cửa sổ quota
+# Wisp — đốm lửa nhỏ canh các agent Claude Code (Windows 11)
+
+Wisp (trước đây là Claude PET / pet-tracker) là một bóng nổi trên màn hình, luôn ở trên cùng, không khung
+cửa sổ. Bóng hiện % của cửa sổ quota
 đang gần giới hạn nhất (thường là 5 giờ; khi cửa sổ 7 ngày cao hơn thì bóng hiện nó, kèm chữ "7 ngày"
 thay cho số agent); bấm vào mở panel stats, bấm lại hoặc click ra ngoài thì thu về. Kéo để đổi vị trí
 (kể cả sang màn hình thứ hai), vị trí được nhớ giữa các lần mở.
@@ -21,11 +24,11 @@ Yêu cầu: Python 3.10+ (máy này có 3.15) kèm tkinter (bản cài chuẩn p
 cần cài thêm package nào.
 
 ```bash
-D:\vinova\pet-tracker\pet-tracker.cmd
+D:\vinova\pet-tracker\wisp.cmd
 ```
 
-`pet-tracker.cmd` chạy ẩn bằng `pythonw`. Thêm thư mục `D:\vinova\pet-tracker` vào PATH để gõ
-`pet-tracker` ở bất kỳ đâu. Muốn xem log trực tiếp trong console thì chạy `.\run.ps1`.
+`wisp.cmd` chạy ẩn bằng `pythonw`. Thêm thư mục `D:\vinova\pet-tracker` vào PATH để gõ
+`wisp` ở bất kỳ đâu. Muốn xem log trực tiếp trong console thì chạy `.\run.ps1`.
 
 Thao tác:
 
@@ -33,16 +36,17 @@ Thao tác:
 |---|---|
 | Click trái vào bóng | mở / đóng panel |
 | Click ra ngoài panel | đóng panel |
-| Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\pet-tracker\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
+| Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\Wisp\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
 | Click phải vào bóng (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Thoát |
 | Click vào một session trong panel | đưa cửa sổ đang host session đó lên foreground (xem mục "Focus cửa sổ session") |
 | Kéo tay nắm ở góc trên-trái panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
 
-Chỉ chạy một bản: mở `pet-tracker` lần nữa khi nó đang chạy sẽ không tạo bóng thứ hai, mà bản đang
+Chỉ chạy một bản: mở Wisp lần nữa khi nó đang chạy sẽ không tạo bóng thứ hai, mà bản đang
 chạy mở panel lên (dùng named mutex và event của Windows, theo từng user).
 
 Tự khởi động cùng Windows: click phải vào bóng → "Chạy cùng Windows" để bật hoặc tắt. Widget ghi giá trị
-`ClaudePET` vào `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (không cần quyền admin). Khi
+`Wisp` vào `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (không cần quyền admin; mục tên cũ
+`ClaudePET` của bản trước tự được đổi sang `Wisp`). Khi
 chạy từ source, lệnh là `pythonw main.py`. Khi chạy từ exe, lệnh là đường dẫn exe. Nếu bạn dời thư mục
 hoặc chuyển từ source sang exe, lần khởi động kế tiếp sẽ tự cập nhật đường dẫn.
 
@@ -56,24 +60,24 @@ Script cài PyInstaller, build dạng thư mục, không console, có icon và v
 
 | File | Dùng để |
 |---|---|
-| `dist\pet-tracker\pet-tracker.exe` | chạy trực tiếp |
-| `dist\pet-tracker-<version>-win-x64.zip` | gửi cho đồng nghiệp: giải nén ra một thư mục cố định rồi chạy `pet-tracker.exe` |
+| `dist\wisp\wisp.exe` | chạy trực tiếp |
+| `dist\wisp-<version>-win-x64.zip` | gửi cho đồng nghiệp: giải nén ra một thư mục cố định rồi chạy `wisp.exe` |
 
 - Nếu PyInstaller chưa hỗ trợ bản Python trên máy (máy này đang dùng 3.15), cài Python 3.13 rồi chạy
   `pwsh -File build.ps1 -Python "C:\...\Python313\python.exe"`.
 - Bản không ký số: lần đầu chạy, Windows SmartScreen sẽ cảnh báo, bấm "More info" → "Run anyway".
-- `config.json` (nếu cần) đặt cạnh `pet-tracker.exe`.
+- `config.json` (nếu cần) đặt cạnh `wisp.exe`.
 - Mỗi máy cần đã cài và đăng nhập Claude Code; widget đọc dữ liệu từ `~/.claude` của máy đó.
 - Icon nằm ở `assets/`, tạo lại bằng `python tools/make_icon.py`.
 
 ## Cài cho đồng nghiệp (bản exe)
 
-1. Mở https://github.com/hakienit/pet-tracker/releases, tải `pet-tracker-<version>-win-x64.zip` ở bản
+1. Mở https://github.com/hakienit/pet-tracker/releases, tải `wisp-<version>-win-x64.zip` ở bản
    mới nhất.
 2. Giải nén vào một thư mục cố định mà bạn có quyền ghi, ví dụ
-   `%LOCALAPPDATA%\Programs\ClaudePET`. Không đặt trong `Program Files` (cập nhật một chạm cần quyền
+   `%LOCALAPPDATA%\Programs\Wisp`. Không đặt trong `Program Files` (cập nhật một chạm cần quyền
    ghi vào thư mục cài) và không chạy thẳng từ trong file zip.
-3. Chạy `pet-tracker.exe`. Bản chưa ký số nên lần đầu Windows SmartScreen cảnh báo: bấm "More info" →
+3. Chạy `wisp.exe`. Bản chưa ký số nên lần đầu Windows SmartScreen cảnh báo: bấm "More info" →
    "Run anyway".
 4. Click phải vào bóng → "Chạy cùng Windows" nếu muốn tự mở khi đăng nhập.
 
@@ -86,10 +90,10 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
   pre-release). Có bản mới hơn `__version__` thì bóng hiện chấm xanh ở góc trên-trái và đầu panel có
   dòng "Có bản mới x.y.z", kèm nút "Cập nhật" và link "Xem thay đổi". Click phải vào bóng →
   "Kiểm tra cập nhật" để hỏi ngay.
-- Nút "Cập nhật" (bản exe): tải `pet-tracker-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release, so
+- Nút "Cập nhật" (bản exe): tải `wisp-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release, so
   SHA256 (sai thì huỷ), giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên
   thư mục cài thành `<thư mục>.old`, chép bản mới vào, giữ lại `config.json` cũ, mở lại app và xoá bản
-  cũ. Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Log: `%APPDATA%\pet-tracker\update.log`.
+  cũ. Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Log: `%APPDATA%\Wisp\update.log`.
   Vị trí bóng, kích thước panel, auto-start nằm ngoài thư mục cài nên không mất.
 - Chạy từ source: nút đổi thành "Tải về" và chỉ mở trang release (không tự thay code; dùng `git pull`).
 - Tắt kiểm tra tự động: `"update_check": false` trong `config.json` (vẫn kiểm tra được bằng tay).
@@ -132,14 +136,14 @@ chạy trên máy Mac thật**: mọi thứ dưới đây mới kiểm tra bằn
 | Danh sách session, context, model, effort | có (đọc `~/.claude` giống Windows) |
 | Click session để mở | Claude desktop: deep link; CLI trong Terminal.app / iTerm2: chọn đúng tab theo tty qua AppleScript (cần quyền Automation); app khác: `open -a` |
 | Đóng panel khi click ra ngoài | đóng khi app mất focus (macOS không cho đọc chuột toàn cục nếu không có quyền) |
-| Mở khi đăng nhập | có, LaunchAgent `~/Library/LaunchAgents/sg.vinova.pet-tracker.plist` |
+| Mở khi đăng nhập | có, LaunchAgent `~/Library/LaunchAgents/sg.vinova.wisp.plist` |
 | Chỉ chạy một bản | có (file lock + Unix socket) |
 | Cập nhật | báo có bản mới, nút "Tải về" mở trang release (chưa cập nhật một chạm) |
 
-Cài (bản chưa ký số): mở `pet-tracker-<version>-macos-universal2.dmg`, kéo "Claude PET" vào
+Cài (bản chưa ký số): mở `wisp-<version>-macos-universal2.dmg`, kéo "Wisp" vào
 Applications. Lần đầu macOS chặn app không rõ nguồn: vào System Settings → Privacy & Security → "Open
-Anyway" (hoặc chạy `xattr -dr com.apple.quarantine "/Applications/Claude PET.app"`). State và log ở
-`~/Library/Application Support/pet-tracker/`.
+Anyway" (hoặc chạy `xattr -dr com.apple.quarantine "/Applications/Wisp.app"`). State và log ở
+`~/Library/Application Support/Wisp/`.
 
 Build tay trên Mac (cần Python 3.13 universal2 từ python.org):
 
@@ -186,7 +190,7 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `update_interval_hours` | 24 | chu kỳ kiểm tra bản mới |
 | `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
 
-Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\pet-tracker\pet-tracker.log`.
+Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log`.
 
 ## Lựa chọn tech stack
 
@@ -304,7 +308,7 @@ Các trường hợp **không focus được / giới hạn**:
 - Ứng dụng khác đang **always-on-top và tự chiếm focus** (trên máy này: cửa sổ Tauri "Codex +
   Claude Usage") có thể lấy lại foreground sau ~1 giây; widget không thể ngăn.
 - Khi chạy widget bằng `python main.py` (có console), bước `AttachConsole` phải tách console của
-  chính nó rồi gắn lại; chạy bằng `pet-tracker.cmd` (pythonw) thì không có vấn đề này.
+  chính nó rồi gắn lại; chạy bằng `wisp.cmd` (pythonw) thì không có vấn đề này.
 - Cần cùng phiên desktop (session 1); process chạy dưới user khác / elevated có thể từ chối
   `AttachConsole`.
 
@@ -313,10 +317,10 @@ Các trường hợp **không focus được / giới hạn**:
 ```
 pet-tracker/
   main.py                  entry point
-  pet-tracker.cmd          launcher ẩn console (pythonw, Windows)
+  wisp.cmd          launcher ẩn console (pythonw, Windows)
   run.ps1 / build.ps1      Windows: chạy có console / build exe + zip portable
   build_macos.sh           macOS: build .app universal2 + .dmg
-  tools/make_icon.py       vẽ icon (assets/pet-tracker.ico, .png; --png-size cho .icns) bằng stdlib
+  tools/make_icon.py       vẽ icon (assets/wisp.ico, .png; --png-size cho .icns) bằng stdlib
   tools/changelog_section.py  trích release notes từ CHANGELOG.md
   CHANGELOG.md             lịch sử thay đổi (Keep a Changelog)
   .github/workflows/release.yml  build Windows + macOS, tạo GitHub Release draft khi push tag v*

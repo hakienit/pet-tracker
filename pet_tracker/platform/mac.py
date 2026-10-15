@@ -36,7 +36,8 @@ GLOBAL_MOUSE = False            # không đọc chuột toàn cục (cần quy�
 RIGHT_CLICK_EVENTS = ("<Button-2>", "<Button-3>", "<Control-Button-1>")
 CAN_SELF_UPDATE = False         # giai đoạn 1: chỉ mở trang release
 
-BUNDLE_ID = "sg.vinova.pet-tracker"
+BUNDLE_ID = "sg.vinova.wisp"
+LEGACY_BUNDLE_ID = "sg.vinova.pet-tracker"  # tên cũ (Claude PET): LaunchAgent cũ được đổi sang tên mới
 # TODO(mac): xác minh tên service Keychain mà Claude Code dùng (`security dump-keychain | grep -i claude`).
 KEYCHAIN_SERVICES = ("Claude Code-credentials",)
 MENU_BAR_PT = 25                # TODO(mac): lấy đúng vùng dùng được (NSScreen.visibleFrame) nếu cần PyObjC
@@ -90,7 +91,7 @@ def round_corners(win, border_hex: str) -> bool:
 
 # ---------------------------------------------------------------- hệ thống
 def state_dir() -> Path:
-    return Path.home() / "Library" / "Application Support" / "pet-tracker"
+    return Path.home() / "Library" / "Application Support" / "Wisp"
 
 
 def open_path(target) -> None:
@@ -217,8 +218,8 @@ def focus_session(sess: dict) -> tuple:
 
 
 # ---------------------------------------------------------------- tự khởi động (LaunchAgent)
-def _agent_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{BUNDLE_ID}.plist"
+def _agent_path(bundle_id: str = BUNDLE_ID) -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{bundle_id}.plist"
 
 
 def _program_args() -> list:
@@ -252,6 +253,10 @@ def autostart_disable() -> None:
 
 
 def autostart_refresh() -> None:
+    legacy = _agent_path(LEGACY_BUNDLE_ID)
+    if legacy.exists():
+        legacy.unlink()
+        autostart_enable()
     p = _agent_path()
     if not p.exists():
         return
@@ -317,11 +322,11 @@ class SingleInstance:
 
 # ---------------------------------------------------------------- cập nhật
 def update_asset_name(version: str) -> str:
-    return f"pet-tracker-{version.lstrip('vV')}-macos-universal2.dmg"
+    return f"wisp-{version.lstrip('vV')}-macos-universal2.dmg"
 
 
 def install_dir() -> Path:
-    # .../Claude PET.app/Contents/MacOS/pet-tracker -> thư mục chứa .app
+    # .../Wisp.app/Contents/MacOS/Wisp -> thư mục chứa .app
     exe = Path(sys.executable).resolve()
     for parent in exe.parents:
         if parent.suffix == ".app":

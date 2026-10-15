@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-EXE_NAME = "pet-tracker.exe"
+EXE_NAME = "wisp.exe"
 
 SWAP_PS1 = r"""
 param([int]$WaitPid, [string]$Stage, [string]$Install, [string]$Exe, [string]$Log)
@@ -53,10 +53,10 @@ try {
 def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EXE_NAME, log_file=None,
                 env=None) -> subprocess.Popen:
     """Chạy script PowerShell ẩn để thay thư mục cài sau khi process wait_pid thoát."""
-    script = Path(tempfile.gettempdir()) / f"pet-tracker-update-{os.getpid()}.ps1"
+    script = Path(tempfile.gettempdir()) / f"wisp-update-{os.getpid()}.ps1"
     script.write_text(SWAP_PS1, encoding="utf-8-sig")
     if log_file is None:
-        log_file = Path(os.environ.get("APPDATA", str(Path.home()))) / "pet-tracker" / "update.log"
+        log_file = Path(os.environ.get("APPDATA", str(Path.home()))) / "Wisp" / "update.log"
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
             "-File", str(script), "-WaitPid", str(int(wait_pid)), "-Stage", str(stage),

@@ -24,6 +24,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import __version__
 from . import platform as plat
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
@@ -62,7 +63,7 @@ def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:
             "Authorization": "Bearer " + tok,
             "anthropic-beta": "oauth-2025-04-20",
             "Accept": "application/json",
-            "User-Agent": "pet-tracker/0.1 (local desktop widget)",
+            "User-Agent": f"Wisp/{__version__} (local desktop widget)",
         },
     )
     try:

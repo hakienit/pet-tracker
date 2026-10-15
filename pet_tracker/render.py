@@ -180,3 +180,109 @@ def png_bytes(rows) -> bytes:
 def bubble_png(s: int, S: float, pct, prog: str, badge, warn, hover: bool, P: dict, update=None) -> bytes:
     """Bóng dạng PNG có alpha thật (macOS)."""
     return png_bytes(bubble_rows(s, S, pct, prog, badge, warn, hover, P, update=update, rgba=True))
+
+
+# ---------------------------------------------------------------- logo Wisp
+# Đốm lửa nhỏ (wisp) có mắt nằm trong đĩa tối, bao quanh bởi vòng quota cam (giống bóng trong app).
+_L_TOP, _L_BOT = (0x2D, 0x2E, 0x38), (0x16, 0x17, 0x1C)
+_L_TRACK = (0x34, 0x35, 0x40)
+_L_RING_A, _L_RING_B = (0xF4, 0xB0, 0x5E), (0xE0, 0x62, 0x4C)   # đầu vòng vàng cam -> cuối cam đỏ
+_L_CORE, _L_MID, _L_TIP = (0xFF, 0xF0, 0xC8), (0xF8, 0xA8, 0x5C), (0xE2, 0x5F, 0x48)
+_L_EYE = (0x2A, 0x17, 0x14)
+_L_SWEEP = 0.72
+
+
+def _logo_sample(n: int, px: float, py: float):
+    """Màu (r, g, b) tại điểm (px, py) của logo cỡ n, hoặc None nếu nằm ngoài đĩa."""
+    cx = cy = n / 2
+    dx, dy = px - cx, py - cy
+    d = math.hypot(dx, dy)
+    R = n / 2 - max(0.5, n / 64)
+    if d > R:
+        return None
+    small = n < 32
+    col = mix(_L_TOP, _L_BOT, py / n)
+    # quầng sáng sau đốm lửa
+    gx, gy = cx, cy + 0.04 * n
+    g = math.exp(-((px - gx) ** 2 + (py - gy) ** 2) / (0.2 * n) ** 2)
+    col = mix(col, _L_RING_B, 0.30 * g)
+    # vòng quota bo đầu
+    ring_w = n * (0.13 if small else 0.10)
+    r_out = R - max(0.5, n * 0.045)
+    r_in = r_out - ring_w
+    rc, hw = (r_in + r_out) / 2, ring_w / 2
+    sweep = 2 * math.pi * _L_SWEEP
+    th = math.atan2(dx, -dy) % (2 * math.pi)
+    on_arc = r_in <= d <= r_out and th <= sweep
+    cap_s = math.hypot(px - cx, py - (cy - rc)) <= hw
+    cap_e = math.hypot(px - (cx + rc * math.sin(sweep)), py - (cy - rc * math.cos(sweep))) <= hw
+    if on_arc or cap_s or cap_e:
+        t = 0.0 if cap_s and not on_arc else (1.0 if cap_e and not on_arc else th / sweep)
+        return mix(_L_RING_A, _L_RING_B, t)
+    if r_in <= d <= r_out:
+        return _L_TRACK
+    # đốm lửa: hình giọt nước (hình tròn đáy + nón tiếp tuyến tới đỉnh), phần trên uốn cong sang phải
+    s = 1.15 if small else 1.0
+    Cx, Cy, r = cx, cy + 0.085 * n, 0.165 * n * s
+    Tx, Ty = Cx, cy - 0.235 * n * s
+    h = _c((Cy - py) / (Cy - Ty))
+    qx = px - 0.075 * n * s * h * h  # toạ độ đã "duỗi thẳng" để thử với giọt nước thẳng đứng
+    inside = math.hypot(qx - Cx, py - Cy) <= r
+    if not inside:
+        ux, uy = Cx - Tx, Cy - Ty
+        L = math.hypot(ux, uy)
+        ux, uy = ux / L, uy / L
+        vx, vy = qx - Tx, py - Ty
+        t = vx * ux + vy * uy
+        perp = abs(vx * uy - vy * ux)
+        sin_a = r / L
+        cos_a = math.sqrt(1 - sin_a * sin_a)
+        inside = 0 < t <= L * cos_a * cos_a and perp <= t * sin_a / cos_a
+    if not inside:
+        return col
+    # màu lửa: đỉnh cam đỏ -> giữa cam -> lõi sáng gần đáy
+    v = _c((py - Ty) / (Cy + r - Ty))
+    fire = mix(_L_TIP, _L_MID, _c(v / 0.55)) if v < 0.55 else _L_MID
+    core = math.exp(-((px - Cx) ** 2 + (py - (Cy + 0.02 * n)) ** 2) / (0.085 * n) ** 2)
+    fire = mix(fire, _L_CORE, 0.85 * core)
+    if not small:
+        ey = Cy - 0.01 * n
+        for ex in (Cx - 0.062 * n, Cx + 0.062 * n):
+            if ((px - ex) / (0.027 * n)) ** 2 + ((py - ey) / (0.038 * n)) ** 2 <= 1:
+                if n >= 64 and math.hypot(px - (ex - 0.009 * n), py - (ey - 0.014 * n)) <= 0.0095 * n:
+                    return (0xFF, 0xF6, 0xE6)  # điểm sáng trong mắt
+                return _L_EYE
+    return fire
+
+
+def logo_rgba(n: int) -> list:
+    """Logo cỡ n x n: list hàng, mỗi pixel (r, g, b, a) int; supersample để mịn ở cỡ nhỏ."""
+    ss = 4 if n <= 256 else 2
+    k = ss * ss
+    rows = []
+    for y in range(n):
+        row = []
+        for x in range(n):
+            acc_r = acc_g = acc_b = 0.0
+            hits = 0
+            for sy in range(ss):
+                for sx in range(ss):
+                    c = _logo_sample(n, x + (sx + 0.5) / ss, y + (sy + 0.5) / ss)
+                    if c is not None:
+                        acc_r += c[0]
+                        acc_g += c[1]
+                        acc_b += c[2]
+                        hits += 1
+            if not hits:
+                row.append((0, 0, 0, 0))
+            else:
+                row.append((int(acc_r / hits + 0.5), int(acc_g / hits + 0.5), int(acc_b / hits + 0.5),
+                            int(255 * hits / k + 0.5)))
+        rows.append(row)
+    return rows
+
+
+def logo_rows(n: int, bg: str) -> list:
+    """Logo trộn lên nền đặc `bg`, dạng hàng màu hex cho PhotoImage.put."""
+    b = hex2rgb(bg)
+    return [[rgb2hex(mix(b, (r, g, bl), a / 255)) for r, g, bl, a in row] for row in logo_rgba(n)]

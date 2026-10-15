@@ -18,11 +18,11 @@ from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
 from .quota import fetch_api_usage, fmt_reset, is_session_window
 
-LOG_FILE = STATE_DIR / "pet-tracker.log"
+LOG_FILE = STATE_DIR / "wisp.log"
 
 
 def log(msg: str) -> None:
-    """Ghi log nhẹ vào %APPDATA%/pet-tracker/pet-tracker.log (tự cắt khi > 1MB)."""
+    """Ghi log nhẹ vào %APPDATA%/Wisp/wisp.log (tự cắt khi > 1MB)."""
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         if LOG_FILE.exists() and LOG_FILE.stat().st_size > 1_000_000:
@@ -863,15 +863,15 @@ class PetApp:
         S = self.S
         row = tk.Frame(hd, bg=BG)
         row.pack(fill="x", padx=(padx, int(10 * S)), pady=(int(14 * S), int(12 * S)))
-        d = int(10 * S)
-        logo = self._photo(("dot", d, ACCENT, BG), lambda: render.capsule_rows(d, d, 1.0, ACCENT, ACCENT, BG))
+        d = int(34 * S)
+        logo = self._photo(("logo", d, BG), lambda: render.logo_rows(d, BG))
         lc = tk.Canvas(row, width=d, height=d, bg=BG, highlightthickness=0, bd=0)
         lc.create_image(0, 0, anchor="nw", image=logo)
         lc._img = logo
-        lc.pack(side="left", padx=(0, int(8 * S)))
+        lc.pack(side="left", padx=(0, int(10 * S)))
         titles = tk.Frame(row, bg=BG)
         titles.pack(side="left", fill="x", expand=True)
-        self._lbl(titles, "Claude PET", font=self.f_title).pack(fill="x")
+        self._lbl(titles, "Wisp", font=self.f_title).pack(fill="x")
         acct = snap.get("account") or {}
         sub = " · ".join(x for x in (acct.get("email"), fmt_tier(acct.get("tier"))) if x)
         if sub:
@@ -1422,7 +1422,7 @@ class PetApp:
             self._update_dirty = True
             return
         log(f"update: installing {u.get('tag')} into {updater.install_dir()}, quitting")
-        self._flash("Đang cài bản mới, Claude PET sẽ tự mở lại…", BLUE, 10)
+        self._flash("Đang cài bản mới, Wisp sẽ tự mở lại…", BLUE, 10)
         self.root.after(400, self.quit)
 
     def _bubble_menu(self, x, y):
@@ -1448,7 +1448,7 @@ class PetApp:
                         "Chạy cùng Windows" if plat.IS_WINDOWS else "Mở khi đăng nhập", "đang bật" if on else "đang tắt",
                         act(self._toggle_autostart))
         tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=int(14 * S), pady=int(4 * S))
-        self._sheet_row(body, ICON_EXIT, "Thoát Claude PET", "", act(self.quit), danger=True)
+        self._sheet_row(body, ICON_EXIT, "Thoát Wisp", "", act(self.quit), danger=True)
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
         self._finish_sheet(top, body, W, x, y)
 
@@ -1464,7 +1464,7 @@ class PetApp:
 
     # ---------- loop
     def request_show(self):
-        """Gọi từ thread single-instance khi người dùng mở pet-tracker lần nữa."""
+        """Gọi từ thread single-instance khi người dùng mở Wisp lần nữa."""
         self._want_show = True
 
     def _pump(self):
@@ -1479,7 +1479,7 @@ class PetApp:
             log("second launch -> show panel")
             if not self.panel_visible:
                 self.show_panel()
-            self._flash("Claude PET đang chạy rồi", ACCENT, 3)
+            self._flash("Wisp đang chạy rồi", ACCENT, 3)
         got = False
         try:
             while True:

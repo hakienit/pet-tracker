@@ -122,7 +122,7 @@ def round_corners(win, border_hex: str) -> bool:
 
 # ---------------------------------------------------------------- hệ thống
 def state_dir() -> Path:
-    return Path(os.environ.get("APPDATA", str(Path.home()))) / "pet-tracker"
+    return Path(os.environ.get("APPDATA", str(Path.home()))) / "Wisp"
 
 
 def open_path(target) -> None:
@@ -197,7 +197,7 @@ def autostart_refresh() -> None:
 
 # ---------------------------------------------------------------- cập nhật
 def update_asset_name(version: str) -> str:
-    return f"pet-tracker-{version.lstrip('vV')}-win-x64.zip"
+    return f"wisp-{version.lstrip('vV')}-win-x64.zip"
 
 
 def install_dir() -> Path:
