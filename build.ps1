@@ -2,6 +2,7 @@
 #
 #   pwsh -File build.ps1                 # dùng "python" trên PATH
 #   pwsh -File build.ps1 -Python "C:\Python313\python.exe"
+#   pwsh -File build.ps1 -AppsDir D:\apps   # thêm: chép vào D:\apps\Wisp\<version>
 #
 # Output:
 #   dist\wisp\wisp.exe                  (chạy trực tiếp)
@@ -10,7 +11,9 @@
 # Ghi chú: dùng --onedir thay vì --onefile vì khởi động nhanh hơn và ít bị antivirus báo nhầm.
 # Nếu PyInstaller chưa hỗ trợ bản Python đang dùng, cài Python 3.13 rồi truyền -Python.
 param(
-    [string]$Python = "python"
+    [string]$Python = "python",
+    # Nếu có: chép bản build vào <AppsDir>\Wisp\<version>, cùng version thì thay bản cũ (giữ config.json)
+    [string]$AppsDir = ""
 )
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -61,3 +64,16 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path dist\wisp\* -DestinationPath $zip
 Write-Host "Done -> $PSScriptRoot\dist\wisp\wisp.exe"
 Write-Host "Zip  -> $PSScriptRoot\$zip"
+
+if ($AppsDir) {
+    $dest = Join-Path $AppsDir "Wisp\$version"
+    $cfg = Join-Path $dest "config.json"
+    $keep = Join-Path $env:TEMP "wisp-config-$PID.json"
+    if (Test-Path $cfg) { Copy-Item $cfg $keep -Force }
+    # Wisp đang chạy từ thư mục này thì Remove-Item lỗi: thoát app trước rồi build lại
+    if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+    New-Item -ItemType Directory -Force $dest | Out-Null
+    Copy-Item dist\wisp\* $dest -Recurse -Force
+    if (Test-Path $keep) { Move-Item $keep $cfg -Force }
+    Write-Host "App  -> $dest\wisp.exe"
+}
