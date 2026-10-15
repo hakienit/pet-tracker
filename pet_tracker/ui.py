@@ -1016,6 +1016,7 @@ class PetApp:
             self._lbl(titles, self._ellipsis(sub, self.f_xs, self.pw - int(140 * S)), font=self.f_xs, fg=MUTED).pack(fill="x")
         self._icon_btn(row, ICON_CLOSE, self.hide_panel, hover_fg=FG).pack(side="right")
         self._icon_btn(row, ICON_REFRESH, self.collector_refresh, hover_fg=BLUE).pack(side="right")
+        self._bind_events(row, plat.RIGHT_CLICK_EVENTS, self._context_menu)  # cùng menu với chuột phải vào bóng
         self._separator(hd)
 
     def _build_config_notice(self, parent, cpad, inner_w):
