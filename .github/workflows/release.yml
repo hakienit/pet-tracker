@@ -32,6 +32,13 @@ jobs:
             echo "Tag $TAG không khớp pet_tracker.__version__ = $v"; exit 1
           fi
           python3 tools/changelog_section.py "$TAG" > release-notes.md
+      - name: Kiểm tra khoá ký (secret WISP_SIGNING_KEY khớp khoá công khai trong app)
+        env:
+          WISP_SIGNING_KEY: ${{ secrets.WISP_SIGNING_KEY }}
+        run: |
+          echo "wisp signing check" > signcheck.txt
+          python3 tools/release_sign.py sign signcheck.txt
+          python3 tools/release_sign.py verify signcheck.txt
       - name: Notes rỗng khi chạy tay
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: echo "manual build" > release-notes.md
