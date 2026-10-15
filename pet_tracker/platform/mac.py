@@ -2,8 +2,8 @@
 
 Có: bóng trong suốt alpha thật, panel, quota (token từ Keychain), danh sách session + context,
 focus cơ bản (Claude desktop qua deep link, Terminal.app / iTerm2 theo tty, app khác qua `open`),
-handoff (mở Terminal.app), tự khởi động (LaunchAgent), chỉ chạy một bản (file lock + socket).
-Chưa có: gõ slash command vào session (đổi model/effort, compact, clear, exit), cập nhật một chạm.
+tự khởi động (LaunchAgent), chỉ chạy một bản (file lock + socket).
+Chưa có: cập nhật một chạm.
 
 QUAN TRỌNG: file này viết và kiểm tra trên Windows (giả lập import), CHƯA chạy trên Mac thật.
 Các điểm cần xác minh trên Mac được đánh dấu `TODO(mac)`.
@@ -21,18 +21,19 @@ import threading
 from pathlib import Path
 
 __all__ = [
-    "NAME", "GLOBAL_MOUSE", "CAN_TYPE_INTO_SESSION", "TYPE_UNSUPPORTED_REASON", "CAN_SELF_UPDATE",
+    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "type_into_session", "open_terminal", "autostart_command", "autostart_is_enabled",
+    "focus_session", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap",
 ]
 
 NAME = "macOS"
 GLOBAL_MOUSE = False            # không đọc chuột toàn cục (cần quyền Input Monitoring); dùng FocusOut
-CAN_TYPE_INTO_SESSION = False   # giai đoạn 1: chưa gõ lệnh vào session
-TYPE_UNSUPPORTED_REASON = "chưa hỗ trợ macOS"
+# Tk 8.6 aqua báo chuột phải là Button-2 (Tk 8.7+/9 đổi sang Button-3); Control-click là chuột phải
+# của trackpad / chuột một nút.
+RIGHT_CLICK_EVENTS = ("<Button-2>", "<Button-3>", "<Control-Button-1>")
 CAN_SELF_UPDATE = False         # giai đoạn 1: chỉ mở trang release
 
 BUNDLE_ID = "sg.vinova.pet-tracker"
@@ -55,7 +56,8 @@ def dpi_scale(root) -> float:
     return 1.0
 
 
-def work_area(root=None) -> tuple:
+def work_area(root=None, pt=None) -> tuple:
+    # Tk không liệt kê được từng màn hình trên macOS: luôn dùng màn hình chính (pt bị bỏ qua).
     if root is None:
         return 0, MENU_BAR_PT, 1440, 900
     w, h = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -212,24 +214,6 @@ def focus_session(sess: dict) -> tuple:
         subprocess.Popen(["open", "-a", app])
         return True, f"mở {name}"
     return False, "không tìm thấy app chứa session"
-
-
-def type_into_session(pid: int, text: str) -> tuple:
-    return False, TYPE_UNSUPPORTED_REASON
-
-
-def _applescript_str(s: str) -> str:
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def open_terminal(cwd: str, args: list, title: str, env: dict) -> tuple:
-    """Mở cửa sổ Terminal.app mới chạy args trong cwd (cần quyền Automation cho Terminal)."""
-    cmd = "cd " + shlex.quote(cwd) + " && " + " ".join(shlex.quote(a) for a in args)
-    script = f'tell application "Terminal"\n  do script {_applescript_str(cmd)}\n  activate\nend tell'
-    r = _osascript(script)
-    if r.returncode != 0:
-        return False, f"không mở được Terminal: {r.stderr.strip()[:120]}"
-    return True, "đã mở Terminal mới (fork session)"
 
 
 # ---------------------------------------------------------------- tự khởi động (LaunchAgent)

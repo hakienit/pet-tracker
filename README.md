@@ -1,8 +1,9 @@
 # pet-tracker — bóng nổi theo dõi Claude Code agents (Windows 11)
 
-Widget "PET" nổi trên màn hình, luôn ở trên cùng, không khung cửa sổ. Bóng hiện % quota 5 giờ
-và số agent đang chạy; bấm vào mở panel stats, bấm lại hoặc click ra ngoài thì thu về. Kéo để
-đổi vị trí, vị trí được nhớ giữa các lần mở.
+Widget "PET" nổi trên màn hình, luôn ở trên cùng, không khung cửa sổ. Bóng hiện % của cửa sổ quota
+đang gần giới hạn nhất (thường là 5 giờ; khi cửa sổ 7 ngày cao hơn thì bóng hiện nó, kèm chữ "7 ngày"
+thay cho số agent); bấm vào mở panel stats, bấm lại hoặc click ra ngoài thì thu về. Kéo để đổi vị trí
+(kể cả sang màn hình thứ hai), vị trí được nhớ giữa các lần mở.
 
 Panel hiển thị:
 
@@ -32,11 +33,10 @@ Thao tác:
 |---|---|
 | Click trái vào bóng | mở / đóng panel |
 | Click ra ngoài panel | đóng panel |
-| Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\pet-tracker\state.json` |
-| Click phải vào bóng | popup: Làm mới, Mở thư mục ~/.claude, Thoát |
+| Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\pet-tracker\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
+| Click phải vào bóng (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Thoát |
 | Click vào một session trong panel | đưa cửa sổ đang host session đó lên foreground (xem mục "Focus cửa sổ session") |
 | Kéo tay nắm ở góc trên-trái panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
-| Chuột phải vào session, hoặc nút ⋯ | popup thao tác: đổi model, đổi effort, compact, clear, handoff, thoát (xem mục "Thao tác với session") |
 
 Chỉ chạy một bản: mở `pet-tracker` lần nữa khi nó đang chạy sẽ không tạo bóng thứ hai, mà bản đang
 chạy mở panel lên (dùng named mutex và event của Windows, theo từng user).
@@ -131,8 +131,6 @@ chạy trên máy Mac thật**: mọi thứ dưới đây mới kiểm tra bằn
 | Quota | có, token đọc từ Keychain (`security find-generic-password -s "Claude Code-credentials"`); lần đầu macOS hỏi quyền |
 | Danh sách session, context, model, effort | có (đọc `~/.claude` giống Windows) |
 | Click session để mở | Claude desktop: deep link; CLI trong Terminal.app / iTerm2: chọn đúng tab theo tty qua AppleScript (cần quyền Automation); app khác: `open -a` |
-| Handoff | có, mở Terminal.app chạy `claude --resume <id> --fork-session` |
-| Đổi model, effort, compact, clear, exit | **chưa** (popup chỉ hiện model/effort hiện tại) |
 | Đóng panel khi click ra ngoài | đóng khi app mất focus (macOS không cho đọc chuột toàn cục nếu không có quyền) |
 | Mở khi đăng nhập | có, LaunchAgent `~/Library/LaunchAgents/sg.vinova.pet-tracker.plist` |
 | Chỉ chạy một bản | có (file lock + Unix socket) |
@@ -165,7 +163,7 @@ Cần test trên Mac thật (đánh dấu `TODO(mac)` trong `pet_tracker/platfor
 4. Panel đóng khi click ra ngoài (FocusOut) mà không tự đóng khi đang thao tác trong panel.
 5. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
    nhận deep link `claude://code/continue?session=local_…`.
-6. Handoff mở Terminal.app đúng thư mục và đúng session.
+6. Chuột phải (và Control-click) vào bóng mở được popup.
 7. Font, cỡ chữ và icon dự phòng (Unicode) dễ đọc; ảnh có bị mờ trên Retina không.
 8. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
 9. Mở app lần hai chỉ hiện panel của bản đang chạy.
@@ -184,7 +182,6 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `context_windows` | `{"default": 1000000}` | giới hạn context theo prefix model id |
 | `warn_percent` / `danger_percent` | 60 / 85 | ngưỡng đổi màu vàng / đỏ |
 | `bubble_size` | 64 | đường kính bóng (px logic, tự nhân theo DPI) |
-| `keep_default_model` | true | khi đổi model/effort từ widget, trả `model`/`modelSettings` trong `~/.claude/settings.json` về giá trị cũ |
 | `update_check` | true | tự kiểm tra bản mới khi mở app và mỗi `update_interval_hours` giờ |
 | `update_interval_hours` | 24 | chu kỳ kiểm tra bản mới |
 | `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
@@ -311,57 +308,6 @@ Các trường hợp **không focus được / giới hạn**:
 - Cần cùng phiên desktop (session 1); process chạy dưới user khác / elevated có thể từ chối
   `AttachConsole`.
 
-## Thao tác với session (popup chuột phải)
-
-Card session hiện model và effort của lượt gần nhất (field `effort` trên record assistant trong
-transcript). Chuột phải vào card, hoặc bấm nút ⋯, mở popup thao tác: chọn model và effort bằng
-chip (chip tô màu là giá trị hiện tại), bên dưới là danh sách lệnh. Esc hoặc click ra ngoài để đóng.
-Các thao tác:
-
-| Thao tác | Cách làm | Áp dụng cho |
-|---|---|---|
-| Mở cửa sổ session | như click trái | mọi session |
-| Đổi model | gõ `/model <id>` vào session (chỉ đổi cho session đó, xem ghi chú bên dưới); danh sách model lấy từ cache catalog của Claude Code (`~/.claude/cache/model-catalog/*-cc.json`, các model `section: main`) | CLI, đang rảnh |
-| Đổi effort | gõ `/effort <level>`; các mức lấy từ `effort_options` của model hiện tại | CLI, đang rảnh |
-| Compact context | gõ `/compact` | CLI, đang rảnh |
-| Clear context | gõ `/clear`, cần bấm hai lần để xác nhận; hội thoại cũ vẫn lưu, mở lại bằng `/resume` | CLI, đang rảnh |
-| Handoff sang terminal mới | mở cửa sổ Windows Terminal mới chạy `claude --resume <sessionId> --fork-session` trong thư mục của session: session mới mang toàn bộ hội thoại, session cũ giữ nguyên | mọi session đã có hội thoại |
-| Thoát session | gõ `/exit`, cần bấm hai lần để xác nhận | CLI, đang rảnh |
-
-Cách "gõ" lệnh: widget `AttachConsole(pid)` vào console của process `claude`, mở `CONIN$` và ghi
-các phím bằng `WriteConsoleInputW`, giống như bạn tự gõ rồi Enter. Claude Code không có API hay IPC
-công khai nào khác cho việc này. Named pipe `messagingSocketPath` trong `sessions/<pid>.json` chỉ
-dùng để gửi tin nhắn giữa các session, không chạy được slash command.
-
-Giữ nguyên mặc định của bạn: khi gõ trong terminal, `/model` và `/effort` của Claude Code luôn lưu
-luôn thành mặc định cho mọi session mới (ghi `model` và `modelSettings` vào `~/.claude/settings.json`,
-kèm dòng "saved as your default for new sessions"). Widget chụp hai khoá đó trước khi gửi lệnh và trả
-lại giá trị cũ ngay sau khi Claude Code ghi xong, nên chỉ session được chọn đổi model/effort. Dòng
-"saved as your default" vẫn hiện trong terminal vì Claude Code in nó trước khi widget khôi phục. Muốn
-để Claude Code lưu mặc định như bình thường thì đặt `"keep_default_model": false` trong `config.json`.
-
-Đã test trên Claude Code 2.1.300 (session CLI thử trong Windows Terminal): đổi model, đổi effort,
-compact (transcript có bản ghi `compact_boundary`), clear (session sang `sessionId` mới, giữ tên),
-handoff (mở session CLI mới với `sessionId` mới, mang theo hội thoại), exit (process đóng trong khoảng
-1 giây). Settings mặc định không đổi sau các lần đổi model/effort.
-
-Giới hạn:
-
-- `/compact` và handoff cần session đã có ít nhất một lượt hội thoại.
-- **Session trong Claude desktop app không đổi được model, effort, clear, exit từ widget.** Process
-  `claude.exe` của app chạy với `--output-format stream-json`, nhận lệnh qua pipe riêng của app chứ
-  không qua console, và app không có deep link cho các thao tác này. Popup hiện các mục đó ở trạng
-  thái mờ "chỉ CLI". Dùng "Mở cửa sổ session" rồi đổi trong app.
-- Session CLI đang bận (`status: busy`) bị khoá các lệnh gõ phím, vì phím gõ lúc đó sẽ thành tin
-  nhắn xếp hàng chứ không phải lệnh.
-- Nếu bạn đang gõ dở trong ô nhập của session, lệnh sẽ bị nối vào sau chữ đang gõ. Hãy để ô nhập
-  trống trước khi dùng popup.
-- Hành vi chính xác của `/compact`, `/clear`, `/model`, `/effort` phụ thuộc phiên bản Claude Code
-  (đã khảo sát trên 2.1.300).
-- Widget xoá các biến môi trường `CLAUDE_*` khi khởi động. Nếu widget được mở từ bên trong một
-  session Claude Code, các biến như `CLAUDE_CODE_CHILD_SESSION=1` sẽ khiến session handoff tắt ghi
-  transcript và không xuất hiện trong danh sách.
-
 ## Cấu trúc code
 
 ```
@@ -380,14 +326,13 @@ pet-tracker/
     claude_data.py         sessions/*.json, parser transcript .jsonl, context, ước tính local
     quota.py               gọi endpoint usage OAuth, chuẩn hoá cửa sổ limit
     ui.py                  bubble + panel (tkinter), thread collector, popup, updater UI
-    actions.py             slash command qua platform, handoff (--resume --fork-session), catalog model
+    procenv.py             env sạch (bỏ biến CLAUDE_*) cho tiến trình con
     render.py              vẽ khử răng cưa (bóng, thanh progress, pill); PNG alpha cho macOS
     updater.py             kiểm tra GitHub Releases, tải + kiểm SHA256, gọi platform để thay bản cài
     platform/
       __init__.py          chọn win.py hoặc mac.py, mô tả interface chung
-      win.py               Windows: DPI, vùng màn hình, chuột, DWM, credentials file, autostart, cập nhật
+      win.py               Windows: DPI, vùng dùng được theo từng màn hình, chuột, DWM, credentials file, autostart, cập nhật
       win_focus.py         map session → cửa sổ (AttachConsole, parent chain, deep link) + SetForegroundWindow
-      win_console.py       gõ phím vào console session CLI (WriteConsoleInputW)
       win_single.py        chỉ chạy một bản (named mutex + event)
       win_autostart.py     chạy cùng Windows (HKCU Run)
       win_update.py        script PowerShell thay thư mục cài

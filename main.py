@@ -7,11 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from pet_tracker.actions import clean_env  # noqa: E402
+from pet_tracker.procenv import clean_env  # noqa: E402
 from pet_tracker.ui import run  # noqa: E402
 
 # Bỏ biến môi trường Claude Code (nếu widget được mở từ trong một session) để mọi tiến trình con
-# (terminal handoff, deep link) chạy như được mở bình thường.
+# (deep link, script cập nhật) chạy như được mở bình thường.
 for _k in set(os.environ) - set(clean_env()):
     del os.environ[_k]
 

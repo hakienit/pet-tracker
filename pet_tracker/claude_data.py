@@ -31,6 +31,10 @@ from . import platform as plat
 
 _TITLE_MARKERS = (b'"customTitle"', b'"aiTitle"', b'"agentName"')
 
+# Ước tính local chỉ cần 7 ngày gần nhất. Transcript không đổi lâu hơn thế không được đọc (trừ khi là của
+# một session đang chạy), để thời gian khởi động và RAM không tăng theo toàn bộ lịch sử trên máy.
+USAGE_HORIZON_SEC = 7 * 86400 + 3600
+
 
 def _parse_ts(s):
     if not s:
@@ -156,9 +160,17 @@ class Transcript:
 class ClaudeDataStore:
     def __init__(self, claude_dir: str):
         self.claude_dir = Path(claude_dir)
-        self.transcripts: dict = {}      # path -> Transcript
-        self._session_path: dict = {}    # sessionId -> main transcript path
+        self.transcripts: dict = {}      # path -> Transcript (chỉ file mới đổi gần đây hoặc của session đang chạy)
+        self._session_path: dict = {}    # sessionId -> main transcript path (mọi file, kể cả cũ)
+        self._pinned: set = set()        # path transcript của session đang chạy: không bỏ dù cũ
         self._last_scan = 0.0
+
+    def _load(self, p: str, sidechain: bool = False):
+        t = self.transcripts.get(p)
+        if t is None:
+            t = self.transcripts[p] = Transcript(p, sidechain=sidechain)
+            t.poll()
+        return t
 
     # ---- discovery
     def _scan_files(self, force: bool = False) -> None:
@@ -166,18 +178,26 @@ class ClaudeDataStore:
         if not force and now - self._last_scan < 15:
             return
         self._last_scan = now
+        cutoff = now - USAGE_HORIZON_SEC
         proj = self.claude_dir / "projects"
+
+        def recent(p):
+            try:
+                return os.path.getmtime(p) >= cutoff
+            except OSError:
+                return False
+
         mains = glob.glob(str(proj / "*" / "*.jsonl"))
         subs = glob.glob(str(proj / "*" / "*" / "subagents" / "*.jsonl"))
+        self._session_path = {Path(p).stem: p for p in mains}
         for p in mains:
-            if p not in self.transcripts:
+            if p not in self.transcripts and recent(p):
                 self.transcripts[p] = Transcript(p)
-            self._session_path[Path(p).stem] = p
         for p in subs:
-            if p not in self.transcripts:
+            if p not in self.transcripts and recent(p):
                 self.transcripts[p] = Transcript(p, sidechain=True)
-        for p in list(self.transcripts):
-            if not os.path.exists(p):
+        for p, t in list(self.transcripts.items()):
+            if not os.path.exists(p) or (p not in self._pinned and t.mtime and t.mtime < cutoff):
                 del self.transcripts[p]
 
     def poll_all(self) -> None:
@@ -204,14 +224,24 @@ class ClaudeDataStore:
         if p is None:
             self._scan_files(force=True)
             p = self._session_path.get(session_id)
-        return self.transcripts.get(p) if p else None
+        if not p or not os.path.exists(p):
+            return None
+        self._pinned.add(p)
+        return self._load(p)
 
     def subagents_for(self, session_id: str) -> list:
-        key = os.sep + session_id + os.sep + "subagents" + os.sep
-        return [t for p, t in self.transcripts.items() if key in p]
+        main = self._session_path.get(session_id)
+        if not main:
+            return []
+        out = []
+        for p in glob.glob(os.path.join(main[:-len(".jsonl")], "subagents", "*.jsonl")):
+            self._pinned.add(p)
+            out.append(self._load(p, sidechain=True))
+        return out
 
     def active_sessions(self, context_windows: dict) -> list:
         """Danh sách session Claude Code đang chạy (pid còn sống) kèm context usage."""
+        self._pinned = set()
         seen: dict = {}
         for s in self.read_session_files():
             if not process_alive(s["pid"], s.get("procStart")):
@@ -300,16 +330,23 @@ def short_model(model) -> str:
 
 
 def account_info(claude_dir: str) -> dict:
-    """Thông tin tài khoản từ ~/.claude.json (không chứa token)."""
-    p = Path.home() / ".claude.json"
-    try:
-        d = json.loads(p.read_text(encoding="utf-8"))
+    """Thông tin tài khoản từ .claude.json (không chứa token). Mặc định ~/.claude.json; khi đặt
+    CLAUDE_CONFIG_DIR (claude_dir khác ~/.claude), Claude Code ghi file này trong thư mục đó."""
+    home_file = Path.home() / ".claude.json"
+    dir_file = Path(claude_dir) / ".claude.json"
+    custom = Path(claude_dir).resolve() != (Path.home() / ".claude").resolve()
+    for p in ((dir_file, home_file) if custom else (home_file, dir_file)):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
         o = d.get("oauthAccount") or {}
+        if not o:
+            continue
         return {
             "email": o.get("emailAddress"),
             "org": o.get("organizationName"),
             "org_type": o.get("organizationType"),
             "tier": o.get("userRateLimitTier") or o.get("organizationRateLimitTier"),
         }
-    except Exception:
-        return {}
+    return {}

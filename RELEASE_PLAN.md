@@ -78,8 +78,9 @@ ví dụ `sg.vinova.pet-tracker`.
 
 > **Cập nhật 2026-10-15 (giai đoạn 1 macOS đã code, chưa test trên Mac thật):** code đã tách lớp nền
 > tảng `pet_tracker/platform/` (`win.py` + các `win_*.py`, `mac.py`); bóng macOS dùng PNG alpha thật;
-> quota đọc Keychain; focus Terminal/iTerm2 theo tty; handoff qua Terminal.app; LaunchAgent; single
-> instance bằng file lock. Các action gõ lệnh và cập nhật một chạm vẫn chỉ có trên Windows. Workflow có
+> quota đọc Keychain; focus Terminal/iTerm2 theo tty; LaunchAgent; single instance bằng file lock.
+> Cập nhật một chạm vẫn chỉ có trên Windows. (Popup thao tác session — gõ lệnh, handoff — đã bỏ khỏi app
+> trên cả hai nền tảng.) Workflow có
 > job `macos-14` build `.dmg` universal2 (ad-hoc sign, chưa notarize). Danh sách việc cần test trên Mac
 > nằm trong README, mục macOS.
 
@@ -175,8 +176,6 @@ trong quy trình.
 - [ ] Context, model, effort đúng với session (so với `/status` trong session).
 - [ ] Quota 5 giờ và 7 ngày khớp `/usage`. Hiện đúng thông báo khi token hết hạn, khi mất mạng, khi đặt `quota_api_enabled=false`.
 - [ ] Focus cửa sổ cho từng loại host.
-- [ ] Menu action trên session CLI thử: đổi model, đổi effort, compact, clear (có xác nhận), exit. Session đang bận bị khoá. Session desktop hiện mờ.
-- [ ] Handoff mở terminal mới và session mới có đủ hội thoại.
 - [ ] Không có dữ liệu nhạy cảm (token) trong log và state.
 - [ ] CPU khi rảnh dưới 1% và RAM dưới 80 MB sau 8 giờ chạy (đã đo trên Windows: khoảng 48 MB lúc mới mở).
 

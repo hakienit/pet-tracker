@@ -49,16 +49,19 @@ DEFAULTS = {
 def load_config() -> dict:
     cfg = dict(DEFAULTS)
     cfg["context_windows"] = dict(DEFAULTS["context_windows"])
+    cfg["config_error"] = None  # lỗi đọc config.json (hiện trên panel); None = ổn hoặc không có file
     if CONFIG_FILE.exists():
         try:
-            user = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            user = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
+            if not isinstance(user, dict):
+                raise ValueError("nội dung phải là một object JSON {...}")
             for k, v in user.items():
                 if k == "context_windows" and isinstance(v, dict):
                     cfg["context_windows"].update(v)
                 else:
                     cfg[k] = v
-        except Exception:
-            pass
+        except Exception as e:
+            cfg["config_error"] = f"{CONFIG_FILE.name} lỗi, đang dùng mặc định: {e}"[:200]
     return cfg
 
 

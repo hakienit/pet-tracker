@@ -4,30 +4,26 @@ from __future__ import annotations
 import ctypes
 import json
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 from . import win_autostart as _auto
-from . import win_console as _con
 from . import win_focus as _focus
 from .win_single import SingleInstance
 from .win_update import launch_swap
 
 __all__ = [
-    "NAME", "GLOBAL_MOUSE", "CAN_TYPE_INTO_SESSION", "TYPE_UNSUPPORTED_REASON", "CAN_SELF_UPDATE",
+    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "type_into_session", "open_terminal", "autostart_command", "autostart_is_enabled",
+    "focus_session", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap",
 ]
 
 NAME = "windows"
 GLOBAL_MOUSE = True            # đọc được trạng thái chuột toàn cục (GetAsyncKeyState)
-CAN_TYPE_INTO_SESSION = True   # gõ slash command vào console session CLI
-TYPE_UNSUPPORTED_REASON = None
+RIGHT_CLICK_EVENTS = ("<Button-3>",)
 CAN_SELF_UPDATE = True         # thay thư mục cài bằng script PowerShell
 
 _u32 = ctypes.windll.user32
@@ -57,11 +53,31 @@ class _POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
 
-def work_area(root=None) -> tuple:
-    """(left, top, right, bottom) vùng màn hình trừ taskbar (pixel vật lý)."""
+class _MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", _RECT), ("rcWork", _RECT), ("dwFlags", ctypes.c_ulong)]
+
+
+_u32.MonitorFromPoint.argtypes = [_POINT, ctypes.c_ulong]
+_u32.MonitorFromPoint.restype = ctypes.c_void_p
+_u32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_MONITORINFO)]
+
+
+def work_area(root=None, pt=None) -> tuple:
+    """(left, top, right, bottom) vùng dùng được (trừ taskbar, pixel vật lý) của màn hình chứa điểm pt.
+    pt=None: màn hình chính. Điểm nằm ngoài mọi màn hình (vd. màn hình đã rút ra) -> màn hình gần nhất."""
+    try:
+        x, y = pt if pt is not None else (0, 0)
+        hmon = _u32.MonitorFromPoint(_POINT(int(x), int(y)), 2 if pt is not None else 1)  # NEAREST / PRIMARY
+        mi = _MONITORINFO()
+        mi.cbSize = ctypes.sizeof(_MONITORINFO)
+        if hmon and _u32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+            r = mi.rcWork
+            return r.l, r.t, r.r, r.b
+    except Exception:
+        pass
     try:
         r = _RECT()
-        _u32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0)  # SPI_GETWORKAREA
+        _u32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0)  # SPI_GETWORKAREA (màn hình chính)
         return r.l, r.t, r.r, r.b
     except Exception:
         return 0, 0, 1920, 1080
@@ -156,21 +172,6 @@ def read_credentials(claude_dir: str) -> dict:
 # ---------------------------------------------------------------- session
 def focus_session(sess: dict) -> tuple:
     return _focus.focus_session(sess)
-
-
-def type_into_session(pid: int, text: str) -> tuple:
-    return _con.type_into_console(pid, text)
-
-
-def open_terminal(cwd: str, args: list, title: str, env: dict) -> tuple:
-    """Mở cửa sổ terminal mới chạy args trong cwd (Windows Terminal nếu có, không thì console mới)."""
-    wt = shutil.which("wt")
-    if wt:
-        subprocess.Popen([wt, "-w", "new", "--title", title, "-d", cwd] + args, env=env,
-                         creationflags=0x00000008 | 0x00000200)  # DETACHED | NEW_PROCESS_GROUP
-    else:
-        subprocess.Popen(args, cwd=cwd, env=env, creationflags=0x00000010)  # CREATE_NEW_CONSOLE
-    return True, "đã mở terminal mới (fork session)"
 
 
 # ---------------------------------------------------------------- khởi động cùng Windows

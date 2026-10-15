@@ -69,7 +69,12 @@ def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        return {"ok": False, "error": f"HTTP {e.code}", "source": "api"}
+        try:
+            retry_after = float(e.headers.get("Retry-After") or 0)
+        except (TypeError, ValueError):
+            retry_after = 0.0
+        return {"ok": False, "error": f"HTTP {e.code}", "status": e.code, "retry_after": retry_after,
+                "source": "api"}
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"[:120], "source": "api"}
     return {"ok": True, "source": "api", "fetched_at": time.time(), "windows": _normalize(data)}
@@ -108,8 +113,13 @@ def _normalize(data: dict) -> list[dict]:
                 wins.append({"key": k, "label": lbl, "percent": float(sd.get("utilization") or 0),
                              "severity": "normal", "resets_at": _parse_iso(sd.get("resets_at")), "active": True})
     # 5h lên đầu
-    wins.sort(key=lambda w: (0 if "session" in w["key"] or w["key"] == "five_hour" else 1, w["label"]))
+    wins.sort(key=lambda w: (0 if is_session_window(w) else 1, w["label"]))
     return wins
+
+
+def is_session_window(w: dict) -> bool:
+    """True nếu là cửa sổ 5 giờ (session), False nếu là cửa sổ 7 ngày."""
+    return "session" in w["key"] or w["key"] == "five_hour"
 
 
 def fmt_reset(ts: float | None) -> str:

@@ -12,11 +12,11 @@ from tkinter import font as tkfont
 
 import base64
 
-from . import __version__, actions, render, updater
+from . import __version__, procenv, render, updater
 from . import platform as plat
 from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
-from .quota import fetch_api_usage, fmt_reset
+from .quota import fetch_api_usage, fmt_reset, is_session_window
 
 LOG_FILE = STATE_DIR / "pet-tracker.log"
 
@@ -61,25 +61,16 @@ BUBBLE_PALETTE = {
 ICON_REFRESH = ""
 ICON_CLOSE = ""
 ICON_OPEN = ""
-ICON_MORE = ""
-ICON_HANDOFF = ""
 ICON_UPDATE = "\ue896"
 ICON_STARTUP_OFF = ""
 ICON_CHECK = ""
 ICON_FOLDER = ""
-ICON_COMPACT = ""
-ICON_CLEAR = ""
 ICON_EXIT = ""
 SHEET_BG = "#1b1c22"
 ROW_HOVER = "#272830"
-DANGER_BG = "#3a2326"
-CHIP = "#2a2b34"
-CHIP_HOVER = "#363743"
-CHIP_OFF = "#212228"
 
 FALLBACK_ICONS = {
-    "ICON_REFRESH": "\u21bb", "ICON_CLOSE": "\u2715", "ICON_OPEN": "\u2197", "ICON_MORE": "\u22ef",
-    "ICON_HANDOFF": "\u21c4", "ICON_FOLDER": "\u25a4", "ICON_COMPACT": "\u2922", "ICON_CLEAR": "\u232b",
+    "ICON_REFRESH": "\u21bb", "ICON_CLOSE": "\u2715", "ICON_OPEN": "\u2197", "ICON_FOLDER": "\u25a4",
     "ICON_EXIT": "\u23fb", "ICON_UPDATE": "\u2b07", "ICON_CHECK": "\u2611", "ICON_STARTUP_OFF": "\u2610",
 }
 
@@ -145,9 +136,10 @@ def model_color(model) -> str:
 _ROOT = None  # tk root, cần cho các hàm nền tảng dùng Tk (macOS)
 
 
-def _work_area() -> tuple:
-    """(left, top, right, bottom) vùng màn hình dùng được (pixel vật lý trên Windows)."""
-    return plat.work_area(_ROOT)
+def _work_area(pt=None) -> tuple:
+    """(left, top, right, bottom) vùng dùng được của màn hình chứa điểm pt (None: màn hình chính).
+    Pixel vật lý trên Windows."""
+    return plat.work_area(_ROOT, pt)
 
 
 def _cursor_pos() -> tuple:
@@ -168,14 +160,42 @@ class Collector(threading.Thread):
         self.store = ClaudeDataStore(cfg["claude_dir"])
         self.stop = threading.Event()
         self.kick = threading.Event()
-        self.force_quota = False
+        self.quota_kick = threading.Event()
         self._quota = None
-        self._quota_at = 0.0
         self._account = account_info(cfg["claude_dir"])
 
     def refresh_now(self):
-        self.force_quota = True
+        self.quota_kick.set()
         self.kick.set()
+
+    def start(self):
+        super().start()
+        if self.cfg.get("quota_api_enabled", True):
+            # thread riêng: gọi API chậm hoặc mất mạng (timeout 15 giây) không làm đứng danh sách session
+            threading.Thread(target=self._quota_loop, daemon=True, name="quota").start()
+
+    def _quota_loop(self):
+        interval = max(15.0, float(self.cfg["refresh_quota_sec"]))
+        fails = 0
+        while not self.stop.is_set():
+            res = fetch_api_usage(self.cfg["claude_dir"])
+            wait = interval
+            if res.get("ok"):
+                fails = 0
+            else:
+                fails += 1
+                if res.get("status"):  # lỗi HTTP (429, 401, 5xx…): giãn dần, tối đa 15 phút
+                    wait = min(900.0, interval * 2 ** min(fails - 1, 4))
+                    wait = max(wait, min(3600.0, float(res.get("retry_after") or 0)))
+                log(f"quota: {res.get('error')} (lần {fails}, thử lại sau {wait:.0f}s)")
+                # mạng chập chờn: giữ số liệu cũ (tối đa 30 phút) kèm ghi chú lỗi thay vì để panel trống
+                prev = self._quota or {}
+                if prev.get("windows") and time.time() - (prev.get("fetched_at") or 0) < 1800:
+                    res = dict(prev, ok=True, stale_error=res.get("error"))
+            self._quota = res
+            self.kick.set()  # đẩy snapshot mới ngay
+            self.quota_kick.wait(wait)
+            self.quota_kick.clear()
 
     def run(self):
         while not self.stop.is_set():
@@ -183,12 +203,6 @@ class Collector(threading.Thread):
                 self.store.poll_all()
                 sessions = self.store.active_sessions(self.cfg["context_windows"])
                 now = time.time()
-                if self.cfg.get("quota_api_enabled", True) and (
-                    self.force_quota or now - self._quota_at >= float(self.cfg["refresh_quota_sec"])
-                ):
-                    self.force_quota = False
-                    self._quota = fetch_api_usage(self.cfg["claude_dir"])
-                    self._quota_at = now
                 local = {
                     "5h": self.store.usage_window(5 * 3600, now),
                     "7d": self.store.usage_window(7 * 86400, now),
@@ -233,6 +247,7 @@ class PetApp:
         self._dwm_done = False
         self._scrollable = False
         self._flash_until = 0.0
+        self._flash_msg = ("", FAINT)
         self.footer_lbl = None
         self._modal = False
         self._sheet = None
@@ -243,7 +258,6 @@ class PetApp:
         self._update_ready = False
         self._update_stage = None
         self._update_kick = threading.Event()
-        self._catalog = actions.load_catalog(self.cfg["claude_dir"])
 
         self._build_bubble()
         self._build_panel()
@@ -259,6 +273,8 @@ class PetApp:
         except tk.TclError:
             pass
         log(f"start dpi_scale={self.S:.2f} bubble_size={self.size} claude_dir={self.cfg['claude_dir']}")
+        if self.cfg.get("config_error"):
+            log(self.cfg["config_error"])
         self.root.after(200, self._pump)
 
     def _init_fonts(self):
@@ -325,19 +341,29 @@ class PetApp:
         self._bub_img = tk.PhotoImage(width=self.size, height=self.size)
         self._bub_item = self.canvas.create_image(0, 0, anchor="nw", image=self._bub_img)
         self.bubble = b
-        l, t, r, btm = _work_area()
-        x = self.state.get("x", r - self.size - int(24 * self.S))
-        y = self.state.get("y", btm - self.size - int(24 * self.S))
-        x = max(l, min(x, r - self.size))
-        y = max(t, min(y, btm - self.size))
+        if "x" in self.state and "y" in self.state:
+            x, y = self._clamp_bubble(int(self.state["x"]), int(self.state["y"]))
+        else:  # lần đầu: góc dưới-phải màn hình chính
+            l, t, r, btm = _work_area()
+            x, y = r - self.size - int(24 * self.S), btm - self.size - int(24 * self.S)
         b.geometry(f"{self.size}x{self.size}+{x}+{y}")
         self.canvas.bind("<ButtonPress-1>", self._drag_start)
         self.canvas.bind("<B1-Motion>", self._drag_move)
         self.canvas.bind("<ButtonRelease-1>", self._drag_end)
-        self.canvas.bind("<Button-3>", self._context_menu)
+        for ev in plat.RIGHT_CLICK_EVENTS:
+            self.canvas.bind(ev, self._context_menu)
         self.canvas.bind("<Enter>", lambda e: self._set_bubble_hover(True))
         self.canvas.bind("<Leave>", lambda e: self._set_bubble_hover(False))
         self._draw_bubble()
+
+    def _clamp_bubble(self, x: int, y: int) -> tuple:
+        """Giữ bóng trong vùng dùng được của màn hình chứa tâm bóng (màn hình gần nhất nếu nằm ngoài)."""
+        s = self.size
+        l, t, r, b = _work_area((x + s // 2, y + s // 2))
+        return max(l, min(x, r - s)), max(t, min(y, b - s))
+
+    def _bubble_center(self) -> tuple:
+        return self.bubble.winfo_x() + self.size // 2, self.bubble.winfo_y() + self.size // 2
 
     def _set_bubble_hover(self, v: bool):
         if self._hover_bubble != v:
@@ -374,11 +400,11 @@ class PetApp:
                 self._place_panel()
 
     def _drag_end(self, ev):
+        if self._drag is None:  # nhả chuột sau Control-click (chuột phải trên macOS)
+            return
         moved, self._drag, self._moved = self._moved, None, False
         if moved:
-            l, t, r, btm = _work_area()
-            x = max(l, min(self.bubble.winfo_x(), r - self.size))
-            y = max(t, min(self.bubble.winfo_y(), btm - self.size))
+            x, y = self._clamp_bubble(self.bubble.winfo_x(), self.bubble.winfo_y())
             self.bubble.geometry(f"+{x}+{y}")
             self.state["x"], self.state["y"] = x, y
             save_state(self.state)
@@ -394,9 +420,14 @@ class PetApp:
         snap = self.snap or {}
         warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
         pct = None
+        weekly = False
         quota = snap.get("quota") or {}
         if quota.get("ok") and quota.get("windows"):
-            pct = float(quota["windows"][0]["percent"])
+            # cửa sổ gần chạm giới hạn nhất (5 giờ hoặc 7 ngày); bằng nhau thì ưu tiên 5 giờ (đứng đầu danh sách)
+            wins = [w for w in quota["windows"] if w.get("active", True)] or quota["windows"]
+            top = max(wins, key=lambda w: float(w["percent"]))
+            pct = float(top["percent"])
+            weekly = not is_session_window(top)
         prog = level_color(pct, warn, danger) if pct is not None else MUTED
         sessions = snap.get("sessions") or []
         busy = sum(1 for x in sessions if x["status"] == "busy")
@@ -404,6 +435,7 @@ class PetApp:
         warn_col = level_color(worst, warn, danger) if worst >= warn else None
         upd = BLUE if (self._update or {}).get("available") else None
         key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble, upd)
+        sub = "7 ngày" if weekly else f"{len(sessions)} agent"
         if key != self._bub_key:
             self._bub_key = key
             if self._alpha_bubble:
@@ -420,7 +452,7 @@ class PetApp:
         n = len(sessions)
         if pct is not None:
             c.create_text(cx, cy - 4 * S, text=f"{pct:.0f}%", fill=FG, font=self.f_bub, tags="txt")
-            c.create_text(cx, cy + 11 * S, text=f"{n} agent", fill=MUTED, font=self.f_bub_sm, tags="txt")
+            c.create_text(cx, cy + 11 * S, text=sub, fill=MUTED, font=self.f_bub_sm, tags="txt")
         else:
             c.create_text(cx, cy - 4 * S, text=str(n), fill=FG, font=self.f_bub, tags="txt")
             c.create_text(cx, cy + 11 * S, text="agent", fill=MUTED, font=self.f_bub_sm, tags="txt")
@@ -558,7 +590,7 @@ class PetApp:
     def _layout(self) -> int:
         """Đặt chiều cao vùng cuộn theo màn hình; trả về tổng chiều cao panel."""
         self.body.update_idletasks()
-        l, t, r, b = _work_area()
+        l, t, r, b = _work_area(self._bubble_center())
         margin = int(12 * self.S)
         max_h = (b - t) - 2 * margin - (0 if self._rounded else 2)
         if self._user_h:
@@ -576,7 +608,7 @@ class PetApp:
     def _place_panel(self):
         ph = self._layout()
         pw = self.pw
-        l, t, r, btm = _work_area()
+        l, t, r, btm = _work_area(self._bubble_center())
         bx, by = self.bubble.winfo_x(), self.bubble.winfo_y()
         gap = int(10 * self.S)
         margin = int(12 * self.S)
@@ -774,8 +806,9 @@ class PetApp:
         now_min = int(time.time() // 60)
         return (
             tuple((w["key"], round(w["percent"], 1), int((w.get("resets_at") or 0) // 60)) for w in q.get("windows", [])),
-            q.get("ok"), q.get("error"),
-            tuple((s["session_id"], s["status"], s["model"], s["context_tokens"], s["cwd"], s["name"], s["subagents"],
+            q.get("ok"), q.get("error"), q.get("stale_error"), int((q.get("fetched_at") or 0) // 60),
+            tuple((s["session_id"], s["status"], s["model"], s.get("effort"), s["context_tokens"], s["context_limit"],
+                   s["cwd"], s.get("git_branch"), s["name"], s.get("entrypoint"), s["subagents"],
                    s["totals"]["messages"], int((now_min * 60 - (s.get("last_activity") or 0)) // 60))
                   for s in snap.get("sessions", [])),
             int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
@@ -807,6 +840,7 @@ class PetApp:
         # dựng nội dung mới rồi mới thay cái cũ: canvas giữ nguyên nên vị trí cuộn được giữ
         old, old_win = self._content, self._content_win
         new = tk.Frame(self._scv, bg=BG)
+        self._build_config_notice(new, cpad, inner_w)
         self._build_update_banner(new, cpad, inner_w)
         self._build_quota(new, snap, cpad, inner_w)
         self._build_sessions(new, snap, cpad, inner_w)
@@ -846,6 +880,18 @@ class PetApp:
         self._icon_btn(row, ICON_REFRESH, self.collector_refresh, hover_fg=BLUE).pack(side="right")
         self._separator(hd)
 
+    def _build_config_notice(self, parent, cpad, inner_w):
+        err = self.cfg.get("config_error")
+        if not err:
+            return
+        S = self.S
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=cpad, pady=(int(14 * S), 0))
+        card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
+        card.pack(fill="x")
+        self._lbl(card, err, font=self.f_xs, fg=YELLOW, wraplength=inner_w - int(24 * S),
+                  justify="left").pack(fill="x")
+
     def _build_quota(self, parent, snap, padx, inner_w):
         S = self.S
         warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
@@ -853,8 +899,11 @@ class PetApp:
         sec.pack(fill="x", padx=padx)
         q = snap.get("quota")
         ok = bool(q and q.get("ok"))
-        src = "Anthropic API" if ok else ("đã tắt" if not self.cfg.get("quota_api_enabled", True) else "")
-        self._section_title(sec, "GIỚI HẠN SỬ DỤNG", src)
+        src, src_fg = ("Anthropic API" if ok else ("đã tắt" if not self.cfg.get("quota_api_enabled", True) else "")), FAINT
+        if ok and q.get("stale_error"):
+            when = time.strftime("%H:%M", time.localtime(q.get("fetched_at") or 0))
+            src, src_fg = f"{q['stale_error']} · số liệu lúc {when}", YELLOW
+        self._section_title(sec, "GIỚI HẠN SỬ DỤNG", src, right_fg=src_fg)
         if not ok:
             err = (q or {}).get("error") if q else ("đang tải…" if self.cfg.get("quota_api_enabled", True) else "quota_api_enabled = false")
             card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
@@ -911,13 +960,10 @@ class PetApp:
             inner = tk.Frame(card, bg=SURFACE, padx=cp, pady=int(10 * S))
             inner.pack(side="left", fill="both", expand=True)
 
-            # dòng 1: tên + mũi tên + model
+            # dòng 1: tên + mũi tên + model + effort
             r1 = tk.Frame(inner, bg=SURFACE)
             r1.pack(fill="x")
-            more = tk.Label(r1, text=ICON_MORE, font=self.f_icon_sm, fg=MUTED, bg=SURFACE, cursor="hand2",
-                            padx=int(4 * S))
-            more.pack(side="right", padx=(int(4 * S), 0))
-            used = more.winfo_reqwidth() + int(4 * S)
+            used = 0
             if s.get("effort"):
                 ech = self._pill(r1, s["effort"], "#33343e", fg=FG2, font=self.f_xs)
                 ech.pack(side="right", padx=(int(4 * S), 0))
@@ -979,10 +1025,6 @@ class PetApp:
                 self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
 
             self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
-            self._bind_menu(card, s)
-            more.bind("<Button-1>", lambda ev, sess=s: self._session_menu(sess, ev.x_root, ev.y_root))
-            more.bind("<Enter>", lambda ev, m=more: m.configure(fg=FG))
-            more.bind("<Leave>", lambda ev, m=more: m.configure(fg=MUTED))
             self._cards.append((card, arrow))
 
     def _build_local(self, parent, snap, padx, inner_w):
@@ -1041,7 +1083,7 @@ class PetApp:
         if not self._resize:
             return
         x0, y0, w0, h0, right, bottom = self._resize
-        l, t, r, b = _work_area()
+        l, t, r, b = _work_area((right - 1, bottom - 1))
         w = max(self._pw_min, min(self._pw_max, w0 - (ev.x_root - x0), right - l))
         h = max(self._ph_min, min(h0 - (ev.y_root - y0), bottom - t))
         self.panel.geometry(f"{int(w)}x{int(h)}+{int(right - w)}+{int(bottom - h)}")
@@ -1083,23 +1125,23 @@ class PetApp:
         self._update_footer()
 
     def _update_footer(self):
-        if not self.footer_lbl or not self.snap:
-            return
-        if self._flash_until > time.time():
+        """Footer được dựng lại mỗi lần panel vẽ lại: thông báo (flash) còn hạn thì viết lại nó."""
+        if not self.footer_lbl:
             return
         try:
-            ts = time.strftime("%H:%M:%S", time.localtime(self.snap.get("ts", 0)))
-            self.footer_lbl.configure(text=f"Cập nhật {ts}  ·  bấm session để mở, chuột phải để thao tác", fg=FAINT)
+            if self._flash_until > time.time():
+                text, color = self._flash_msg
+                self.footer_lbl.configure(text=self._ellipsis(text, self.f_xs, self.pw - int(90 * self.S)), fg=color)
+            elif self.snap:
+                ts = time.strftime("%H:%M:%S", time.localtime(self.snap.get("ts", 0)))
+                self.footer_lbl.configure(text=f"Cập nhật {ts}  ·  bấm session để mở cửa sổ", fg=FAINT)
         except Exception:
             pass
 
     def _flash(self, text: str, color: str, secs: float = 6.0):
         self._flash_until = time.time() + secs
-        try:
-            if self.footer_lbl:
-                self.footer_lbl.configure(text=self._ellipsis(text, self.f_xs, self.pw - int(90 * self.S)), fg=color)
-        except Exception:
-            pass
+        self._flash_msg = (text, color)
+        self._update_footer()
 
     def _bind_click(self, widget, fn):
         try:
@@ -1146,12 +1188,7 @@ class PetApp:
         if hot is None or self._hot is None or hot[0] is not self._hot[0]:
             self._set_hot(hot)
 
-    def _bind_menu(self, widget, sess):
-        widget.bind("<Button-3>", lambda ev, s_=sess: self._session_menu(s_, ev.x_root, ev.y_root))
-        for ch in widget.winfo_children():
-            self._bind_menu(ch, sess)
-
-    # ---------- popup thao tác session
+    # ---------- popup
     def _close_sheet(self):
         if self._sheet is not None:
             try:
@@ -1161,32 +1198,7 @@ class PetApp:
             self._sheet = None
             self._lbtn_prev = _lbutton_down()
 
-    def _chip(self, parent, text, width, selected_col=None, enabled=True, on_click=None, font=None):
-        """Nút bo tròn dạng chip: chọn (màu nhấn), thường, hover, mờ."""
-        font = font or self.f_xsb
-        S = self.S
-        h = font.metrics("linespace") + int(10 * S)
-        bg = parent["bg"]
-        if selected_col:
-            fill, hov, fg = selected_col, selected_col, "#15161a"
-        elif enabled:
-            fill, hov, fg = CHIP, CHIP_HOVER, FG2
-        else:
-            fill, hov, fg = CHIP_OFF, CHIP_OFF, FAINT
-        im_n = self._photo(("chip", width, h, fill, bg), lambda: render.capsule_rows(width, h, 1.0, fill, fill, bg))
-        im_h = self._photo(("chip", width, h, hov, bg), lambda: render.capsule_rows(width, h, 1.0, hov, hov, bg))
-        c = tk.Canvas(parent, width=width, height=h, bg=bg, highlightthickness=0, bd=0,
-                      cursor="hand2" if (enabled and not selected_col) else "arrow")
-        item = c.create_image(0, 0, anchor="nw", image=im_n)
-        c.create_text(width / 2, h / 2, text=text, fill=fg, font=font)
-        c._imgs = (im_n, im_h)
-        if enabled and not selected_col and on_click:
-            c.bind("<Enter>", lambda e: c.itemconfigure(item, image=im_h))
-            c.bind("<Leave>", lambda e: c.itemconfigure(item, image=im_n))
-            c.bind("<Button-1>", lambda e: on_click())
-        return c
-
-    def _sheet_row(self, parent, icon, label, hint, on_click, enabled=True, danger=False, confirm=None):
+    def _sheet_row(self, parent, icon, label, hint, on_click, enabled=True, danger=False):
         S = self.S
         row = tk.Frame(parent, bg=SHEET_BG, cursor="hand2" if enabled else "arrow")
         row.pack(fill="x", padx=int(6 * S))
@@ -1199,37 +1211,16 @@ class PetApp:
         ht = tk.Label(row, text=hint, font=self.f_xs, fg=FAINT, bg=SHEET_BG)
         ht.pack(side="right", padx=(0, int(10 * S)))
         parts = (row, ic, lb, ht)
-        state = {"armed": False}
 
         def paint(bg):
             for p in parts:
                 p.configure(bg=bg)
 
-        def reset():
-            if not row.winfo_exists():
-                return
-            state["armed"] = False
-            lb.configure(text=label, fg=fg)
-            ht.configure(text=hint, fg=FAINT)
-            paint(SHEET_BG)
-
-        def click(_e=None):
-            if not enabled:
-                return
-            if confirm and not state["armed"]:
-                state["armed"] = True
-                lb.configure(text=confirm, fg=RED)
-                ht.configure(text="bấm lần nữa", fg=RED)
-                paint(DANGER_BG)
-                self.root.after(3500, reset)
-                return
-            on_click()
-
         if enabled:
             for p in parts:
-                p.bind("<Enter>", lambda e: paint(DANGER_BG if state["armed"] else ROW_HOVER))
-                p.bind("<Leave>", lambda e: paint(DANGER_BG if state["armed"] else SHEET_BG))
-                p.bind("<Button-1>", click)
+                p.bind("<Enter>", lambda e: paint(ROW_HOVER))
+                p.bind("<Leave>", lambda e: paint(SHEET_BG))
+                p.bind("<Button-1>", lambda e: on_click())
         return row
 
     def _new_sheet(self):
@@ -1249,7 +1240,7 @@ class PetApp:
         S = self.S
         top.update_idletasks()
         h = body.winfo_reqheight()
-        l, t, r, b = _work_area()
+        l, t, r, b = _work_area((x, y))
         m = int(8 * S)
         sx = x - W - m if x + W + m > r else x + m
         sx = max(l + m, sx)
@@ -1423,7 +1414,7 @@ class PetApp:
     def _finish_update(self):
         u = self._update or {}
         try:
-            updater.launch_swap(self._update_stage, updater.install_dir(), os.getpid(), env=actions.clean_env())
+            updater.launch_swap(self._update_stage, updater.install_dir(), os.getpid(), env=procenv.clean_env())
         except Exception as e:
             log(f"update: launch swap failed: {e}")
             u["apply_error"] = f"Không chạy được trình cài: {e}"
@@ -1460,145 +1451,6 @@ class PetApp:
         self._sheet_row(body, ICON_EXIT, "Thoát Claude PET", "", act(self.quit), danger=True)
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
         self._finish_sheet(top, body, W, x, y)
-
-    def _session_menu(self, sess: dict, x: int, y: int):
-        """Popup thao tác cho một session (thay menu native của Windows)."""
-        S = self.S
-        W = int(304 * S)
-        pad = int(14 * S)
-        inner = W - 2 * pad
-        why = actions.command_block_reason(sess)
-        can_cmd = why is None
-        top, body = self._new_sheet()
-
-        def act(fn):
-            def run():
-                self._close_sheet()
-                fn()
-            return run
-
-        # tiêu đề
-        hd = tk.Frame(body, bg=SHEET_BG)
-        hd.pack(fill="x", padx=pad, pady=(int(12 * S), int(10 * S)))
-        tk.Label(hd, text=self._ellipsis(sess.get("name") or "?", self.f_md, inner - int(26 * S)), font=self.f_md,
-                 fg=FG, bg=SHEET_BG, anchor="w").pack(side="left")
-        x_btn = self._icon_btn(hd, ICON_CLOSE, self._close_sheet, font=self.f_icon_sm)
-        x_btn.configure(bg=SHEET_BG)
-        x_btn.pack(side="right")
-        bits = [short_model(sess.get("model")), sess.get("effort") or "",
-                ENTRYPOINTS.get(sess.get("entrypoint") or "", sess.get("entrypoint") or ""),
-                "đang chạy" if sess.get("status") == "busy" else "rảnh"]
-        tk.Label(body, text="  ·  ".join(b for b in bits if b and b != "?"), font=self.f_xs, fg=MUTED,
-                 bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad, pady=(0, int(10 * S)))
-        tk.Frame(body, bg=LINE, height=1).pack(fill="x")
-
-        # Ba trường hợp:
-        #  - điều khiển được (CLI đang rảnh, nền tảng hỗ trợ): chip model/effort + lệnh
-        #  - CLI đang bận: chip hiện nhưng khoá, có dòng giải thích
-        #  - không điều khiển được từ ngoài (Claude desktop, hoặc nền tảng chưa hỗ trợ): không vẽ chip mờ
-        #    gây hiểu nhầm; chỉ hiện model/effort hiện tại và nút mở session để đổi ngay trong app
-        controllable = actions.is_cli(sess) and plat.CAN_TYPE_INTO_SESSION
-        cur_model = sess.get("model") or ""
-        efforts = actions.DEFAULT_EFFORTS
-        for mid, _n, effs in self._catalog:
-            if cur_model.startswith(mid):
-                efforts = effs
-
-        if controllable:
-            cap = tk.Frame(body, bg=SHEET_BG)
-            cap.pack(fill="x", padx=pad, pady=(int(12 * S), int(6 * S)))
-            tk.Label(cap, text="MODEL", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
-            grid = tk.Frame(body, bg=SHEET_BG)
-            grid.pack(fill="x", padx=pad)
-            gap = int(6 * S)
-            cw2 = (inner - gap) // 2
-            for i, (mid, name, _effs) in enumerate(self._catalog):
-                sel = model_color(mid) if cur_model.startswith(mid) else None
-                ch = self._chip(grid, name, cw2, selected_col=sel, enabled=can_cmd,
-                                on_click=act(lambda mid=mid: self._run_slash(sess, f"/model {mid}")))
-                ch.grid(row=i // 2, column=i % 2, padx=(0 if i % 2 == 0 else gap, 0), pady=(0, gap), sticky="w")
-
-            cap2 = tk.Frame(body, bg=SHEET_BG)
-            cap2.pack(fill="x", padx=pad, pady=(int(8 * S), int(6 * S)))
-            tk.Label(cap2, text="EFFORT", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
-            row = tk.Frame(body, bg=SHEET_BG)
-            row.pack(fill="x", padx=pad)
-            n = max(1, len(efforts))
-            egap = int(4 * S)
-            ew = (inner - egap * (n - 1)) // n
-            for i, e in enumerate(efforts):
-                sel = ACCENT if (sess.get("effort") == e) else None
-                ch = self._chip(row, e, ew, selected_col=sel, enabled=can_cmd, font=self.f_xs,
-                                on_click=act(lambda e=e: self._run_slash(sess, f"/effort {e}")))
-                ch.pack(side="left", padx=(0 if i == 0 else egap, 0))
-            if not can_cmd:
-                tk.Label(body, text="Session đang chạy một lượt. Đổi model, effort và các lệnh sẽ mở lại khi "
-                                    "session rảnh.", font=self.f_xs, fg=YELLOW, bg=SHEET_BG, wraplength=inner,
-                         justify="left", anchor="w").pack(fill="x", padx=pad, pady=(int(8 * S), 0))
-        else:
-            info = tk.Frame(body, bg=SHEET_BG)
-            info.pack(fill="x", padx=pad, pady=(int(12 * S), 0))
-            mrow = tk.Frame(info, bg=SHEET_BG)
-            mrow.pack(fill="x")
-            if short_model(cur_model) != "?":
-                self._pill(mrow, short_model(cur_model), model_color(cur_model)).pack(side="left")
-            if sess.get("effort"):
-                self._pill(mrow, sess["effort"], "#33343e", fg=FG2, font=self.f_xs).pack(
-                    side="left", padx=(int(6 * S), 0))
-            if not actions.is_cli(sess):
-                msg = ("Session này chạy trong Claude desktop. App không cho chương trình bên ngoài đổi model, "
-                       "effort hay chạy lệnh, nên hãy đổi ngay trong app.")
-            else:
-                msg = (f"Gửi lệnh vào session CLI chưa hỗ trợ trên {plat.NAME}. "
-                       "Mở cửa sổ session để đổi trực tiếp.")
-            tk.Label(info, text=msg, font=self.f_xs, fg=MUTED, bg=SHEET_BG, wraplength=inner, justify="left",
-                     anchor="w").pack(fill="x", pady=(int(8 * S), int(8 * S)))
-            self._button(info, "Mở trong Claude app" if not actions.is_cli(sess) else "Mở cửa sổ session",
-                         ACCENT, act(lambda: self._focus_session(sess))).pack(anchor="w")
-
-        tk.Frame(body, bg=SHEET_BG, height=int(10 * S)).pack(fill="x")
-        tk.Frame(body, bg=LINE, height=1).pack(fill="x")
-        tk.Frame(body, bg=SHEET_BG, height=int(4 * S)).pack(fill="x")
-
-        # thao tác
-        can_fork = bool(sess.get("has_transcript")) and sess.get("totals", {}).get("messages", 0) > 0
-        if controllable:
-            self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
-        self._sheet_row(body, ICON_HANDOFF, "Handoff sang terminal mới", "fork" if can_fork else "chưa có hội thoại",
-                        act(lambda: self._handoff(sess)), enabled=can_fork)
-        if controllable:
-            busy_hint = "đợi rảnh"
-            self._sheet_row(body, ICON_COMPACT, "Compact context", "/compact" if can_cmd else busy_hint,
-                            act(lambda: self._run_slash(sess, "/compact")), enabled=can_cmd)
-            self._sheet_row(body, ICON_CLEAR, "Clear context", "/clear" if can_cmd else busy_hint,
-                            act(lambda: self._run_slash(sess, "/clear")), enabled=can_cmd,
-                            confirm="Xoá context? (vẫn /resume lại được)")
-            tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=pad, pady=int(4 * S))
-            self._sheet_row(body, ICON_EXIT, "Thoát session", "/exit" if can_cmd else busy_hint,
-                            act(lambda: self._run_slash(sess, "/exit")), enabled=can_cmd, danger=True,
-                            confirm="Thoát session này?")
-        tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
-
-        self._finish_sheet(top, body, W, x, y)
-
-    def _run_slash(self, sess: dict, cmd: str):
-        try:
-            ok, msg = actions.send_slash(sess, cmd, self.cfg["claude_dir"],
-                                         keep_defaults=self.cfg.get("keep_default_model", True))
-        except Exception as e:
-            ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
-        log(f"action {cmd!r} -> {sess.get('name')!r} pid={sess.get('pid')}: ok={ok} {msg}")
-        self._flash(f"{sess.get('name')}: {msg}", GREEN if ok else YELLOW)
-        if ok:
-            self.root.after(1500, self.collector.refresh_now)
-
-    def _handoff(self, sess: dict):
-        try:
-            ok, msg = actions.handoff(sess)
-        except Exception as e:
-            ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
-        log(f"handoff {sess.get('name')!r} sid={sess.get('session_id')}: ok={ok} {msg}")
-        self._flash(msg, GREEN if ok else YELLOW)
 
     def _focus_session(self, sess: dict):
         try:
