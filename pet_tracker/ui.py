@@ -12,7 +12,7 @@ from tkinter import font as tkfont
 
 import base64
 
-from . import __version__, procenv, render, updater
+from . import __version__, procenv, render, session_ops, updater
 from . import platform as plat
 from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
@@ -65,13 +65,17 @@ ICON_UPDATE = "\ue896"
 ICON_STARTUP_OFF = ""
 ICON_CHECK = ""
 ICON_FOLDER = ""
+ICON_MORE = ""
+ICON_CLEAR = ""
 ICON_EXIT = ""
 SHEET_BG = "#1b1c22"
 ROW_HOVER = "#272830"
+DANGER_BG = "#3a2326"
 
 FALLBACK_ICONS = {
     "ICON_REFRESH": "\u21bb", "ICON_CLOSE": "\u2715", "ICON_OPEN": "\u2197", "ICON_FOLDER": "\u25a4",
     "ICON_EXIT": "\u23fb", "ICON_UPDATE": "\u2b07", "ICON_CHECK": "\u2611", "ICON_STARTUP_OFF": "\u2610",
+    "ICON_MORE": "\u22ef", "ICON_CLEAR": "\u232b",
 }
 
 ENTRYPOINTS = {"cli": "CLI", "claude-desktop": "Desktop", "sdk-ts": "SDK", "sdk-py": "SDK", "vscode": "VS Code"}
@@ -86,7 +90,16 @@ def fmt_k(n: float) -> str:
     if n < 1_000_000:
         v = n / 1000
         return f"{v:.0f}k" if v >= 100 else f"{v:.1f}k"
-    return f"{n/1_000_000:.2f}M".replace(".00M", "M")
+    if n < 1_000_000_000:
+        v = n / 1_000_000
+        return f"{v:.0f}M" if v >= 100 else (f"{v:.1f}M" if v >= 10 else f"{v:.2f}M".replace(".00M", "M"))
+    return f"{n/1_000_000_000:.2f}B".replace(".00B", "B")
+
+
+def local_total(u) -> int:
+    """Tổng token (input + cache ghi + cache đọc + output) của một cửa sổ usage_window."""
+    u = u or {}
+    return sum(u.get(k, 0) or 0 for k in ("input", "cache_create", "cache_read", "output"))
 
 
 def fmt_ago(ts) -> str:
@@ -161,6 +174,7 @@ class Collector(threading.Thread):
         self.stop = threading.Event()
         self.kick = threading.Event()
         self.quota_kick = threading.Event()
+        self._git_cache: dict = {}   # cwd -> (lúc lấy, git_state); xoá để lấy lại ngay sau khi dọn dẹp
         self._quota = None
         self._account = account_info(cfg["claude_dir"])
 
@@ -197,12 +211,21 @@ class Collector(threading.Thread):
             self.quota_kick.wait(wait)
             self.quota_kick.clear()
 
+    def _git_state(self, cwd, now):
+        """git_state có cache 30 giây cho mỗi thư mục: mỗi lần là vài lệnh git."""
+        hit = self._git_cache.get(cwd)
+        if hit is None or now - hit[0] > 30:
+            hit = self._git_cache[cwd] = (now, session_ops.git_state(cwd))
+        return hit[1]
+
     def run(self):
         while not self.stop.is_set():
             try:
                 self.store.poll_all()
                 sessions = self.store.active_sessions(self.cfg["context_windows"])
                 now = time.time()
+                for s in sessions:
+                    s["git"] = self._git_state(s.get("cwd"), now)
                 local = {
                     "5h": self.store.usage_window(5 * 3600, now),
                     "7d": self.store.usage_window(7 * 86400, now),
@@ -228,6 +251,7 @@ class PetApp:
         self.cfg = load_config()
         self.state = load_state()
         self.q: queue.Queue = queue.Queue()
+        self._ops_done: queue.Queue = queue.Queue()   # (tên, ok, thông báo, cwd) từ thread thao tác session
         self.snap = None
         self.sig = None
 
@@ -819,10 +843,11 @@ class PetApp:
             "sessions": (tuple((s["session_id"], s["status"], s["model"], s.get("effort"), s["context_tokens"],
                                 s["context_limit"], s["cwd"], s.get("git_branch"), s["name"], s.get("entrypoint"),
                                 s["subagents"], s["totals"]["messages"],
-                                int((now_min * 60 - (s.get("last_activity") or 0)) // 60))
+                                int((now_min * 60 - (s.get("last_activity") or 0)) // 60),
+                                session_ops.state_text(s.get("git")))
                                for s in snap.get("sessions", [])),
                          snap.get("error")),
-            "local": int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
+            "local": tuple(fmt_k(local_total(snap.get("local", {}).get(k))) for k in ("5h", "7d")),
         }
 
     def _render_panel(self, force=False):
@@ -1022,7 +1047,9 @@ class PetApp:
         # dòng 1: tên + mũi tên + model + effort
         r1 = tk.Frame(inner, bg=SURFACE)
         r1.pack(fill="x")
-        used = 0
+        more = tk.Label(r1, text=ICON_MORE, font=self.f_icon_sm, fg=MUTED, bg=SURFACE, cursor="hand2")
+        more.pack(side="right", padx=(int(6 * S), 0))
+        used = more.winfo_reqwidth() + int(6 * S)
         if s.get("effort"):
             ech = self._pill(r1, s["effort"], "#33343e", fg=FG2, font=self.f_xs)
             ech.pack(side="right", padx=(int(4 * S), 0))
@@ -1083,8 +1110,25 @@ class PetApp:
         if ago:
             self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
 
+        # trạng thái git của thư mục session: xong (sạch + đã merge/push) thì dọn được
+        gtxt, gkind = session_ops.state_text(s.get("git"))
+        if gtxt:
+            r5 = tk.Frame(inner, bg=SURFACE)
+            r5.pack(fill="x", pady=(int(4 * S), 0))
+            self._lbl(r5, self._git_label(s["git"], gtxt), font=self.f_xs,
+                      fg=GREEN if gkind == "done" else YELLOW).pack(side="left")
+
         self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
+        menu = lambda ev, sess=s: self._session_menu(sess, ev.x_root, ev.y_root)
+        self._bind_events(card, plat.RIGHT_CLICK_EVENTS, menu)
+        more.bind("<Button-1>", menu)
+        more.bind("<Enter>", lambda ev: more.configure(fg=FG))
+        more.bind("<Leave>", lambda ev: more.configure(fg=MUTED))
         return card, arrow
+
+    @staticmethod
+    def _git_label(st: dict, text: str) -> str:
+        return f"⎇ {'worktree' if st['linked'] else (st['branch'] or 'git')}: {text}"
 
     def _build_local(self, parent, snap, padx, inner_w):
         loc = snap.get("local") or {}
@@ -1093,22 +1137,20 @@ class PetApp:
         S = self.S
         sec = tk.Frame(parent, bg=BG)
         sec.pack(fill="x", padx=padx)
-        self._section_title(sec, "TRANSCRIPT TRÊN MÁY", "ước tính, không phải quota")
-        card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
+        self._section_title(sec, "TOKEN ĐÃ DÙNG", "ước tính trên máy này")
+        card = tk.Frame(sec, bg=SURFACE, pady=int(12 * S))
         card.pack(fill="x")
         card.grid_columnconfigure(0, weight=1, uniform="c")
-        card.grid_columnconfigure(1, weight=1, uniform="c")
+        card.grid_columnconfigure(2, weight=1, uniform="c")
+        tk.Frame(card, bg=LINE, width=1).grid(row=0, column=1, sticky="ns")
         for i, (key, title) in enumerate((("5h", "5 giờ qua"), ("7d", "7 ngày qua"))):
-            u = loc.get(key, {})
             col = tk.Frame(card, bg=SURFACE)
-            col.grid(row=0, column=i, sticky="w")
+            col.grid(row=0, column=2 * i, sticky="w", padx=int(14 * S))
             self._lbl(col, title, font=self.f_xs, fg=MUTED).pack(anchor="w")
             v = tk.Frame(col, bg=SURFACE)
             v.pack(anchor="w", pady=(int(2 * S), 0))
-            self._lbl(v, fmt_k(u.get("output")), font=self.f_md, fg=FG).pack(side="left")
-            self._lbl(v, " output", font=self.f_xs, fg=MUTED).pack(side="left", anchor="s", pady=(0, int(1 * S)))
-            fresh = (u.get("input", 0) or 0) + (u.get("cache_create", 0) or 0)
-            self._lbl(col, f"{u.get('messages', 0)} msg · {fmt_k(fresh)} input mới", font=self.f_xs, fg=FAINT).pack(anchor="w")
+            self._lbl(v, fmt_k(local_total(loc.get(key))), font=self.f_big, fg=FG).pack(side="left")
+            self._lbl(v, " tokens", font=self.f_xs, fg=MUTED).pack(side="left", anchor="s", pady=(0, int(3 * S)))
 
     # ---------- resize
     def _build_grip(self):
@@ -1211,6 +1253,12 @@ class PetApp:
         for ch in widget.winfo_children():
             self._bind_click(ch, fn)
 
+    def _bind_events(self, widget, events, fn):
+        for ev in events:
+            widget.bind(ev, fn)
+        for ch in widget.winfo_children():
+            self._bind_events(ch, events, fn)
+
     def _set_hot(self, hot):
         if hot is self._hot:
             return
@@ -1257,7 +1305,7 @@ class PetApp:
             self._sheet = None
             self._lbtn_prev = _lbutton_down()
 
-    def _sheet_row(self, parent, icon, label, hint, on_click, enabled=True, danger=False):
+    def _sheet_row(self, parent, icon, label, hint, on_click, enabled=True, danger=False, confirm=None):
         S = self.S
         row = tk.Frame(parent, bg=SHEET_BG, cursor="hand2" if enabled else "arrow")
         row.pack(fill="x", padx=int(6 * S))
@@ -1270,16 +1318,34 @@ class PetApp:
         ht = tk.Label(row, text=hint, font=self.f_xs, fg=FAINT, bg=SHEET_BG)
         ht.pack(side="right", padx=(0, int(10 * S)))
         parts = (row, ic, lb, ht)
+        armed = []  # thao tác nguy hiểm: lần bấm đầu chỉ hiện câu xác nhận
 
         def paint(bg):
             for p in parts:
                 p.configure(bg=bg)
 
+        def reset():
+            if armed and row.winfo_exists():
+                armed.clear()
+                lb.configure(text=label, fg=fg)
+                ht.configure(text=hint, fg=FAINT)
+                paint(SHEET_BG)
+
+        def click(_e=None):
+            if confirm and not armed:
+                armed.append(1)
+                lb.configure(text=confirm, fg=RED)
+                ht.configure(text="bấm lần nữa", fg=RED)
+                paint(DANGER_BG)
+                self.root.after(4000, reset)
+                return
+            on_click()
+
         if enabled:
             for p in parts:
-                p.bind("<Enter>", lambda e: paint(ROW_HOVER))
-                p.bind("<Leave>", lambda e: paint(SHEET_BG))
-                p.bind("<Button-1>", lambda e: on_click())
+                p.bind("<Enter>", lambda e: paint(DANGER_BG if armed else ROW_HOVER))
+                p.bind("<Leave>", lambda e: paint(DANGER_BG if armed else SHEET_BG))
+                p.bind("<Button-1>", click)
         return row
 
     def _new_sheet(self):
@@ -1521,6 +1587,69 @@ class PetApp:
         if ok:
             self.hide_panel()
 
+    def _session_menu(self, sess: dict, x: int, y: int):
+        """Popup dọn dẹp một session: mở, đóng, xoá session, xoá worktree đã xong."""
+        S = self.S
+        W = int(300 * S)
+        pad = int(14 * S)
+        top, body = self._new_sheet()
+
+        def act(fn):
+            def run():
+                self._close_sheet()
+                fn()
+            return run
+
+        tk.Label(body, text=self._ellipsis(sess.get("name") or "?", self.f_md, W - 2 * pad), font=self.f_md,
+                 fg=FG, bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad, pady=(int(12 * S), int(2 * S)))
+        tk.Label(body, text=self._ellipsis(sess.get("cwd") or "", self.f_xs, W - 2 * pad), font=self.f_xs,
+                 fg=MUTED, bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad)
+        st = sess.get("git")
+        gtxt, gkind = session_ops.state_text(st)
+        if gtxt:
+            tk.Label(body, text=self._git_label(st, gtxt), font=self.f_xs, fg=GREEN if gkind == "done" else YELLOW,
+                     bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad)
+        tk.Frame(body, bg=SHEET_BG, height=int(8 * S)).pack(fill="x")
+        tk.Frame(body, bg=LINE, height=1).pack(fill="x")
+        tk.Frame(body, bg=SHEET_BG, height=int(4 * S)).pack(fill="x")
+
+        # pid của session Claude desktop thuộc app desktop: không tắt từ ngoài
+        desktop = sess.get("entrypoint") == "claude-desktop"
+        no_close = "đóng trong Claude app" if desktop else ""
+        self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
+        self._sheet_row(body, ICON_EXIT, "Đóng session", no_close or "giữ transcript",
+                        act(lambda: self._run_op(sess, "close")), enabled=not desktop,
+                        confirm="Đóng session này?")
+        self._sheet_row(body, ICON_CLEAR, "Xoá session", no_close or "đóng + xoá transcript",
+                        act(lambda: self._run_op(sess, "delete")), enabled=not desktop, danger=True,
+                        confirm="Xoá hẳn? Không resume được")
+        if st and st["linked"]:
+            why = session_ops.worktree_block_reason(sess, (self.snap or {}).get("sessions") or [])
+            self._sheet_row(body, ICON_FOLDER, "Xoá worktree", why or "đóng session + xoá",
+                            act(lambda: self._run_op(sess, "worktree")), enabled=why is None and not desktop,
+                            danger=True, confirm="Đóng session, xoá worktree?")
+        tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
+        self._finish_sheet(top, body, W, x, y)
+
+    def _run_op(self, sess: dict, op: str):
+        """close | delete | worktree. Chạy trên thread nền (git, chờ process thoát); kết quả về qua _ops_done."""
+        name = sess.get("name") or "?"
+        self._flash(f"{name}: đang xử lý…", MUTED, 30)
+
+        def work():
+            try:
+                ok, msg = session_ops.close_session(sess)
+                if ok and op == "delete":
+                    ok, msg = session_ops.delete_transcript(sess, self.cfg["claude_dir"])
+                elif ok and op == "worktree":
+                    ok, msg = session_ops.remove_worktree(sess)
+            except Exception as e:
+                ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
+            log(f"session op {op} {name!r} pid={sess.get('pid')} cwd={sess.get('cwd')!r}: ok={ok} {msg}")
+            self._ops_done.put((name, ok, msg, sess.get("cwd")))
+
+        threading.Thread(target=work, daemon=True, name=f"op-{op}").start()
+
     # ---------- loop
     def request_show(self):
         """Gọi từ thread single-instance khi người dùng mở Wisp lần nữa."""
@@ -1539,6 +1668,14 @@ class PetApp:
             if not self.panel_visible:
                 self.show_panel()
             self._flash("Wisp đang chạy rồi", ACCENT, 3)
+        try:
+            while True:
+                name, ok, msg, cwd = self._ops_done.get_nowait()
+                self._flash(f"{name}: {msg}", GREEN if ok else YELLOW)
+                self.collector._git_cache.pop(cwd, None)
+                self.collector.refresh_now()
+        except queue.Empty:
+            pass
         got = False
         try:
             while True:

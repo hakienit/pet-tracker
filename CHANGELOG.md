@@ -11,13 +11,20 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
   File chạy là `wisp.exe`, gói phát hành `wisp-<version>-win-x64.zip` / `wisp-<version>-macos-universal2.dmg`,
   launcher `wisp.cmd`. State và log chuyển sang `%APPDATA%\Wisp` (macOS: `~/Library/Application Support/Wisp`);
   vị trí bóng, kích thước panel và mục auto-start của bản cũ được chuyển sang tự động.
+- Phần token cuối panel chỉ còn tổng token 5 giờ / 7 ngày (không tách input/output/cache).
+
+### Added
+- Nút ⋯ và chuột phải trên card session để dọn dẹp: **Đóng session** (giữ transcript), **Xoá session**
+  (đóng + xoá transcript), **Xoá worktree** (chỉ khi worktree sạch và branch đã merge/push; worktree của
+  Orca chỉ hiện trạng thái). Thao tác xoá phải bấm hai lần để xác nhận.
+- Card session hiện trạng thái git của thư mục: số thay đổi chưa commit, commit chưa push, hoặc "✓ xong".
 
 ### Removed
-- Popup thao tác session (nút ⋯ và chuột phải trên card): đổi model, đổi effort, compact, clear, thoát,
-  handoff. Click vào session để đưa cửa sổ của nó lên vẫn giữ nguyên. Khoá `keep_default_model` không
-  còn dùng.
+- Popup đổi model, đổi effort, compact, clear, handoff. Click vào session để đưa cửa sổ của nó lên vẫn
+  giữ nguyên. Khoá `keep_default_model` không còn dùng.
 
 ### Fixed
+- Panel không còn chớp và giật khi làm mới: chỉ phần có số liệu đổi được vẽ lại.
 - Thông báo ở footer (kết quả focus, cập nhật, auto-start…) không còn biến mất khi panel tự vẽ lại.
 - Bóng đặt được trên màn hình thứ hai: vị trí được giữ trong vùng dùng được của màn hình chứa bóng
   (trước đây luôn bị kéo về màn hình chính); panel và popup mở trên đúng màn hình đó.

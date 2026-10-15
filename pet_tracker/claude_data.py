@@ -265,6 +265,8 @@ class ClaudeDataStore:
             sessions.append({
                 "session_id": sid,
                 "pid": s["pid"],
+                "proc_start": s.get("procStart"),
+                "transcript": tr.path if tr else None,
                 "name": s.get("name") or (tr.title if tr else None) or sid[:8],
                 "title": tr.title if tr else None,
                 "cwd": (tr.cwd if tr and tr.cwd else None) or s.get("cwd") or "?",
