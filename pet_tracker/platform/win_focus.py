@@ -32,6 +32,8 @@ import time
 
 k32 = ctypes.windll.kernel32
 u32 = ctypes.windll.user32
+k32.GetStdHandle.restype = w.HANDLE
+k32.SetStdHandle.argtypes = (w.DWORD, w.HANDLE)
 
 GA_ROOTOWNER = 3
 GW_OWNER = 4
@@ -137,6 +139,9 @@ def console_window_of(pid: int) -> dict | None:
     """Cửa sổ terminal host console của process pid (Windows Terminal, conhost).
     Dùng AttachConsole nên tạm thời tách console của chính mình (chạy bằng pythonw thì không có)."""
     had_console = bool(k32.GetConsoleWindow())
+    # AttachConsole gán std handle của mình sang console kia; FreeConsole để lại handle chết,
+    # rồi mọi subprocess.run sau đó lỗi "[WinError 6] The handle is invalid". Lưu để trả lại.
+    std = [(n, k32.GetStdHandle(n)) for n in (-10, -11, -12)]  # STD_INPUT/OUTPUT/ERROR_HANDLE
     k32.FreeConsole()
     try:
         if not k32.AttachConsole(int(pid)):
@@ -162,7 +167,10 @@ def console_window_of(pid: int) -> dict | None:
             k32.FreeConsole()
     finally:
         if had_console:
-            k32.AttachConsole(ATTACH_PARENT_PROCESS)
+            k32.AttachConsole(ATTACH_PARENT_PROCESS)  # gắn lại console cha cũng đặt lại std handle
+        else:
+            for n, h in std:
+                k32.SetStdHandle(n & 0xFFFFFFFF, h)
 
 
 def find_window_for_session(sess: dict) -> dict | None:

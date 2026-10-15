@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-15
+
 ### Changed
 - Đổi tên app thành **Wisp**, logo mới (đốm lửa có mắt trong vòng quota), cũng hiện trên header panel.
   File chạy là `wisp.exe`, gói phát hành `wisp-<version>-win-x64.zip` / `wisp-<version>-macos-universal2.dmg`,
@@ -29,6 +31,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
   giữ nguyên. Khoá `keep_default_model` không còn dùng.
 
 ### Fixed
+- Đóng/xoá session không còn lỗi `[WinError 6] The handle is invalid` sau khi bấm vào session để
+  focus cửa sổ: tìm cửa sổ console xong, Wisp trả lại std handle của mình.
 - Panel không còn chớp và giật khi làm mới: chỉ phần có số liệu đổi được vẽ lại; số liệu của card session
   được sửa tại chỗ. Đồng hồ "reset sau…" của quota chạy đúng.
 - Cập nhật một chạm từ chối chạy nếu thư mục cài có file khác ngoài bản build (trước đây nếu `wisp.exe` nằm
@@ -91,5 +95,6 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hakienit/pet-tracker/releases/tag/v0.1.0
