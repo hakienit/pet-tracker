@@ -119,6 +119,58 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
 
 Chạy tay workflow (Actions → release → Run workflow) chỉ build và upload artifact, không tạo release.
 
+## macOS (giai đoạn 1, thử nghiệm)
+
+Bản macOS là "bản xem": theo dõi được, nhưng chưa điều khiển session. Code đã tách lớp nền tảng
+(`pet_tracker/platform/`) và workflow build sẵn `.dmg` universal2 (Apple Silicon + Intel), nhưng **chưa
+chạy trên máy Mac thật**: mọi thứ dưới đây mới kiểm tra bằng giả lập import trên Windows.
+
+| Tính năng | macOS giai đoạn 1 |
+|---|---|
+| Bóng nổi, kéo thả, panel, resize, cuộn | có (bóng dùng PNG alpha thật thay cho color key) |
+| Quota | có, token đọc từ Keychain (`security find-generic-password -s "Claude Code-credentials"`); lần đầu macOS hỏi quyền |
+| Danh sách session, context, model, effort | có (đọc `~/.claude` giống Windows) |
+| Click session để mở | Claude desktop: deep link; CLI trong Terminal.app / iTerm2: chọn đúng tab theo tty qua AppleScript (cần quyền Automation); app khác: `open -a` |
+| Handoff | có, mở Terminal.app chạy `claude --resume <id> --fork-session` |
+| Đổi model, effort, compact, clear, exit | **chưa** (popup chỉ hiện model/effort hiện tại) |
+| Đóng panel khi click ra ngoài | đóng khi app mất focus (macOS không cho đọc chuột toàn cục nếu không có quyền) |
+| Mở khi đăng nhập | có, LaunchAgent `~/Library/LaunchAgents/sg.vinova.pet-tracker.plist` |
+| Chỉ chạy một bản | có (file lock + Unix socket) |
+| Cập nhật | báo có bản mới, nút "Tải về" mở trang release (chưa cập nhật một chạm) |
+
+Cài (bản chưa ký số): mở `pet-tracker-<version>-macos-universal2.dmg`, kéo "Claude PET" vào
+Applications. Lần đầu macOS chặn app không rõ nguồn: vào System Settings → Privacy & Security → "Open
+Anyway" (hoặc chạy `xattr -dr com.apple.quarantine "/Applications/Claude PET.app"`). State và log ở
+`~/Library/Application Support/pet-tracker/`.
+
+Build tay trên Mac (cần Python 3.13 universal2 từ python.org):
+
+```bash
+PYTHON=/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 ./build_macos.sh
+```
+
+Chạy từ source trên Mac:
+
+```bash
+python3 main.py
+```
+
+Cần test trên Mac thật (đánh dấu `TODO(mac)` trong `pet_tracker/platform/mac.py`):
+
+1. Bóng trong suốt thật (`-transparent` + `systemTransparent`), không viền lạ; nổi trên app full-screen
+   và khi đổi Space.
+2. Tên service Keychain của Claude Code (`security dump-keychain | grep -i claude`) và định dạng JSON
+   lưu trong đó; quota hiện đúng.
+3. Định dạng `sessions/<pid>.json` trên macOS (`pid`, `procStart`, `entrypoint`, `hostSessionId`).
+4. Panel đóng khi click ra ngoài (FocusOut) mà không tự đóng khi đang thao tác trong panel.
+5. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
+   nhận deep link `claude://code/continue?session=local_…`.
+6. Handoff mở Terminal.app đúng thư mục và đúng session.
+7. Font, cỡ chữ và icon dự phòng (Unicode) dễ đọc; ảnh có bị mờ trên Retina không.
+8. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
+9. Mở app lần hai chỉ hiện panel của bản đang chạy.
+10. `.dmg` từ GitHub Actions mở được trên cả Apple Silicon và Intel.
+
 ## Cấu hình
 
 Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
@@ -315,22 +367,29 @@ Giới hạn:
 ```
 pet-tracker/
   main.py                  entry point
-  pet-tracker.cmd          launcher ẩn console (pythonw)
-  run.ps1 / build.ps1      chạy có console / build exe + zip portable
-  tools/make_icon.py       vẽ icon (assets/pet-tracker.ico, .png) bằng stdlib
+  pet-tracker.cmd          launcher ẩn console (pythonw, Windows)
+  run.ps1 / build.ps1      Windows: chạy có console / build exe + zip portable
+  build_macos.sh           macOS: build .app universal2 + .dmg
+  tools/make_icon.py       vẽ icon (assets/pet-tracker.ico, .png; --png-size cho .icns) bằng stdlib
   tools/changelog_section.py  trích release notes từ CHANGELOG.md
   CHANGELOG.md             lịch sử thay đổi (Keep a Changelog)
-  .github/workflows/release.yml  build + tạo GitHub Release draft khi push tag v*
+  .github/workflows/release.yml  build Windows + macOS, tạo GitHub Release draft khi push tag v*
   config.example.json
   pet_tracker/
-    config.py              defaults, config.json, state.json (vị trí bóng)
+    config.py              defaults, config.json, state.json (vị trí bóng), thư mục state theo OS
     claude_data.py         sessions/*.json, parser transcript .jsonl, context, ước tính local
     quota.py               gọi endpoint usage OAuth, chuẩn hoá cửa sổ limit
-    ui.py                  bubble + panel (tkinter), thread collector
-    winfocus.py            map session → cửa sổ (AttachConsole, parent chain, deep link) + SetForegroundWindow
-    actions.py             gõ slash command vào console session CLI, handoff (--resume --fork-session), catalog model
-    render.py              vẽ khử răng cưa (bóng, thanh progress, pill) thành PhotoImage
-    single.py              chỉ cho chạy một bản (named mutex + event)
-    autostart.py           bật/tắt chạy cùng Windows (HKCU Run)
-    updater.py             kiểm tra GitHub Releases, tải + kiểm SHA256, script thay thư mục cài
+    ui.py                  bubble + panel (tkinter), thread collector, popup, updater UI
+    actions.py             slash command qua platform, handoff (--resume --fork-session), catalog model
+    render.py              vẽ khử răng cưa (bóng, thanh progress, pill); PNG alpha cho macOS
+    updater.py             kiểm tra GitHub Releases, tải + kiểm SHA256, gọi platform để thay bản cài
+    platform/
+      __init__.py          chọn win.py hoặc mac.py, mô tả interface chung
+      win.py               Windows: DPI, vùng màn hình, chuột, DWM, credentials file, autostart, cập nhật
+      win_focus.py         map session → cửa sổ (AttachConsole, parent chain, deep link) + SetForegroundWindow
+      win_console.py       gõ phím vào console session CLI (WriteConsoleInputW)
+      win_single.py        chỉ chạy một bản (named mutex + event)
+      win_autostart.py     chạy cùng Windows (HKCU Run)
+      win_update.py        script PowerShell thay thư mục cài
+      mac.py               macOS giai đoạn 1: Keychain, AppleScript, LaunchAgent, file lock
 ```

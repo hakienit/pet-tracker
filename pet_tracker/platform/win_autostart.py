@@ -16,7 +16,7 @@ def launch_command() -> str:
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")
     interp = pyw if pyw.exists() else exe
-    main = Path(__file__).resolve().parent.parent / "main.py"
+    main = Path(__file__).resolve().parents[2] / "main.py"
     return f'"{interp}" "{main}"'
 
 

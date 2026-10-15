@@ -19,7 +19,6 @@ trên nhánh chính (đó chính là toàn bộ prompt gửi lên API ở lượ
 """
 from __future__ import annotations
 
-import ctypes
 import glob
 import json
 import os
@@ -27,8 +26,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-STILL_ACTIVE = 259
-PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+from . import platform as plat
+
 
 _TITLE_MARKERS = (b'"customTitle"', b'"aiTitle"', b'"agentName"')
 
@@ -43,43 +42,9 @@ def _parse_ts(s):
 
 
 # ---------------------------------------------------------------- process check
-class _FILETIME(ctypes.Structure):
-    _fields_ = [("dwLowDateTime", ctypes.c_uint32), ("dwHighDateTime", ctypes.c_uint32)]
-
-    def value(self) -> int:
-        return (self.dwHighDateTime << 32) | self.dwLowDateTime
-
-
 def process_alive(pid: int, proc_start=None) -> bool:
-    """True nếu pid còn chạy. Nếu có proc_start (FILETIME string từ sessions/*.json)
-    thì so khớp thời điểm tạo process để tránh pid bị tái sử dụng."""
-    if os.name != "nt":
-        try:
-            os.kill(pid, 0)
-            return True
-        except Exception:
-            return False
-    k32 = ctypes.windll.kernel32
-    h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-    if not h:
-        return False
-    try:
-        code = ctypes.c_ulong()
-        if not k32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != STILL_ACTIVE:
-            return False
-        if proc_start:
-            ct, et, kt, ut = _FILETIME(), _FILETIME(), _FILETIME(), _FILETIME()
-            if k32.GetProcessTimes(h, ctypes.byref(ct), ctypes.byref(et), ctypes.byref(kt), ctypes.byref(ut)):
-                try:
-                    expected = int(proc_start)
-                    # lệch quá 10 giây (1e8 ticks 100ns) -> pid đã bị process khác dùng lại
-                    if abs(ct.value() - expected) > 100_000_000:
-                        return False
-                except ValueError:
-                    pass
-        return True
-    finally:
-        k32.CloseHandle(h)
+    """True nếu pid còn chạy (Windows: so cả thời điểm tạo process với procStart, xem platform/win.py)."""
+    return plat.process_alive(pid, proc_start)
 
 
 # ---------------------------------------------------------------- transcript

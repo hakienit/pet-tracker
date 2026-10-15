@@ -10,11 +10,13 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import font as tkfont
 
-from . import __version__, actions, autostart, render, updater
+import base64
+
+from . import __version__, actions, render, updater
+from . import platform as plat
 from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
 from .quota import fetch_api_usage, fmt_reset
-from .winfocus import focus_session
 
 LOG_FILE = STATE_DIR / "pet-tracker.log"
 
@@ -32,7 +34,8 @@ def log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------- palette
-TRANSPARENT = "#010203"   # màu key cho -transparentcolor (vùng này trong suốt thật)
+# Windows: màu key cho -transparentcolor. macOS: None, bóng dùng PNG có alpha thật.
+TRANSPARENT = plat.transparent_key() or "#010203"
 BG = "#16171c"
 SURFACE = "#1f2027"
 LINE = "#2a2b34"
@@ -73,6 +76,12 @@ DANGER_BG = "#3a2326"
 CHIP = "#2a2b34"
 CHIP_HOVER = "#363743"
 CHIP_OFF = "#212228"
+
+FALLBACK_ICONS = {
+    "ICON_REFRESH": "\u21bb", "ICON_CLOSE": "\u2715", "ICON_OPEN": "\u2197", "ICON_MORE": "\u22ef",
+    "ICON_HANDOFF": "\u21c4", "ICON_FOLDER": "\u25a4", "ICON_COMPACT": "\u2922", "ICON_CLEAR": "\u232b",
+    "ICON_EXIT": "\u23fb", "ICON_UPDATE": "\u2b07", "ICON_CHECK": "\u2611", "ICON_STARTUP_OFF": "\u2610",
+}
 
 ENTRYPOINTS = {"cli": "CLI", "claude-desktop": "Desktop", "sdk-ts": "SDK", "sdk-py": "SDK", "vscode": "VS Code"}
 WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
@@ -133,28 +142,21 @@ def model_color(model) -> str:
     return MODEL_COLORS.get(fam, BLUE)
 
 
+_ROOT = None  # tk root, cần cho các hàm nền tảng dùng Tk (macOS)
+
+
 def _work_area() -> tuple:
-    """(left, top, right, bottom) vùng màn hình trừ taskbar (pixel vật lý)."""
-    try:
-        class RECT(ctypes.Structure):
-            _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
-        r = RECT()
-        ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0)
-        return r.l, r.t, r.r, r.b
-    except Exception:
-        return 0, 0, 1920, 1080
+    """(left, top, right, bottom) vùng màn hình dùng được (pixel vật lý trên Windows)."""
+    return plat.work_area(_ROOT)
 
 
 def _cursor_pos() -> tuple:
-    class POINT(ctypes.Structure):
-        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-    p = POINT()
-    ctypes.windll.user32.GetCursorPos(ctypes.byref(p))
-    return p.x, p.y
+    return plat.cursor_pos(_ROOT)
 
 
 def _lbutton_down() -> bool:
-    return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
+    """Chuột trái đang nhấn (toàn hệ thống). Nền tảng không đọc được thì luôn False."""
+    return plat.mouse_down() if plat.GLOBAL_MOUSE else False
 
 
 # ---------------------------------------------------------------- collector thread
@@ -208,23 +210,18 @@ class Collector(threading.Thread):
 # ---------------------------------------------------------------- app
 class PetApp:
     def __init__(self):
-        try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        except Exception:
-            pass
+        plat.init_process()
         self.cfg = load_config()
         self.state = load_state()
         self.q: queue.Queue = queue.Queue()
         self.snap = None
         self.sig = None
 
+        global _ROOT
         self.root = tk.Tk()
         self.root.withdraw()
-        try:
-            dpi = ctypes.windll.user32.GetDpiForSystem()
-        except Exception:
-            dpi = 96
-        self.S = dpi / 96.0
+        _ROOT = self.root
+        self.S = plat.dpi_scale(self.root)
         self._init_fonts()
 
         self._img_cache: dict = {}
@@ -267,29 +264,39 @@ class PetApp:
     def _init_fonts(self):
         fams = set(tkfont.families(self.root))
 
-        def pick(*names):
+        def pick(*names, default=None):
             for n in names:
                 if n in fams:
                     return n
-            return "Segoe UI"
+            return default
 
-        text = pick("Segoe UI Variable Text", "Segoe UI")
-        semi = pick("Segoe UI Variable Text Semibold", "Segoe UI Semibold")
-        disp = pick("Segoe UI Variable Display Semib", "Segoe UI Variable Display Semibold", "Segoe UI Semibold")
+        # Windows: Segoe UI Variable; macOS: font hệ thống (SF Pro qua .AppleSystemUIFont / Helvetica Neue)
+        text = pick("Segoe UI Variable Text", "Segoe UI", ".AppleSystemUIFont", "SF Pro Text", "Helvetica Neue",
+                    default="TkDefaultFont")
+        semi = pick("Segoe UI Variable Text Semibold", "Segoe UI Semibold", ".AppleSystemUIFont", "SF Pro Text",
+                    "Helvetica Neue", default=text)
+        disp = pick("Segoe UI Variable Display Semib", "Segoe UI Variable Display Semibold", "Segoe UI Semibold",
+                    ".AppleSystemUIFont", "SF Pro Display", "Helvetica Neue", default=semi)
         icons = pick("Segoe Fluent Icons", "Segoe MDL2 Assets")
+        if icons is None:  # không có font icon: dùng ký tự Unicode thường
+            globals().update(FALLBACK_ICONS)
+            icons = text
+        bold = "bold" if not semi.lower().endswith(("semibold", "semib")) and "Segoe" not in semi else "normal"
+        # macOS tính size theo point, chữ trông nhỏ hơn Windows ở cùng size -> cộng thêm
+        bump = 3 if plat.IS_MAC else 0
         F = tkfont.Font
-        self.f_xs = F(family=text, size=8)
-        self.f_xsb = F(family=semi, size=8)
-        self.f_sm = F(family=text, size=9)
-        self.f_smb = F(family=semi, size=9)
-        self.f_md = F(family=semi, size=10)
-        self.f_title = F(family=disp, size=11)
-        self.f_big = F(family=disp, size=15)
-        self.f_bub = F(family=disp, size=13)
-        self.f_bub_sm = F(family=text, size=7)
-        self.f_badge = F(family=semi, size=8)
-        self.f_icon = F(family=icons, size=10)
-        self.f_icon_sm = F(family=icons, size=8)
+        self.f_xs = F(family=text, size=8 + bump)
+        self.f_xsb = F(family=semi, size=8 + bump, weight=bold)
+        self.f_sm = F(family=text, size=9 + bump)
+        self.f_smb = F(family=semi, size=9 + bump, weight=bold)
+        self.f_md = F(family=semi, size=10 + bump, weight=bold)
+        self.f_title = F(family=disp, size=11 + bump, weight=bold)
+        self.f_big = F(family=disp, size=15 + bump, weight=bold)
+        self.f_bub = F(family=disp, size=13 + bump, weight=bold)
+        self.f_bub_sm = F(family=text, size=7 + bump)
+        self.f_badge = F(family=semi, size=8 + bump, weight=bold)
+        self.f_icon = F(family=icons, size=10 + bump)
+        self.f_icon_sm = F(family=icons, size=8 + bump)
 
     # ---------- image cache
     def _photo(self, key, rows_fn):
@@ -309,13 +316,14 @@ class PetApp:
         b = tk.Toplevel(self.root)
         b.overrideredirect(True)
         b.attributes("-topmost", True)
-        b.attributes("-transparentcolor", TRANSPARENT)
-        b.configure(bg=TRANSPARENT)
-        self.canvas = tk.Canvas(b, width=self.size, height=self.size, bg=TRANSPARENT,
+        plat.make_transparent(b)
+        self._alpha_bubble = plat.transparent_key() is None  # macOS: PNG alpha thật
+        self.canvas = tk.Canvas(b, width=self.size, height=self.size,
+                                bg="systemTransparent" if self._alpha_bubble else TRANSPARENT,
                                 highlightthickness=0, bd=0, cursor="hand2")
         self.canvas.pack()
         self._bub_img = tk.PhotoImage(width=self.size, height=self.size)
-        self.canvas.create_image(0, 0, anchor="nw", image=self._bub_img)
+        self._bub_item = self.canvas.create_image(0, 0, anchor="nw", image=self._bub_img)
         self.bubble = b
         l, t, r, btm = _work_area()
         x = self.state.get("x", r - self.size - int(24 * self.S))
@@ -342,7 +350,7 @@ class PetApp:
 
     def _open_claude_dir(self):
         try:
-            os.startfile(self.cfg["claude_dir"])
+            plat.open_path(self.cfg["claude_dir"])
         except Exception:
             pass
 
@@ -398,9 +406,15 @@ class PetApp:
         key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble, upd)
         if key != self._bub_key:
             self._bub_key = key
-            rows = render.bubble_rows(s, S, pct, prog, ACCENT if busy else None, warn_col,
-                                      self._hover_bubble, BUBBLE_PALETTE, update=upd)
-            self._bub_img.put(render.to_photo_data(rows))
+            if self._alpha_bubble:
+                png = render.bubble_png(s, S, pct, prog, ACCENT if busy else None, warn_col,
+                                        self._hover_bubble, BUBBLE_PALETTE, update=upd)
+                self._bub_img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
+                self.canvas.itemconfigure(self._bub_item, image=self._bub_img)
+            else:
+                rows = render.bubble_rows(s, S, pct, prog, ACCENT if busy else None, warn_col,
+                                          self._hover_bubble, BUBBLE_PALETTE, update=upd)
+                self._bub_img.put(render.to_photo_data(rows))
         c.delete("txt")
         cx = cy = s / 2
         n = len(sessions)
@@ -463,19 +477,8 @@ class PetApp:
         p.withdraw()
 
     def _dwm_round(self, win) -> bool:
-        """Windows 11: bo góc + viền mảnh (DWMWA_WINDOW_CORNER_PREFERENCE / BORDER_COLOR)."""
-        try:
-            win.update_idletasks()
-            hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
-            dwm = ctypes.windll.dwmapi
-            pref = ctypes.c_int(2)  # DWMWCP_ROUND
-            hr = dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), 4)
-            r, g, b = render.hex2rgb(BORDER)
-            col = ctypes.c_uint(r | (g << 8) | (b << 16))
-            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(col), 4)
-            return hr == 0
-        except Exception:
-            return False
+        """Bo góc + viền mảnh nếu nền tảng hỗ trợ (Windows 11). Trả False để vẽ viền 1px thủ công."""
+        return plat.round_corners(win, BORDER)
 
     def _apply_dwm(self):
         if self._dwm_done:
@@ -486,6 +489,31 @@ class PetApp:
             self.panel.configure(bg=BORDER)
             self.body.pack_configure(padx=1, pady=1)
         log(f"panel dwm rounded={self._rounded}")
+
+    def _focus_for_dismiss(self, win):
+        """Nền tảng không đọc được chuột toàn cục (macOS): đóng panel/popup khi app mất focus."""
+        try:
+            win.focus_force()
+        except Exception:
+            pass
+        if getattr(win, "_dismiss_bound", False):
+            return
+        win._dismiss_bound = True
+
+        def check():
+            try:
+                focused = self.root.focus_get()
+            except Exception:
+                focused = None
+            if focused is not None or self._modal or self._resize:
+                return
+            if self._sheet is not None:
+                self._close_sheet()
+            elif self.panel_visible:
+                log("focus lost -> hide")
+                self.hide_panel()
+
+        win.bind("<FocusOut>", lambda e: self.root.after(150, check), add="+")
 
     def toggle_panel(self):
         if self.panel_visible:
@@ -504,6 +532,8 @@ class PetApp:
         self.panel_visible = True
         self._place_panel()  # lần 2 sau khi map, kích thước thật đã có
         self._fade(1)
+        if not plat.GLOBAL_MOUSE:
+            self._focus_for_dismiss(self.panel)
         log(f"panel shown at {self.panel.winfo_x()},{self.panel.winfo_y()} size {self.panel.winfo_width()}x{self.panel.winfo_height()}")
         self._lbtn_prev = _lbutton_down()
 
@@ -1231,6 +1261,8 @@ class PetApp:
             top.geometry(f"{W + 2}x{h + 2}+{sx}+{sy}")
         top.bind("<Escape>", lambda e: self._close_sheet())
         top.focus_force()
+        if not plat.GLOBAL_MOUSE:
+            self._focus_for_dismiss(top)
         self._lbtn_prev = _lbutton_down()
 
         def fade(a=0.0):
@@ -1244,13 +1276,13 @@ class PetApp:
 
     def _toggle_autostart(self):
         try:
-            if autostart.is_enabled():
-                autostart.disable()
-                msg = "Đã tắt chạy cùng Windows"
+            if plat.autostart_is_enabled():
+                plat.autostart_disable()
+                msg = "Đã tắt tự khởi động"
             else:
-                autostart.enable()
-                msg = "Đã bật chạy cùng Windows"
-            log(f"{msg}: {autostart.launch_command()}")
+                plat.autostart_enable()
+                msg = "Đã bật tự khởi động"
+            log(f"{msg}: {plat.autostart_command()}")
             self._flash(msg, GREEN, 4)
         except Exception as e:
             log(f"autostart toggle failed: {e}")
@@ -1305,7 +1337,7 @@ class PetApp:
 
     def _open_url(self, url):
         try:
-            os.startfile(url)
+            plat.open_path(url)
         except Exception as e:
             log(f"open url failed: {e}")
 
@@ -1344,7 +1376,7 @@ class PetApp:
         if self._update_busy:
             self._lbl(r1, self._update_busy, font=self.f_xs, fg=MUTED).pack(side="right")
         else:
-            label = "Cập nhật" if updater.is_frozen() else "Tải về"
+            label = "Cập nhật" if updater.can_self_update() else "Tải về"
             self._button(r1, label, BLUE, self._apply_update).pack(side="right")
         r2 = tk.Frame(inner, bg=SURFACE)
         r2.pack(fill="x", pady=(int(4 * S), 0))
@@ -1364,9 +1396,9 @@ class PetApp:
         u = self._update or {}
         if not u.get("available") or self._update_busy:
             return
-        if not updater.is_frozen():  # chạy từ source: không tự thay code, chỉ mở trang release
+        if not updater.can_self_update():  # source, hoặc nền tảng chưa hỗ trợ: chỉ mở trang release
             self._open_url(u.get("html_url") or updater.RELEASES_PAGE)
-            self._flash("Đang chạy từ source: đã mở trang release để tải bản mới", MUTED, 6)
+            self._flash("Đã mở trang release để tải bản mới", MUTED, 6)
             return
         u.pop("apply_error", None)
         self._set_update_busy("Đang tải…")
@@ -1420,8 +1452,9 @@ class PetApp:
         self._sheet_row(body, ICON_UPDATE, "Kiểm tra cập nhật",
                         f"có {u['version']}" if u.get("available") else f"v{__version__}",
                         act(self.check_update_now))
-        on = autostart.is_enabled()
-        self._sheet_row(body, ICON_CHECK if on else ICON_STARTUP_OFF, "Chạy cùng Windows", "đang bật" if on else "đang tắt",
+        on = plat.autostart_is_enabled()
+        self._sheet_row(body, ICON_CHECK if on else ICON_STARTUP_OFF,
+                        "Chạy cùng Windows" if plat.IS_WINDOWS else "Mở khi đăng nhập", "đang bật" if on else "đang tắt",
                         act(self._toggle_autostart))
         tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=int(14 * S), pady=int(4 * S))
         self._sheet_row(body, ICON_EXIT, "Thoát Claude PET", "", act(self.quit), danger=True)
@@ -1459,45 +1492,69 @@ class PetApp:
                  bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad, pady=(0, int(10 * S)))
         tk.Frame(body, bg=LINE, height=1).pack(fill="x")
 
-        # model
+        # Ba trường hợp:
+        #  - điều khiển được (CLI đang rảnh, nền tảng hỗ trợ): chip model/effort + lệnh
+        #  - CLI đang bận: chip hiện nhưng khoá, có dòng giải thích
+        #  - không điều khiển được từ ngoài (Claude desktop, hoặc nền tảng chưa hỗ trợ): không vẽ chip mờ
+        #    gây hiểu nhầm; chỉ hiện model/effort hiện tại và nút mở session để đổi ngay trong app
+        controllable = actions.is_cli(sess) and plat.CAN_TYPE_INTO_SESSION
         cur_model = sess.get("model") or ""
         efforts = actions.DEFAULT_EFFORTS
         for mid, _n, effs in self._catalog:
             if cur_model.startswith(mid):
                 efforts = effs
-        cap = tk.Frame(body, bg=SHEET_BG)
-        cap.pack(fill="x", padx=pad, pady=(int(12 * S), int(6 * S)))
-        tk.Label(cap, text="MODEL", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
-        if not can_cmd:
-            tk.Label(cap, text=why, font=self.f_xs, fg=FAINT, bg=SHEET_BG).pack(side="right")
-        grid = tk.Frame(body, bg=SHEET_BG)
-        grid.pack(fill="x", padx=pad)
-        gap = int(6 * S)
-        cw2 = (inner - gap) // 2
-        for i, (mid, name, _effs) in enumerate(self._catalog):
-            sel = model_color(mid) if cur_model.startswith(mid) else None
-            ch = self._chip(grid, name, cw2, selected_col=sel, enabled=can_cmd,
-                            on_click=act(lambda mid=mid: self._run_slash(sess, f"/model {mid}")))
-            ch.grid(row=i // 2, column=i % 2, padx=(0 if i % 2 == 0 else gap, 0), pady=(0, gap), sticky="w")
 
-        # effort
-        cap2 = tk.Frame(body, bg=SHEET_BG)
-        cap2.pack(fill="x", padx=pad, pady=(int(8 * S), int(6 * S)))
-        tk.Label(cap2, text="EFFORT", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
-        row = tk.Frame(body, bg=SHEET_BG)
-        row.pack(fill="x", padx=pad)
-        n = max(1, len(efforts))
-        egap = int(4 * S)
-        ew = (inner - egap * (n - 1)) // n
-        for i, e in enumerate(efforts):
-            sel = ACCENT if (sess.get("effort") == e) else None
-            ch = self._chip(row, e, ew, selected_col=sel, enabled=can_cmd, font=self.f_xs,
-                            on_click=act(lambda e=e: self._run_slash(sess, f"/effort {e}")))
-            ch.pack(side="left", padx=(0 if i == 0 else egap, 0))
-        if not actions.is_cli(sess):
-            tk.Label(body, text="Session trong Claude desktop: đổi model, effort và các lệnh khác ngay trong app.",
-                     font=self.f_xs, fg=FAINT, bg=SHEET_BG, wraplength=inner, justify="left", anchor="w").pack(
-                fill="x", padx=pad, pady=(int(8 * S), 0))
+        if controllable:
+            cap = tk.Frame(body, bg=SHEET_BG)
+            cap.pack(fill="x", padx=pad, pady=(int(12 * S), int(6 * S)))
+            tk.Label(cap, text="MODEL", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
+            grid = tk.Frame(body, bg=SHEET_BG)
+            grid.pack(fill="x", padx=pad)
+            gap = int(6 * S)
+            cw2 = (inner - gap) // 2
+            for i, (mid, name, _effs) in enumerate(self._catalog):
+                sel = model_color(mid) if cur_model.startswith(mid) else None
+                ch = self._chip(grid, name, cw2, selected_col=sel, enabled=can_cmd,
+                                on_click=act(lambda mid=mid: self._run_slash(sess, f"/model {mid}")))
+                ch.grid(row=i // 2, column=i % 2, padx=(0 if i % 2 == 0 else gap, 0), pady=(0, gap), sticky="w")
+
+            cap2 = tk.Frame(body, bg=SHEET_BG)
+            cap2.pack(fill="x", padx=pad, pady=(int(8 * S), int(6 * S)))
+            tk.Label(cap2, text="EFFORT", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
+            row = tk.Frame(body, bg=SHEET_BG)
+            row.pack(fill="x", padx=pad)
+            n = max(1, len(efforts))
+            egap = int(4 * S)
+            ew = (inner - egap * (n - 1)) // n
+            for i, e in enumerate(efforts):
+                sel = ACCENT if (sess.get("effort") == e) else None
+                ch = self._chip(row, e, ew, selected_col=sel, enabled=can_cmd, font=self.f_xs,
+                                on_click=act(lambda e=e: self._run_slash(sess, f"/effort {e}")))
+                ch.pack(side="left", padx=(0 if i == 0 else egap, 0))
+            if not can_cmd:
+                tk.Label(body, text="Session đang chạy một lượt. Đổi model, effort và các lệnh sẽ mở lại khi "
+                                    "session rảnh.", font=self.f_xs, fg=YELLOW, bg=SHEET_BG, wraplength=inner,
+                         justify="left", anchor="w").pack(fill="x", padx=pad, pady=(int(8 * S), 0))
+        else:
+            info = tk.Frame(body, bg=SHEET_BG)
+            info.pack(fill="x", padx=pad, pady=(int(12 * S), 0))
+            mrow = tk.Frame(info, bg=SHEET_BG)
+            mrow.pack(fill="x")
+            if short_model(cur_model) != "?":
+                self._pill(mrow, short_model(cur_model), model_color(cur_model)).pack(side="left")
+            if sess.get("effort"):
+                self._pill(mrow, sess["effort"], "#33343e", fg=FG2, font=self.f_xs).pack(
+                    side="left", padx=(int(6 * S), 0))
+            if not actions.is_cli(sess):
+                msg = ("Session này chạy trong Claude desktop. App không cho chương trình bên ngoài đổi model, "
+                       "effort hay chạy lệnh, nên hãy đổi ngay trong app.")
+            else:
+                msg = (f"Gửi lệnh vào session CLI chưa hỗ trợ trên {plat.NAME}. "
+                       "Mở cửa sổ session để đổi trực tiếp.")
+            tk.Label(info, text=msg, font=self.f_xs, fg=MUTED, bg=SHEET_BG, wraplength=inner, justify="left",
+                     anchor="w").pack(fill="x", pady=(int(8 * S), int(8 * S)))
+            self._button(info, "Mở trong Claude app" if not actions.is_cli(sess) else "Mở cửa sổ session",
+                         ACCENT, act(lambda: self._focus_session(sess))).pack(anchor="w")
 
         tk.Frame(body, bg=SHEET_BG, height=int(10 * S)).pack(fill="x")
         tk.Frame(body, bg=LINE, height=1).pack(fill="x")
@@ -1505,18 +1562,21 @@ class PetApp:
 
         # thao tác
         can_fork = bool(sess.get("has_transcript")) and sess.get("totals", {}).get("messages", 0) > 0
-        self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
+        if controllable:
+            self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
         self._sheet_row(body, ICON_HANDOFF, "Handoff sang terminal mới", "fork" if can_fork else "chưa có hội thoại",
                         act(lambda: self._handoff(sess)), enabled=can_fork)
-        self._sheet_row(body, ICON_COMPACT, "Compact context", "/compact" if can_cmd else why,
-                        act(lambda: self._run_slash(sess, "/compact")), enabled=can_cmd)
-        self._sheet_row(body, ICON_CLEAR, "Clear context", "/clear" if can_cmd else why,
-                        act(lambda: self._run_slash(sess, "/clear")), enabled=can_cmd,
-                        confirm="Xoá context? (vẫn /resume lại được)")
-        tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=pad, pady=int(4 * S))
-        self._sheet_row(body, ICON_EXIT, "Thoát session", "/exit" if can_cmd else why,
-                        act(lambda: self._run_slash(sess, "/exit")), enabled=can_cmd, danger=True,
-                        confirm="Thoát session này?")
+        if controllable:
+            busy_hint = "đợi rảnh"
+            self._sheet_row(body, ICON_COMPACT, "Compact context", "/compact" if can_cmd else busy_hint,
+                            act(lambda: self._run_slash(sess, "/compact")), enabled=can_cmd)
+            self._sheet_row(body, ICON_CLEAR, "Clear context", "/clear" if can_cmd else busy_hint,
+                            act(lambda: self._run_slash(sess, "/clear")), enabled=can_cmd,
+                            confirm="Xoá context? (vẫn /resume lại được)")
+            tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=pad, pady=int(4 * S))
+            self._sheet_row(body, ICON_EXIT, "Thoát session", "/exit" if can_cmd else busy_hint,
+                            act(lambda: self._run_slash(sess, "/exit")), enabled=can_cmd, danger=True,
+                            confirm="Thoát session này?")
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
 
         self._finish_sheet(top, body, W, x, y)
@@ -1542,7 +1602,7 @@ class PetApp:
 
     def _focus_session(self, sess: dict):
         try:
-            ok, msg = focus_session(sess)
+            ok, msg = plat.focus_session(sess)
         except Exception as e:
             ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
         log(f"focus session {sess.get('name')!r} pid={sess.get('pid')}: ok={ok} {msg}")
@@ -1627,7 +1687,7 @@ def run(instance=None):
     if instance is not None:
         instance.listen(app.request_show)
     try:
-        autostart.refresh_if_enabled()
+        plat.autostart_refresh()
     except Exception as e:
         log(f"autostart refresh failed: {e}")
     app.mainloop()

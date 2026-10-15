@@ -2,7 +2,7 @@
 
 Nguồn chính (không chính thức, nhưng chính là endpoint lệnh /usage của Claude Code gọi):
     GET https://api.anthropic.com/api/oauth/usage
-    Authorization: Bearer <accessToken trong ~/.claude/.credentials.json>
+    Authorization: Bearer <accessToken: Windows ~/.claude/.credentials.json, macOS Keychain>
     anthropic-beta: oauth-2025-04-20
 Trả về (quan sát 2026-10-15):
     five_hour: {utilization: 8.0, resets_at: ISO}
@@ -24,19 +24,19 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import platform as plat
+
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 
 
-def _read_token(claude_dir: str) -> tuple[str | None, str | None]:
-    p = Path(claude_dir) / ".credentials.json"
+def _read_token(claude_dir: str):
     try:
-        d = json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return None, "Không đọc được .credentials.json (chưa đăng nhập Claude Code?)"
-    o = d.get("claudeAiOauth") or {}
+        o = plat.read_credentials(claude_dir)
+    except Exception as e:
+        return None, str(e)
     tok = o.get("accessToken")
     if not tok:
-        return None, "Không có OAuth token trong .credentials.json"
+        return None, "Không có OAuth token của Claude Code (chưa đăng nhập?)"
     exp = o.get("expiresAt")
     if exp and exp / 1000.0 < time.time():
         return None, "Token hết hạn - mở Claude Code để nó tự refresh"

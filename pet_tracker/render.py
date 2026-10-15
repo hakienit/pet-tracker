@@ -7,6 +7,8 @@ trộn màu. Kích thước nhỏ (bóng ~96x96, thanh ~520x9) nên chỉ tốn 
 from __future__ import annotations
 
 import math
+import struct
+import zlib
 
 
 def hex2rgb(h: str) -> tuple:
@@ -59,9 +61,10 @@ def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str) -> l
 
 
 def bubble_rows(s: int, S: float, pct, prog: str, badge: str | None, warn: str | None,
-                hover: bool, P: dict, update: str | None = None) -> list:
+                hover: bool, P: dict, update: str | None = None, rgba: bool = False) -> list:
     """Bóng tròn: đĩa gradient + vòng quota (bo đầu) + viền + badge busy + chấm cảnh báo context.
-    Pixel ngoài hình = P['key'] (màu trong suốt của cửa sổ)."""
+    Pixel ngoài hình = P['key'] (màu trong suốt của cửa sổ). rgba=True: trả từng hàng là list
+    (r, g, b, a) với alpha thật (dùng cho macOS, nơi cửa sổ trong suốt theo alpha thay vì color key)."""
     cx = cy = s / 2.0
     R = s / 2.0 - 0.75
     ring_w = 5.0 * S
@@ -140,6 +143,12 @@ def bubble_rows(s: int, S: float, pct, prog: str, badge: str | None, warn: str |
                     if af > 0:
                         cr, cg, cb = fill[0] * af + cr * (1 - af), fill[1] * af + cg * (1 - af), fill[2] * af + cb * (1 - af)
                         A = af + A * (1 - af)
+            if rgba:
+                if A <= 0:
+                    row.append((0, 0, 0, 0))
+                else:
+                    row.append((int(cr / A + 0.5), int(cg / A + 0.5), int(cb / A + 0.5), int(255 * A + 0.5)))
+                continue
             if A < 0.4:
                 row.append(key)
                 continue
@@ -149,3 +158,25 @@ def bubble_rows(s: int, S: float, pct, prog: str, badge: str | None, warn: str |
             row.append(rgb2hex(col))
         rows.append(row)
     return rows
+
+
+def png_bytes(rows) -> bytes:
+    """Mã hoá ảnh RGBA (list hàng, mỗi pixel (r, g, b, a)) thành PNG, chỉ dùng zlib."""
+    h = len(rows)
+    w = len(rows[0]) if h else 0
+    raw = bytearray()
+    for row in rows:
+        raw.append(0)
+        for r, g, b, a in row:
+            raw += bytes((min(255, max(0, r)), min(255, max(0, g)), min(255, max(0, b)), min(255, max(0, a))))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 6)) + chunk(b"IEND", b""))
+
+
+def bubble_png(s: int, S: float, pct, prog: str, badge, warn, hover: bool, P: dict, update=None) -> bytes:
+    """Bóng dạng PNG có alpha thật (macOS)."""
+    return png_bytes(bubble_rows(s, S, pct, prog, badge, warn, hover, P, update=update, rgba=True))

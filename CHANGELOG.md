@@ -6,6 +6,16 @@ Mọi thay đổi đáng chú ý của Claude PET (pet-tracker) được ghi ở
 
 ## [Unreleased]
 
+### Added
+- macOS giai đoạn 1 (thử nghiệm, chưa test trên Mac thật): bóng trong suốt alpha thật, panel, quota
+  (token từ Keychain), danh sách session, focus Terminal/iTerm2 theo tty, handoff qua Terminal.app,
+  mở khi đăng nhập (LaunchAgent), chỉ chạy một bản. Workflow build thêm `.dmg` universal2.
+
+### Changed
+- Tách lớp nền tảng `pet_tracker/platform/` (Windows / macOS); code dùng chung không còn gọi Win32 trực tiếp.
+- Popup session trong Claude desktop không còn hiện chip model/effort mờ không bấm được: hiện model/effort
+  hiện tại, giải thích vì sao không đổi được từ ngoài, và nút "Mở trong Claude app".
+
 ## [0.1.0] - 2026-10-15
 
 ### Added

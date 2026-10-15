@@ -3,7 +3,7 @@
 - Kiểm tra: GET https://api.github.com/repos/hakienit/pet-tracker/releases/latest. Endpoint này của
   GitHub đã bỏ qua release draft và pre-release; widget vẫn kiểm tra lại hai cờ đó cho chắc.
   So tag (vd. "v0.2.0") với __version__.
-- Cài (chỉ khi chạy từ exe đã build bằng PyInstaller):
+- Cài (chỉ khi chạy từ exe đã build bằng PyInstaller, hiện chỉ Windows; macOS mở trang release):
   1. tải asset `pet-tracker-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release vào thư mục tạm;
   2. so SHA256 của zip với dòng tương ứng trong SHA256SUMS.txt, sai thì dừng;
   3. giải nén vào thư mục tạm, kiểm tra có `pet-tracker.exe`;
@@ -29,6 +29,7 @@ import zipfile
 from pathlib import Path
 
 from . import __version__
+from . import platform as plat
 
 REPO = "hakienit/pet-tracker"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -57,15 +58,21 @@ def is_newer(remote: str, local: str = __version__) -> bool:
 
 
 def asset_name(version: str) -> str:
-    return f"pet-tracker-{version.lstrip('vV')}-win-x64.zip"
+    """Tên file của bản build cho hệ điều hành đang chạy (Windows: ...-win-x64.zip)."""
+    return plat.update_asset_name(version)
 
 
 def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def can_self_update() -> bool:
+    """Cập nhật một chạm chỉ khi chạy từ bản build và nền tảng hỗ trợ (hiện chỉ Windows)."""
+    return is_frozen() and plat.CAN_SELF_UPDATE
+
+
 def install_dir() -> Path:
-    return Path(sys.executable).resolve().parent
+    return plat.install_dir()
 
 
 # ---------------------------------------------------------------- http
@@ -167,60 +174,8 @@ def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
 
 
 # ---------------------------------------------------------------- swap
-SWAP_PS1 = r"""
-param([int]$WaitPid, [string]$Stage, [string]$Install, [string]$Exe, [string]$Log)
-$ErrorActionPreference = 'Stop'
-function L($m) { Add-Content -Path $Log -Value ("{0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m) -Encoding utf8 }
-L "update: waiting for pid $WaitPid"
-try { Wait-Process -Id $WaitPid -Timeout 60 -ErrorAction SilentlyContinue } catch {}
-Start-Sleep -Milliseconds 500
-$backup = "$Install.old"
-try {
-  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-  Rename-Item -Path $Install -NewName (Split-Path $backup -Leaf)
-  L "update: moved $Install -> $backup"
-  try {
-    Copy-Item -Path $Stage -Destination $Install -Recurse -Force
-    if (Test-Path "$backup\config.json") { Copy-Item "$backup\config.json" "$Install\config.json" -Force }
-    L "update: copied new version into $Install"
-  } catch {
-    L "update: copy failed: $_ ; restoring backup"
-    if (Test-Path $Install) { Remove-Item $Install -Recurse -Force }
-    Rename-Item -Path $backup -NewName (Split-Path $Install -Leaf)
-    throw
-  }
-  Start-Process -FilePath (Join-Path $Install $Exe) -WorkingDirectory $Install
-  L "update: started new version"
-  Start-Sleep -Seconds 3
-  Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item (Split-Path $Stage -Parent) -Recurse -Force -ErrorAction SilentlyContinue
-  L "update: done"
-} catch {
-  L "update: FAILED: $_"
-  try {
-    if (Test-Path (Join-Path $Install $Exe)) {
-      Start-Process -FilePath (Join-Path $Install $Exe) -WorkingDirectory $Install
-      L "update: restarted previous version"
-    } else { L "update: previous version not found at $Install" }
-  } catch { L "update: could not restart previous version: $_" }
-  Start-Sleep -Seconds 1
-  exit 1
-}
-"""
-
-
-def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EXE_NAME, log_file=None,
-                env=None) -> subprocess.Popen:
-    """Chạy script PowerShell ẩn để thay thư mục cài sau khi process wait_pid thoát."""
-    script = Path(tempfile.gettempdir()) / f"pet-tracker-update-{os.getpid()}.ps1"
-    script.write_text(SWAP_PS1, encoding="utf-8-sig")
-    if log_file is None:
-        log_file = Path(os.environ.get("APPDATA", str(Path.home()))) / "pet-tracker" / "update.log"
-    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-    args = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
-            "-File", str(script), "-WaitPid", str(int(wait_pid)), "-Stage", str(stage),
-            "-Install", str(target_dir), "-Exe", exe_name, "-Log", str(log_file)]
-    # NEW_PROCESS_GROUP | NO_WINDOW. Không dùng DETACHED_PROCESS: PowerShell không có console sẽ
-    # thoát ngay (exit 0) mà không chạy script.
-    flags = 0x00000200 | 0x08000000
-    return subprocess.Popen(args, creationflags=flags, env=env, close_fds=True)
+def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EXE_NAME, log_file=None, env=None):
+    """Thay thư mục cài sau khi wait_pid thoát (Windows: script PowerShell, xem platform/win_update.py)."""
+    if not plat.CAN_SELF_UPDATE:
+        raise RuntimeError("nền tảng này chưa hỗ trợ cập nhật một chạm")
+    return plat.launch_swap(stage, target_dir, wait_pid, exe_name=exe_name, log_file=log_file, env=env)

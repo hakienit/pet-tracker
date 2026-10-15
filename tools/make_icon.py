@@ -32,7 +32,7 @@ def _mix(a, b, t):
 
 def render(n: int) -> bytes:
     """Trả RGBA bytes n x n."""
-    ss = 4  # supersample để icon nhỏ vẫn mịn
+    ss = 4 if n <= 256 else 2  # supersample để icon nhỏ vẫn mịn; ảnh lớn (macOS .icns) dùng 2 cho nhanh
     cx = cy = n / 2
     R = n / 2 - max(0.5, n / 64)
     ring_w = max(1.5, n * 0.11)
@@ -102,7 +102,19 @@ def ico(pngs: list) -> bytes:
     return head + dirs + blobs
 
 
-def main():
+def main(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--png-size", type=int, help="chỉ xuất một PNG kích thước này (vd. 1024 cho .icns macOS)")
+    ap.add_argument("--out", help="đường dẫn PNG khi dùng --png-size")
+    args = ap.parse_args(argv)
+    if args.png_size:
+        out = Path(args.out or (OUT / f"pet-tracker-{args.png_size}.png"))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(png(args.png_size, render(args.png_size)))
+        print("wrote", out)
+        return
     OUT.mkdir(parents=True, exist_ok=True)
     pngs = [(n, png(n, render(n))) for n in SIZES]
     (OUT / "pet-tracker.ico").write_bytes(ico(pngs))

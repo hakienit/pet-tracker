@@ -11,7 +11,12 @@ import sys
 # Khi chạy từ exe (PyInstaller), config.json đặt cạnh pet-tracker.exe; khi chạy source thì ở gốc dự án.
 PROJECT_DIR = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
                else Path(__file__).resolve().parent.parent)
-STATE_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
+if sys.platform == "win32":
+    STATE_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
+elif sys.platform == "darwin":
+    STATE_DIR = Path.home() / "Library" / "Application Support" / APP_NAME
+else:
+    STATE_DIR = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / APP_NAME
 STATE_FILE = STATE_DIR / "state.json"
 CONFIG_FILE = PROJECT_DIR / "config.json"
 

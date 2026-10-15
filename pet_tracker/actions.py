@@ -4,9 +4,9 @@ Khảo sát 2026-10-15 (Claude Code 2.1.300):
 - Không có API/IPC công khai để đổi model, effort, clear… của một session đang chạy.
   Named pipe `messagingSocketPath` (cc-msg-…) chỉ dùng để gửi tin nhắn giữa các session
   (hiện ra như tin nhắn cho agent), không chạy slash command.
-- Session CLI đọc bàn phím từ console. Widget AttachConsole(pid) rồi ghi KEY_EVENT vào
+- Windows: session CLI đọc bàn phím từ console. Widget AttachConsole(pid) rồi ghi KEY_EVENT vào
   CONIN$ (WriteConsoleInputW) = gõ hộ slash command: /model <id>, /effort <level>,
-  /compact, /clear, /exit. Hoạt động với Windows Terminal (ConPTY) và conhost.
+  /compact, /clear, /exit (platform/win_console.py). macOS: chưa hỗ trợ (giai đoạn 1).
 - Session trong Claude desktop app: tiến trình claude.exe chạy với --output-format stream-json,
   không có console input; app không có deep link đổi model/effort. Chỉ hỗ trợ "mở trong app"
   và handoff.
@@ -17,27 +17,16 @@ Khảo sát 2026-10-15 (Claude Code 2.1.300):
 """
 from __future__ import annotations
 
-import ctypes
-import ctypes.wintypes as w
 import glob
 import json
 import os
 import shutil
-import subprocess
 import threading
 import time
 from pathlib import Path
 
-k32 = ctypes.windll.kernel32
+from . import platform as plat
 
-GENERIC_READ = 0x80000000
-GENERIC_WRITE = 0x40000000
-FILE_SHARE_READ = 1
-FILE_SHARE_WRITE = 2
-OPEN_EXISTING = 3
-INVALID_HANDLE = ctypes.c_void_p(-1).value
-KEY_EVENT = 1
-VK_RETURN = 0x0D
 
 DEFAULT_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 
@@ -64,69 +53,6 @@ def load_catalog(claude_dir: str) -> list:
     return [("opus", "Opus", DEFAULT_EFFORTS), ("sonnet", "Sonnet", DEFAULT_EFFORTS), ("haiku", "Haiku", DEFAULT_EFFORTS)]
 
 
-# ---------------------------------------------------------------- console input
-class _KEY_EVENT_RECORD(ctypes.Structure):
-    _fields_ = [("bKeyDown", w.BOOL), ("wRepeatCount", w.WORD), ("wVirtualKeyCode", w.WORD),
-                ("wVirtualScanCode", w.WORD), ("uChar", w.WCHAR), ("dwControlKeyState", w.DWORD)]
-
-
-class _EVENT_UNION(ctypes.Union):
-    _fields_ = [("KeyEvent", _KEY_EVENT_RECORD), ("_pad", ctypes.c_byte * 16)]
-
-
-class _INPUT_RECORD(ctypes.Structure):
-    _fields_ = [("EventType", w.WORD), ("Event", _EVENT_UNION)]
-
-
-def _key_records(text: str) -> list:
-    recs = []
-    for ch in text:
-        vk = VK_RETURN if ch == "\r" else 0
-        for down in (True, False):
-            r = _INPUT_RECORD()
-            r.EventType = KEY_EVENT
-            ke = r.Event.KeyEvent
-            ke.bKeyDown = down
-            ke.wRepeatCount = 1
-            ke.wVirtualKeyCode = vk
-            ke.wVirtualScanCode = 0x1C if vk == VK_RETURN else 0
-            ke.uChar = ch
-            ke.dwControlKeyState = 0
-            recs.append(r)
-    return recs
-
-
-def type_into_console(pid: int, text: str) -> tuple:
-    """Gõ `text` vào console của process pid. Trả (ok, message)."""
-    had_console = bool(k32.GetConsoleWindow())
-    k32.FreeConsole()
-    try:
-        if not k32.AttachConsole(int(pid)):
-            return False, f"không gắn được vào console của pid {pid} (lỗi {k32.GetLastError()})"
-        try:
-            k32.SetConsoleCtrlHandler(None, True)
-            k32.CreateFileW.restype = w.HANDLE
-            h = k32.CreateFileW("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                None, OPEN_EXISTING, 0, None)
-            if not h or h == INVALID_HANDLE:
-                return False, "không mở được CONIN$"
-            try:
-                recs = _key_records(text)
-                arr = (_INPUT_RECORD * len(recs))(*recs)
-                written = w.DWORD()
-                ok = k32.WriteConsoleInputW(w.HANDLE(h), arr, len(recs), ctypes.byref(written))
-                if not ok or written.value != len(recs):
-                    return False, f"WriteConsoleInput lỗi ({written.value}/{len(recs)})"
-                return True, "đã gửi"
-            finally:
-                k32.CloseHandle(w.HANDLE(h))
-        finally:
-            k32.FreeConsole()
-    finally:
-        if had_console:
-            k32.AttachConsole(0xFFFFFFFF)
-
-
 # ---------------------------------------------------------------- capability
 def is_cli(sess: dict) -> bool:
     return (sess.get("entrypoint") or "") == "cli"
@@ -134,6 +60,8 @@ def is_cli(sess: dict) -> bool:
 
 def command_block_reason(sess: dict) -> str | None:
     """None nếu gửi được slash command vào session; ngược lại là lý do (hiện trong menu)."""
+    if not plat.CAN_TYPE_INTO_SESSION:
+        return plat.TYPE_UNSUPPORTED_REASON
     if not is_cli(sess):
         return "chỉ CLI"
     if sess.get("status") == "busy":
@@ -197,7 +125,7 @@ def send_slash(sess: dict, command: str, claude_dir=None, keep_defaults: bool = 
             before = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             guard = False
-    ok, msg = type_into_console(int(sess["pid"]), command + "\r")
+    ok, msg = plat.type_into_session(int(sess["pid"]), command + "\r")
     if ok and guard:
         _restore_defaults_later(path, before, before_mtime)
     return ok, (f"đã gửi {command}" if ok else msg)
@@ -215,22 +143,20 @@ def clean_env() -> dict:
 
 
 # ---------------------------------------------------------------- handoff
+def claude_command() -> str:
+    exe = "claude.exe" if plat.IS_WINDOWS else "claude"
+    return shutil.which("claude") or str(Path.home() / ".local" / "bin" / exe)
+
+
 def handoff(sess: dict) -> tuple:
     """Mở terminal mới: claude --resume <id> --fork-session trong cwd của session."""
     sid = sess.get("session_id")
     cwd = sess.get("home_cwd") or sess.get("cwd")
     if not sid or not cwd or not os.path.isdir(cwd):
         return False, "thiếu sessionId hoặc thư mục không tồn tại"
-    claude = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
-    args = [claude, "--resume", sid, "--fork-session"]
+    args = [claude_command(), "--resume", sid, "--fork-session"]
     title = f"handoff: {(sess.get('name') or sid)[:40]}"
-    wt = shutil.which("wt")
     try:
-        if wt:
-            subprocess.Popen([wt, "-w", "new", "--title", title, "-d", cwd] + args, env=clean_env(),
-                             creationflags=0x00000008 | 0x00000200)  # DETACHED | NEW_PROCESS_GROUP
-        else:
-            subprocess.Popen(args, cwd=cwd, env=clean_env(), creationflags=0x00000010)  # CREATE_NEW_CONSOLE
-        return True, "đã mở terminal mới (fork session)"
+        return plat.open_terminal(cwd, args, title, clean_env())
     except Exception as e:
         return False, f"không mở được terminal: {type(e).__name__}: {e}"

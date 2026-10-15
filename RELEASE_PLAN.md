@@ -76,6 +76,13 @@ ví dụ `sg.vinova.pet-tracker`.
 
 ## 4. Việc phải làm trước khi release (khác biệt nền tảng)
 
+> **Cập nhật 2026-10-15 (giai đoạn 1 macOS đã code, chưa test trên Mac thật):** code đã tách lớp nền
+> tảng `pet_tracker/platform/` (`win.py` + các `win_*.py`, `mac.py`); bóng macOS dùng PNG alpha thật;
+> quota đọc Keychain; focus Terminal/iTerm2 theo tty; handoff qua Terminal.app; LaunchAgent; single
+> instance bằng file lock. Các action gõ lệnh và cập nhật một chạm vẫn chỉ có trên Windows. Workflow có
+> job `macos-14` build `.dmg` universal2 (ad-hoc sign, chưa notarize). Danh sách việc cần test trên Mac
+> nằm trong README, mục macOS.
+
 Bảng dưới liệt kê từng chỗ code đang phụ thuộc Windows, đếm theo số lần gọi Win32 API trong mỗi
 module.
 

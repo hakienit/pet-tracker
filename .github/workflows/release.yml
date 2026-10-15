@@ -1,8 +1,9 @@
 name: release
 
-# Push tag vX.Y.Z -> build bản Windows, tạo GitHub Release dạng DRAFT kèm zip + SHA256SUMS.txt.
+# Push tag vX.Y.Z -> build Windows + macOS, tạo GitHub Release dạng DRAFT kèm zip, dmg và SHA256SUMS.txt.
 # Người duyệt mở draft trên GitHub, kiểm tra rồi bấm Publish; chỉ khi đó app của người dùng mới thấy bản mới
 # (API releases/latest bỏ qua draft và pre-release).
+# Bản macOS đang ở giai đoạn 1 (thử nghiệm): nếu job macOS lỗi, release vẫn được tạo với bản Windows.
 # Chạy tay (workflow_dispatch) chỉ build và upload artifact, không tạo release.
 
 on:
@@ -14,56 +15,91 @@ permissions:
   contents: write
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiểm tra tag khớp __version__ và CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(python3 -c "import pet_tracker; print(pet_tracker.__version__)")
+          if [ "v$v" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} không khớp pet_tracker.__version__ = $v"; exit 1
+          fi
+          python3 tools/changelog_section.py "${{ github.ref_name }}" > release-notes.md
+      - name: Notes rỗng khi chạy tay
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        run: echo "manual build" > release-notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
   windows:
+    needs: check
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
-      - name: Kiểm tra tag khớp __version__
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          $v = (python -c "import pet_tracker; print(pet_tracker.__version__)").Trim()
-          if ("v$v" -ne "${{ github.ref_name }}") {
-            throw "Tag ${{ github.ref_name }} không khớp pet_tracker.__version__ = $v"
-          }
-          python tools/changelog_section.py "${{ github.ref_name }}" | Out-File -Encoding utf8 release-notes.md
-          if ($LASTEXITCODE -ne 0) { throw "CHANGELOG.md thiếu mục cho ${{ github.ref_name }}" }
-
       - name: Kiểm tra code import được
         shell: pwsh
         run: python -c "import sys; sys.path.insert(0, '.'); import pet_tracker.ui, pet_tracker.updater; print('ok')"
-
       - name: Build
         shell: pwsh
         run: ./build.ps1 -Python python
-
-      - name: SHA256SUMS.txt
-        shell: pwsh
-        run: |
-          $zip = Get-ChildItem dist -Filter "pet-tracker-*-win-x64.zip" | Select-Object -First 1
-          if (-not $zip) { throw "không thấy file zip trong dist" }
-          $h = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
-          "$h  $($zip.Name)" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
-          Get-Content dist/SHA256SUMS.txt
-
       - uses: actions/upload-artifact@v4
         with:
           name: pet-tracker-windows
-          path: |
-            dist/pet-tracker-*-win-x64.zip
-            dist/SHA256SUMS.txt
+          path: dist/pet-tracker-*-win-x64.zip
 
+  macos:
+    needs: check
+    runs-on: macos-14
+    env:
+      PY_VERSION: "3.13.1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cài Python universal2 từ python.org (có Tk)
+        run: |
+          curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          echo "PYTHON=/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13" >> "$GITHUB_ENV"
+      - name: Kiểm tra code import được
+        run: |
+          "$PYTHON" -c "import sys; sys.path.insert(0, '.'); import pet_tracker.platform as p, pet_tracker.ui, pet_tracker.updater; print('ok', p.NAME)"
+      - name: Build
+        run: |
+          chmod +x build_macos.sh
+          ./build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pet-tracker-macos
+          path: dist/pet-tracker-*-macos-universal2.dmg
+
+  release:
+    needs: [windows, macos]
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: SHA256SUMS.txt
+        run: |
+          mkdir -p out
+          find artifacts -type f \( -name "*.zip" -o -name "*.dmg" \) -exec cp {} out/ \;
+          cp artifacts/release-notes/release-notes.md notes.md
+          cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Tạo GitHub Release (draft)
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $zip = (Get-ChildItem dist -Filter "pet-tracker-*-win-x64.zip" | Select-Object -First 1).FullName
-          gh release create "${{ github.ref_name }}" $zip dist/SHA256SUMS.txt `
+          extra=""
+          if [ "${{ needs.macos.result }}" != "success" ]; then
+            extra=$'\n\n> Bản macOS chưa có trong release này (job macOS lỗi).'
+          fi
+          printf '%s%s\n' "$(cat notes.md)" "$extra" > release-notes.md
+          gh release create "${{ github.ref_name }}" out/* --repo "${{ github.repository }}" \
             --draft --title "Claude PET ${{ github.ref_name }}" --notes-file release-notes.md

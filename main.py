@@ -16,7 +16,7 @@ for _k in set(os.environ) - set(clean_env()):
     del os.environ[_k]
 
 if __name__ == "__main__":
-    from pet_tracker.single import SingleInstance
+    from pet_tracker.platform import SingleInstance
 
     instance = SingleInstance()
     if instance.already:  # đã có bản đang chạy: nhờ nó mở panel rồi thoát
