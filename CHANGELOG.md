@@ -15,9 +15,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ### Added
 - Nút ⋯ và chuột phải trên card session để dọn dẹp:
-  - **Handoff rồi đóng**: Wisp ghép file handoff từ transcript và git (yêu cầu gần nhất, trả lời cuối,
-    commit, file chưa commit, lệnh resume), không tốn token. Lưu ở `%APPDATA%\Wisp\handoffs`.
-  - **Handoff AI rồi đóng**: session tự viết handoff theo quy định lưu của repo (tốn token một lượt).
+  - **Handoff rồi đóng**: session tự viết handoff và lưu theo quy định của repo; repo không quy định thì
+    vào `%APPDATA%\Wisp\handoffs`. Tốn token một lượt (bản fork chạy ngầm, session gốc không bị đụng).
   - **Đóng session** (giữ transcript), **Xoá session** (đóng + xoá transcript), **Xoá worktree** (chỉ khi
     worktree sạch và branch đã merge/push; worktree của Orca chỉ hiện trạng thái).
   - Handoff lỗi thì không đóng. Mọi thao tác phải bấm hai lần để xác nhận.

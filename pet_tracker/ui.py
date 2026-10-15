@@ -1650,12 +1650,9 @@ class PetApp:
         desktop = sess.get("entrypoint") == "claude-desktop"
         no_close = "đóng trong Claude app" if desktop else ""
         self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
-        self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "transcript + git, 0 token",
+        self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "theo rule repo, tốn token",
                         act(lambda: self._run_op(sess, "handoff")), enabled=not desktop,
-                        confirm="Ghi handoff rồi đóng?")
-        self._sheet_row(body, ICON_EXIT, "Handoff AI rồi đóng", no_close or "Claude tóm tắt, tốn token",
-                        act(lambda: self._run_op(sess, "handoff_ai")), enabled=not desktop,
-                        confirm="Tốn token 1 lượt. Tiếp tục?")
+                        confirm="Viết handoff rồi đóng?")
         self._sheet_row(body, ICON_EXIT, "Đóng session", no_close or "không handoff",
                         act(lambda: self._run_op(sess, "close")), enabled=not desktop,
                         confirm="Đóng session này?")
@@ -1671,20 +1668,18 @@ class PetApp:
         self._finish_sheet(top, body, W, x, y)
 
     def _run_op(self, sess: dict, op: str):
-        """handoff | handoff_ai | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process
-        thoát); kết quả về qua _ops_done."""
+        """handoff | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process thoát);
+        kết quả về qua _ops_done."""
         name = sess.get("name") or "?"
-        self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff_ai" else "đang xử lý…"), MUTED, 300)
+        self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff" else "đang xử lý…"), MUTED, 300)
 
         def work():
             path = None
             try:
                 ok, msg = True, ""
                 if op == "handoff":
-                    ok, msg = session_ops.write_local_handoff(sess, STATE_DIR / "handoffs")
-                elif op == "handoff_ai":
                     ok, msg = session_ops.write_handoff(sess, STATE_DIR / "handoffs")
-                path = msg if ok and op.startswith("handoff") else None
+                    path = msg if ok else None
                 if ok:  # handoff lỗi thì không đóng, tránh mất ngữ cảnh
                     ok, msg = session_ops.close_session(sess)
                     if ok and path:
@@ -1698,7 +1693,7 @@ class PetApp:
             log(f"session op {op} {name!r} pid={sess.get('pid')} cwd={sess.get('cwd')!r}: ok={ok} {msg}")
             # chỉ nhớ session còn resume được: còn transcript và còn thư mục
             closed = None
-            if ok and op in ("handoff", "handoff_ai", "close"):
+            if ok and op in ("handoff", "close"):
                 closed = {"session_id": sess.get("session_id"), "name": name, "cwd": sess.get("cwd"),
                           "home_cwd": sess.get("home_cwd") or sess.get("cwd"), "closed_at": time.time(),
                           "handoff": path}
