@@ -6,6 +6,12 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+### Added
+- Chuột phải vào header của panel mở cùng menu với bóng: Làm mới, Mở thư mục ~/.claude, Kiểm tra
+  cập nhật, Chạy cùng Windows, Thoát.
+- Link tải cố định bản mới nhất trong README: mỗi release kèm thêm `wisp-win-x64.zip` và
+  `wisp-macos-universal2.dmg` (không có version trong tên).
+
 ## [0.1.3] - 2026-10-16
 
 ### Changed

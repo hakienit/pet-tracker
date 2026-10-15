@@ -18,6 +18,16 @@ Panel hiển thị:
 - **Ước tính local**: tokens output / input mới / số message trong 5h và 7 ngày gần nhất, tính
   từ transcript trên máy.
 
+## Tải về
+
+| Nền tảng | Bản mới nhất |
+|---|---|
+| Windows 10/11 (x64) | [**wisp-win-x64.zip**](https://github.com/hakienit/pet-tracker/releases/latest/download/wisp-win-x64.zip) |
+| macOS (thử nghiệm, Apple Silicon + Intel) | [**wisp-macos-universal2.dmg**](https://github.com/hakienit/pet-tracker/releases/latest/download/wisp-macos-universal2.dmg) |
+
+Các bản cũ, ghi chú phát hành và `SHA256SUMS.txt`: [Releases](https://github.com/hakienit/pet-tracker/releases).
+Cách cài: xem [Cài cho đồng nghiệp](#cài-cho-đồng-nghiệp-bản-exe).
+
 ## Chạy
 
 Yêu cầu: Python 3.10+ (máy này có 3.15) kèm tkinter (bản cài chuẩn python.org có sẵn). Không
@@ -37,7 +47,7 @@ Thao tác:
 | Click trái vào bóng | mở / đóng panel |
 | Click ra ngoài panel | đóng panel |
 | Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\Wisp\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
-| Click phải vào bóng (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Thoát |
+| Click phải vào bóng hoặc header của panel (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Thoát |
 | Click vào một session trong panel | đưa cửa sổ đang host session đó lên foreground (xem mục "Focus cửa sổ session") |
 | Kéo tay nắm ở góc trên-trái panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
 
@@ -72,8 +82,7 @@ Script cài PyInstaller, build dạng thư mục, không console, có icon và v
 
 ## Cài cho đồng nghiệp (bản exe)
 
-1. Mở https://github.com/hakienit/pet-tracker/releases, tải `wisp-<version>-win-x64.zip` ở bản
-   mới nhất.
+1. Tải [wisp-win-x64.zip](https://github.com/hakienit/pet-tracker/releases/latest/download/wisp-win-x64.zip) (luôn là bản mới nhất).
 2. Giải nén vào một thư mục cố định mà bạn có quyền ghi, ví dụ
    `%LOCALAPPDATA%\Programs\Wisp`. Không đặt trong `Program Files` (cập nhật một chạm cần quyền
    ghi vào thư mục cài) và không chạy thẳng từ trong file zip.

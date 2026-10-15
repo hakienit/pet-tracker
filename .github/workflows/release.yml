@@ -104,6 +104,11 @@ jobs:
         run: |
           mkdir -p out
           find artifacts -type f \( -name "*.zip" -o -name "*.dmg" \) -exec cp {} out/ \;
+          # Bản không kèm version cho link tải cố định trong README (releases/latest/download/<tên>);
+          # app cập nhật vẫn dùng bản có version
+          for f in out/wisp-*-win-x64.zip out/wisp-*-macos-universal2.dmg; do
+            if [ -e "$f" ]; then cp "$f" "out/$(basename "$f" | sed -E 's/^wisp-[^-]+-/wisp-/')"; fi
+          done
           cp artifacts/release-notes/release-notes.md notes.md
           cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Ký SHA256SUMS.txt (app từ chối cập nhật nếu thiếu chữ ký)
