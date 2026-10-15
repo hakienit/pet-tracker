@@ -1,0 +1,12 @@
+{
+  "refresh_sessions_sec": 3,
+  "refresh_quota_sec": 60,
+  "quota_api_enabled": true,
+  "context_windows": {
+    "default": 1000000,
+    "claude-haiku-5-5": 1000000
+  },
+  "warn_percent": 60,
+  "danger_percent": 85,
+  "bubble_size": 64
+}

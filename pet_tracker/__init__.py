@@ -1,0 +1,2 @@
+"""pet-tracker: floating desktop widget theo dõi Claude Code sessions, context window và quota."""
+__version__ = "0.1.0"

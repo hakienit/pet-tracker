@@ -1,0 +1,1464 @@
+"""Giao diện: bóng nổi (bubble) + panel stats. tkinter thuần (stdlib)."""
+from __future__ import annotations
+
+import ctypes
+import os
+import queue
+import threading
+import time
+import tkinter as tk
+from datetime import datetime
+from tkinter import font as tkfont
+
+from . import actions, autostart, render
+from .claude_data import ClaudeDataStore, account_info, short_model
+from .config import STATE_DIR, load_config, load_state, save_state
+from .quota import fetch_api_usage, fmt_reset
+from .winfocus import focus_session
+
+LOG_FILE = STATE_DIR / "pet-tracker.log"
+
+
+def log(msg: str) -> None:
+    """Ghi log nhẹ vào %APPDATA%/pet-tracker/pet-tracker.log (tự cắt khi > 1MB)."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size > 1_000_000:
+            LOG_FILE.write_text("", encoding="utf-8")
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------- palette
+TRANSPARENT = "#010203"   # màu key cho -transparentcolor (vùng này trong suốt thật)
+BG = "#16171c"
+SURFACE = "#1f2027"
+LINE = "#2a2b34"
+BORDER = "#3a3b47"
+HOVER_BORDER = "#55566a"
+FG = "#eeeef3"
+FG2 = "#c6c7d1"
+MUTED = "#8d8e9b"
+FAINT = "#5f606d"
+TRACK = "#2f3039"
+GREEN = "#3fb950"
+YELLOW = "#e3b341"
+RED = "#f0524f"
+BLUE = "#5aa7ff"
+ACCENT = "#d97757"   # cam Claude
+MODEL_COLORS = {"opus": "#b392f0", "fable": "#e8916f", "sonnet": "#5aa7ff", "haiku": "#4cc9b0"}
+BUBBLE_PALETTE = {
+    "disc_top": "#2d2e38", "disc_bot": "#18191f", "track": "#353641",
+    "rim": "#4b4c5a", "rim_hover": ACCENT, "fringe": "#0d0d11", "cutout": "#121317",
+    "key": TRANSPARENT,
+}
+
+ICON_REFRESH = ""
+ICON_CLOSE = ""
+ICON_OPEN = ""
+ICON_MORE = ""
+ICON_HANDOFF = ""
+ICON_STARTUP_OFF = ""
+ICON_CHECK = ""
+ICON_FOLDER = ""
+ICON_COMPACT = ""
+ICON_CLEAR = ""
+ICON_EXIT = ""
+SHEET_BG = "#1b1c22"
+ROW_HOVER = "#272830"
+DANGER_BG = "#3a2326"
+CHIP = "#2a2b34"
+CHIP_HOVER = "#363743"
+CHIP_OFF = "#212228"
+
+ENTRYPOINTS = {"cli": "CLI", "claude-desktop": "Desktop", "sdk-ts": "SDK", "sdk-py": "SDK", "vscode": "VS Code"}
+WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+
+
+# ---------------------------------------------------------------- helpers
+def fmt_k(n: float) -> str:
+    n = float(n or 0)
+    if n < 1000:
+        return f"{int(n)}"
+    if n < 1_000_000:
+        v = n / 1000
+        return f"{v:.0f}k" if v >= 100 else f"{v:.1f}k"
+    return f"{n/1_000_000:.2f}M".replace(".00M", "M")
+
+
+def fmt_ago(ts) -> str:
+    if not ts:
+        return ""
+    d = time.time() - ts
+    if d < 60:
+        return "vừa xong"
+    if d < 3600:
+        return f"{int(d // 60)} phút trước"
+    if d < 86400:
+        return f"{int(d // 3600)} giờ trước"
+    return f"{int(d // 86400)} ngày trước"
+
+
+def fmt_clock(ts) -> str:
+    if not ts:
+        return ""
+    dt = datetime.fromtimestamp(ts)
+    if ts - time.time() < 20 * 3600:
+        return f"lúc {dt:%H:%M}"
+    return f"{WEEKDAYS[dt.weekday()]} {dt:%d/%m %H:%M}"
+
+
+def fmt_tier(tier) -> str:
+    if not tier:
+        return ""
+    t = tier.replace("default_", "").replace("claude_", "")
+    if t.startswith("max_"):
+        return "Max " + t[4:]
+    return t.replace("_", " ").title()
+
+
+def level_color(pct: float, warn: float, danger: float) -> str:
+    if pct >= danger:
+        return RED
+    if pct >= warn:
+        return YELLOW
+    return GREEN
+
+
+def model_color(model) -> str:
+    fam = (model or "").replace("claude-", "").split("-")[0].lower()
+    return MODEL_COLORS.get(fam, BLUE)
+
+
+def _work_area() -> tuple:
+    """(left, top, right, bottom) vùng màn hình trừ taskbar (pixel vật lý)."""
+    try:
+        class RECT(ctypes.Structure):
+            _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
+        r = RECT()
+        ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(r), 0)
+        return r.l, r.t, r.r, r.b
+    except Exception:
+        return 0, 0, 1920, 1080
+
+
+def _cursor_pos() -> tuple:
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+    p = POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(p))
+    return p.x, p.y
+
+
+def _lbutton_down() -> bool:
+    return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
+
+
+# ---------------------------------------------------------------- collector thread
+class Collector(threading.Thread):
+    def __init__(self, cfg: dict, out: queue.Queue):
+        super().__init__(daemon=True, name="collector")
+        self.cfg = cfg
+        self.out = out
+        self.store = ClaudeDataStore(cfg["claude_dir"])
+        self.stop = threading.Event()
+        self.kick = threading.Event()
+        self.force_quota = False
+        self._quota = None
+        self._quota_at = 0.0
+        self._account = account_info(cfg["claude_dir"])
+
+    def refresh_now(self):
+        self.force_quota = True
+        self.kick.set()
+
+    def run(self):
+        while not self.stop.is_set():
+            try:
+                self.store.poll_all()
+                sessions = self.store.active_sessions(self.cfg["context_windows"])
+                now = time.time()
+                if self.cfg.get("quota_api_enabled", True) and (
+                    self.force_quota or now - self._quota_at >= float(self.cfg["refresh_quota_sec"])
+                ):
+                    self.force_quota = False
+                    self._quota = fetch_api_usage(self.cfg["claude_dir"])
+                    self._quota_at = now
+                local = {
+                    "5h": self.store.usage_window(5 * 3600, now),
+                    "7d": self.store.usage_window(7 * 86400, now),
+                }
+                self.out.put({
+                    "ts": now,
+                    "sessions": sessions,
+                    "quota": self._quota,
+                    "local": local,
+                    "account": self._account,
+                })
+            except Exception as e:  # không để thread chết
+                log(f"collector error: {type(e).__name__}: {e}")
+                self.out.put({"ts": time.time(), "error": f"{type(e).__name__}: {e}"})
+            self.kick.wait(float(self.cfg["refresh_sessions_sec"]))
+            self.kick.clear()
+
+
+# ---------------------------------------------------------------- app
+class PetApp:
+    def __init__(self):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            pass
+        self.cfg = load_config()
+        self.state = load_state()
+        self.q: queue.Queue = queue.Queue()
+        self.snap = None
+        self.sig = None
+
+        self.root = tk.Tk()
+        self.root.withdraw()
+        try:
+            dpi = ctypes.windll.user32.GetDpiForSystem()
+        except Exception:
+            dpi = 96
+        self.S = dpi / 96.0
+        self._init_fonts()
+
+        self._img_cache: dict = {}
+        self._cards: list = []
+        self._hot = None
+        self._hover_bubble = False
+        self._bub_key = None
+        self._rounded = False
+        self._dwm_done = False
+        self._scrollable = False
+        self._flash_until = 0.0
+        self.footer_lbl = None
+        self._modal = False
+        self._sheet = None
+        self._want_show = False
+        self._catalog = actions.load_catalog(self.cfg["claude_dir"])
+
+        self._build_bubble()
+        self._build_panel()
+        self.collector = Collector(self.cfg, self.q)
+        self.collector.start()
+        self._lbtn_prev = False
+        self._drag = None
+        self._moved = False
+        self.root.bind_all("<MouseWheel>", self._on_wheel)
+        try:  # Tk 9: touchpad, chuột cuộn mượt và cuộn khi cửa sổ không focus đến qua sự kiện này
+            self.root.bind_all("<TouchpadScroll>", self._on_touchpad)
+        except tk.TclError:
+            pass
+        log(f"start dpi_scale={self.S:.2f} bubble_size={self.size} claude_dir={self.cfg['claude_dir']}")
+        self.root.after(200, self._pump)
+
+    def _init_fonts(self):
+        fams = set(tkfont.families(self.root))
+
+        def pick(*names):
+            for n in names:
+                if n in fams:
+                    return n
+            return "Segoe UI"
+
+        text = pick("Segoe UI Variable Text", "Segoe UI")
+        semi = pick("Segoe UI Variable Text Semibold", "Segoe UI Semibold")
+        disp = pick("Segoe UI Variable Display Semib", "Segoe UI Variable Display Semibold", "Segoe UI Semibold")
+        icons = pick("Segoe Fluent Icons", "Segoe MDL2 Assets")
+        F = tkfont.Font
+        self.f_xs = F(family=text, size=8)
+        self.f_xsb = F(family=semi, size=8)
+        self.f_sm = F(family=text, size=9)
+        self.f_smb = F(family=semi, size=9)
+        self.f_md = F(family=semi, size=10)
+        self.f_title = F(family=disp, size=11)
+        self.f_big = F(family=disp, size=15)
+        self.f_bub = F(family=disp, size=13)
+        self.f_bub_sm = F(family=text, size=7)
+        self.f_badge = F(family=semi, size=8)
+        self.f_icon = F(family=icons, size=10)
+        self.f_icon_sm = F(family=icons, size=8)
+
+    # ---------- image cache
+    def _photo(self, key, rows_fn):
+        img = self._img_cache.get(key)
+        if img is None:
+            if len(self._img_cache) > 300:
+                self._img_cache.clear()
+            rows = rows_fn()
+            img = tk.PhotoImage(width=len(rows[0]), height=len(rows))
+            img.put(render.to_photo_data(rows))
+            self._img_cache[key] = img
+        return img
+
+    # ---------- bubble
+    def _build_bubble(self):
+        self.size = int(self.cfg["bubble_size"] * self.S)
+        b = tk.Toplevel(self.root)
+        b.overrideredirect(True)
+        b.attributes("-topmost", True)
+        b.attributes("-transparentcolor", TRANSPARENT)
+        b.configure(bg=TRANSPARENT)
+        self.canvas = tk.Canvas(b, width=self.size, height=self.size, bg=TRANSPARENT,
+                                highlightthickness=0, bd=0, cursor="hand2")
+        self.canvas.pack()
+        self._bub_img = tk.PhotoImage(width=self.size, height=self.size)
+        self.canvas.create_image(0, 0, anchor="nw", image=self._bub_img)
+        self.bubble = b
+        l, t, r, btm = _work_area()
+        x = self.state.get("x", r - self.size - int(24 * self.S))
+        y = self.state.get("y", btm - self.size - int(24 * self.S))
+        x = max(l, min(x, r - self.size))
+        y = max(t, min(y, btm - self.size))
+        b.geometry(f"{self.size}x{self.size}+{x}+{y}")
+        self.canvas.bind("<ButtonPress-1>", self._drag_start)
+        self.canvas.bind("<B1-Motion>", self._drag_move)
+        self.canvas.bind("<ButtonRelease-1>", self._drag_end)
+        self.canvas.bind("<Button-3>", self._context_menu)
+        self.canvas.bind("<Enter>", lambda e: self._set_bubble_hover(True))
+        self.canvas.bind("<Leave>", lambda e: self._set_bubble_hover(False))
+        self._draw_bubble()
+
+    def _set_bubble_hover(self, v: bool):
+        if self._hover_bubble != v:
+            self._hover_bubble = v
+            self._draw_bubble()
+
+    def collector_refresh(self):
+        self.collector.refresh_now()
+        self._flash("Đang làm mới…", MUTED, 2)
+
+    def _open_claude_dir(self):
+        try:
+            os.startfile(self.cfg["claude_dir"])
+        except Exception:
+            pass
+
+    def _context_menu(self, ev):
+        self._bubble_menu(ev.x_root, ev.y_root)
+
+    def _drag_start(self, ev):
+        self._drag = (ev.x_root, ev.y_root, self.bubble.winfo_x(), self.bubble.winfo_y())
+        self._moved = False
+
+    def _drag_move(self, ev):
+        if self._drag is None:
+            return
+        x0, y0, wx, wy = self._drag
+        dx, dy = ev.x_root - x0, ev.y_root - y0
+        if abs(dx) > 3 or abs(dy) > 3:
+            self._moved = True
+        if self._moved:
+            self.bubble.geometry(f"+{wx+dx}+{wy+dy}")
+            if self.panel_visible:
+                self._place_panel()
+
+    def _drag_end(self, ev):
+        moved, self._drag, self._moved = self._moved, None, False
+        if moved:
+            l, t, r, btm = _work_area()
+            x = max(l, min(self.bubble.winfo_x(), r - self.size))
+            y = max(t, min(self.bubble.winfo_y(), btm - self.size))
+            self.bubble.geometry(f"+{x}+{y}")
+            self.state["x"], self.state["y"] = x, y
+            save_state(self.state)
+            log(f"moved bubble to {x},{y}")
+            if self.panel_visible:
+                self._place_panel()
+        else:
+            self.toggle_panel()
+
+    def _draw_bubble(self):
+        c = self.canvas
+        s, S = self.size, self.S
+        snap = self.snap or {}
+        warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
+        pct = None
+        quota = snap.get("quota") or {}
+        if quota.get("ok") and quota.get("windows"):
+            pct = float(quota["windows"][0]["percent"])
+        prog = level_color(pct, warn, danger) if pct is not None else MUTED
+        sessions = snap.get("sessions") or []
+        busy = sum(1 for x in sessions if x["status"] == "busy")
+        worst = max((x["context_pct"] for x in sessions), default=0.0)
+        warn_col = level_color(worst, warn, danger) if worst >= warn else None
+        key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble)
+        if key != self._bub_key:
+            self._bub_key = key
+            rows = render.bubble_rows(s, S, pct, prog, ACCENT if busy else None, warn_col,
+                                      self._hover_bubble, BUBBLE_PALETTE)
+            self._bub_img.put(render.to_photo_data(rows))
+        c.delete("txt")
+        cx = cy = s / 2
+        n = len(sessions)
+        if pct is not None:
+            c.create_text(cx, cy - 4 * S, text=f"{pct:.0f}%", fill=FG, font=self.f_bub, tags="txt")
+            c.create_text(cx, cy + 11 * S, text=f"{n} agent", fill=MUTED, font=self.f_bub_sm, tags="txt")
+        else:
+            c.create_text(cx, cy - 4 * S, text=str(n), fill=FG, font=self.f_bub, tags="txt")
+            c.create_text(cx, cy + 11 * S, text="agent", fill=MUTED, font=self.f_bub_sm, tags="txt")
+        if busy:
+            rb = 8.5 * S
+            c.create_text(s - rb - 0.75, rb + 0.75, text=str(busy), fill="#1a1a1a", font=self.f_badge, tags="txt")
+
+    # ---------- panel
+    def _build_panel(self):
+        p = tk.Toplevel(self.root)
+        p.overrideredirect(True)
+        p.attributes("-topmost", True)
+        p.configure(bg=BG)
+        self._pw_default = int(372 * self.S)
+        self._pw_min, self._pw_max = int(320 * self.S), int(760 * self.S)
+        self._ph_min = int(260 * self.S)
+        self.pw = max(self._pw_min, min(self._pw_max, int(self.state.get("panel_w") or self._pw_default)))
+        self._user_h = self.state.get("panel_h")  # None = tự động theo nội dung / màn hình
+        self._resize = None
+        self.body = tk.Frame(p, bg=BG)
+        self.body.pack(fill="both", expand=True)
+        self.panel = p
+        self.panel_visible = False
+
+        # Khung cố định: header / vùng cuộn / footer. Chỉ nội dung bên trong được dựng lại khi
+        # dữ liệu đổi, nên vị trí cuộn không bị reset mỗi lần refresh.
+        S = self.S
+        self._bar_w = int(12 * S)
+        self._hdr = tk.Frame(self.body, bg=BG)
+        self._hdr.pack(side="top", fill="x")
+        self._ftr = tk.Frame(self.body, bg=BG)
+        self._ftr.pack(side="bottom", fill="x")
+        mid = tk.Frame(self.body, bg=BG)
+        mid.pack(side="top", fill="both", expand=True)
+        self._sbar = tk.Canvas(mid, width=self._bar_w, bg=BG, highlightthickness=0, bd=0)
+        self._sbar.pack(side="right", fill="y")
+        self._scv = tk.Canvas(mid, bg=BG, highlightthickness=0, bd=0, yscrollincrement=1)
+        self._scv.pack(side="left", fill="both", expand=True)
+        self._content = None
+        self._content_win = None
+        self._content_h = 1
+        self._thumb = (0, 0)
+        self._thumb_drag = None
+        self._thumb_hover = False
+        self._scroll_target = None
+        self._scv.bind("<Configure>", lambda e: self._sync_scroll())
+        self._sbar.bind("<Configure>", lambda e: self._update_thumb())
+        self._sbar.bind("<ButtonPress-1>", self._sb_press)
+        self._sbar.bind("<B1-Motion>", self._sb_motion)
+        self._sbar.bind("<ButtonRelease-1>", lambda e: setattr(self, "_thumb_drag", None))
+        self._sbar.bind("<Enter>", lambda e: self._set_thumb_hover(True))
+        self._sbar.bind("<Leave>", lambda e: self._set_thumb_hover(False))
+        self._build_grip()
+        p.withdraw()
+
+    def _dwm_round(self, win) -> bool:
+        """Windows 11: bo góc + viền mảnh (DWMWA_WINDOW_CORNER_PREFERENCE / BORDER_COLOR)."""
+        try:
+            win.update_idletasks()
+            hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
+            dwm = ctypes.windll.dwmapi
+            pref = ctypes.c_int(2)  # DWMWCP_ROUND
+            hr = dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), 4)
+            r, g, b = render.hex2rgb(BORDER)
+            col = ctypes.c_uint(r | (g << 8) | (b << 16))
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(col), 4)
+            return hr == 0
+        except Exception:
+            return False
+
+    def _apply_dwm(self):
+        if self._dwm_done:
+            return
+        self._dwm_done = True
+        self._rounded = self._dwm_round(self.panel)
+        if not self._rounded:  # Windows 10: viền 1px thủ công
+            self.panel.configure(bg=BORDER)
+            self.body.pack_configure(padx=1, pady=1)
+        log(f"panel dwm rounded={self._rounded}")
+
+    def toggle_panel(self):
+        if self.panel_visible:
+            self.hide_panel()
+        else:
+            self.show_panel()
+
+    def show_panel(self):
+        self._render_panel(force=True)
+        self.panel.attributes("-alpha", 0.0)
+        self._place_panel()
+        self.panel.deiconify()
+        self._apply_dwm()
+        self.panel.attributes("-topmost", True)
+        self.panel.lift()
+        self.panel_visible = True
+        self._place_panel()  # lần 2 sau khi map, kích thước thật đã có
+        self._fade(1)
+        log(f"panel shown at {self.panel.winfo_x()},{self.panel.winfo_y()} size {self.panel.winfo_width()}x{self.panel.winfo_height()}")
+        self._lbtn_prev = _lbutton_down()
+
+    def _fade(self, step: int):
+        if not self.panel_visible:
+            return
+        a = min(1.0, step * 0.2)
+        try:
+            self.panel.attributes("-alpha", a)
+        except Exception:
+            return
+        if a < 1.0:
+            self.root.after(14, lambda: self._fade(step + 1))
+
+    def hide_panel(self):
+        self._close_sheet()
+        self.panel.withdraw()
+        self.panel_visible = False
+        self._set_hot(None)
+        log("panel hidden")
+
+    def _layout(self) -> int:
+        """Đặt chiều cao vùng cuộn theo màn hình; trả về tổng chiều cao panel."""
+        self.body.update_idletasks()
+        l, t, r, b = _work_area()
+        margin = int(12 * self.S)
+        max_h = (b - t) - 2 * margin - (0 if self._rounded else 2)
+        if self._user_h:
+            max_h = max(self._ph_min, min(max_h, int(self._user_h)))
+        hh = self._hdr.winfo_reqheight()
+        fh = self._ftr.winfo_reqheight()
+        ch = self._content.winfo_reqheight() if self._content else 1
+        avail = max(int(140 * self.S), max_h - hh - fh)
+        view = min(ch, avail)
+        cw = self.pw - self._bar_w - (0 if self._rounded else 2)
+        self._scv.configure(height=view, width=cw)
+        self._sync_scroll()
+        return hh + view + fh + (0 if self._rounded else 2)
+
+    def _place_panel(self):
+        ph = self._layout()
+        pw = self.pw
+        l, t, r, btm = _work_area()
+        bx, by = self.bubble.winfo_x(), self.bubble.winfo_y()
+        gap = int(10 * self.S)
+        margin = int(12 * self.S)
+        x = bx - pw - gap  # ưu tiên bên trái bóng; nếu không đủ chỗ thì bên phải
+        if x < l + margin:
+            x = bx + self.size + gap
+        if x + pw > r - margin:
+            x = max(l + margin, r - margin - pw)
+        y = by + self.size - ph  # đáy panel ngang đáy bóng
+        y = max(t + margin, min(y, btm - margin - ph))
+        self.panel.geometry(f"{pw}x{ph}+{x}+{y}")
+
+    # ---------- scroll
+    def _view_h(self) -> int:
+        h = self._scv.winfo_height()
+        return h if h > 1 else max(1, self._scv.winfo_reqheight())
+
+    def _offset(self) -> float:
+        return float(self._scv.canvasy(0))
+
+    def _sync_scroll(self):
+        """Cập nhật vùng cuộn theo kích thước thật của canvas (gọi cả khi đang kéo resize)."""
+        if not self._content:
+            return
+        cw = self._scv.winfo_width()
+        cw = cw if cw > 1 else max(1, self._scv.winfo_reqwidth())
+        self._scv.itemconfigure(self._content_win, width=cw)
+        ch = max(1, self._content.winfo_reqheight())
+        self._content_h = ch
+        vh = self._view_h()
+        self._scrollable = ch > vh + 1
+        self._scv.configure(scrollregion=(0, 0, cw, max(ch, vh)))
+        self._scroll_to(self._offset(), animate=False)
+
+    def _max_offset(self) -> float:
+        return max(0.0, self._content_h - self._view_h())
+
+    def _scroll_to(self, off: float, animate: bool = False):
+        off = max(0.0, min(self._max_offset(), off))
+        if animate:
+            self._scroll_target = off
+            self._animate_scroll()
+            return
+        self._scroll_target = None
+        total = max(self._content_h, self._view_h())
+        self._scv.yview_moveto(off / total if total else 0)
+        self._update_thumb()
+
+    def _animate_scroll(self):
+        if self._scroll_target is None:
+            return
+        cur = self._offset()
+        d = self._scroll_target - cur
+        if abs(d) < 1.5:
+            self._scroll_to(self._scroll_target)
+            return
+        total = max(self._content_h, self._view_h())
+        self._scv.yview_moveto((cur + d * 0.35) / total)
+        self._update_thumb()
+        self.root.after(12, self._animate_scroll)
+
+    def _on_wheel(self, ev):
+        self._wheel_by(ev.delta)
+
+    def _on_touchpad(self, ev):
+        # %D của <TouchpadScroll> gói deltaX ở 16 bit cao, deltaY ở 16 bit thấp (đều có dấu)
+        dy = int(ev.delta) & 0xFFFF
+        if dy >= 0x8000:
+            dy -= 0x10000
+        self._wheel_by(dy)
+
+    def _wheel_by(self, delta: float):
+        """delta theo đơn vị Windows: 120 = một nấc con lăn; touchpad gửi nhiều delta nhỏ."""
+        if not delta or not self.panel_visible or not self._scrollable or self._sheet:
+            return
+        x, y = _cursor_pos()
+        if not self._inside(self.panel, x, y):
+            return
+        base = self._scroll_target if self._scroll_target is not None else self._offset()
+        self._scroll_to(base - (delta / 120.0) * 72 * self.S, animate=True)
+
+    def _set_thumb_hover(self, v: bool):
+        self._thumb_hover = v
+        self._update_thumb()
+
+    def _update_thumb(self):
+        sb = self._sbar
+        sb.delete("all")
+        self._thumb = (0, 0)
+        if not self._scrollable or not self._content:
+            return
+        vh = self._view_h()
+        ch = max(self._content_h, 1)
+        pad = int(4 * self.S)
+        track = max(1, vh - 2 * pad)
+        L = max(int(28 * self.S), int(track * vh / ch))
+        L = min(L, track)
+        off = self._offset()
+        mo = self._max_offset()
+        y0 = pad + int((track - L) * (off / mo if mo else 0))
+        w = int((5 if (self._thumb_hover or self._thumb_drag) else 4) * self.S)
+        col = MUTED if (self._thumb_hover or self._thumb_drag) else FAINT
+        img = self._photo(("thumb", w, L, col),
+                          lambda: [list(r) for r in zip(*render.capsule_rows(L, w, 1.0, col, col, BG))])
+        x0 = (self._bar_w - w) // 2 - int(1 * self.S)
+        sb.create_image(x0, y0, anchor="nw", image=img)
+        self._thumb = (y0, y0 + L)
+
+    def _sb_press(self, ev):
+        if not self._scrollable:
+            return
+        y0, y1 = self._thumb
+        if y0 <= ev.y <= y1:
+            self._thumb_drag = (ev.y, self._offset())
+        else:  # bấm vào rãnh: nhảy một trang
+            page = self._view_h() * 0.9
+            self._scroll_to(self._offset() + (page if ev.y > y1 else -page), animate=True)
+
+    def _sb_motion(self, ev):
+        if not self._thumb_drag:
+            return
+        y_start, off0 = self._thumb_drag
+        vh = self._view_h()
+        pad = int(4 * self.S)
+        y0, y1 = self._thumb
+        free = max(1, (vh - 2 * pad) - (y1 - y0))
+        self._scroll_to(off0 + (ev.y - y_start) * self._max_offset() / free)
+
+    # ---------- widgets
+    def _lbl(self, parent, text, font=None, fg=FG, **kw):
+        return tk.Label(parent, text=text, font=font or self.f_sm, fg=fg, bg=parent["bg"], anchor="w",
+                        bd=0, padx=0, pady=0, **kw)
+
+    def _ellipsis(self, text: str, font: tkfont.Font, max_px: int) -> str:
+        if font.measure(text) <= max_px:
+            return text
+        while text and font.measure(text + "…") > max_px:
+            text = text[:-1]
+        return text + "…"
+
+    def _bar(self, parent, pct: float, color: str, width: int, height: float = 6):
+        h = max(4, int(height * self.S))
+        frac = max(0.0, min(100.0, pct)) / 100.0
+        bg = parent["bg"]
+        img = self._photo(("bar", width, h, round(frac, 3), color, TRACK, bg),
+                          lambda: render.capsule_rows(width, h, frac, color, TRACK, bg))
+        c = tk.Canvas(parent, width=width, height=h, bg=bg, highlightthickness=0, bd=0)
+        c.create_image(0, 0, anchor="nw", image=img)
+        c._img = img
+        return c
+
+    def _pill(self, parent, text: str, color: str, fg: str = "#15161a", font=None):
+        font = font or self.f_xsb
+        S = self.S
+        h = font.metrics("linespace") + int(2 * S)
+        w = font.measure(text) + int(12 * S)
+        bg = parent["bg"]
+        img = self._photo(("pill", w, h, color, bg), lambda: render.capsule_rows(w, h, 1.0, color, color, bg))
+        c = tk.Canvas(parent, width=w, height=h, bg=bg, highlightthickness=0, bd=0)
+        c.create_image(0, 0, anchor="nw", image=img)
+        c.create_text(w / 2, h / 2, text=text, fill=fg, font=font)
+        c._img = img
+        return c
+
+    def _icon_btn(self, parent, glyph: str, cmd, hover_fg=FG, fg=MUTED, font=None):
+        b = tk.Label(parent, text=glyph, font=font or self.f_icon, fg=fg, bg=parent["bg"], cursor="hand2",
+                     padx=int(5 * self.S), pady=int(3 * self.S))
+        b.bind("<Enter>", lambda e: b.configure(fg=hover_fg))
+        b.bind("<Leave>", lambda e: b.configure(fg=fg))
+        b.bind("<Button-1>", lambda e: cmd())
+        return b
+
+    def _text_btn(self, parent, text: str, cmd, hover_fg=FG, fg=MUTED):
+        b = tk.Label(parent, text=text, font=self.f_xs, fg=fg, bg=parent["bg"], cursor="hand2")
+        b.bind("<Enter>", lambda e: b.configure(fg=hover_fg))
+        b.bind("<Leave>", lambda e: b.configure(fg=fg))
+        b.bind("<Button-1>", lambda e: cmd())
+        return b
+
+    def _section_title(self, parent, text, right=None, right_fg=FAINT, top=14):
+        S = self.S
+        row = tk.Frame(parent, bg=parent["bg"])
+        row.pack(fill="x", pady=(int(top * S), int(6 * S)))
+        self._lbl(row, text, font=self.f_xsb, fg=MUTED).pack(side="left")
+        if right:
+            self._lbl(row, right, font=self.f_xs, fg=right_fg).pack(side="right")
+        return row
+
+    def _separator(self, parent):
+        tk.Frame(parent, bg=LINE, height=1).pack(fill="x")
+
+    # ---------- render
+    def _signature(self, snap: dict):
+        q = snap.get("quota") or {}
+        now_min = int(time.time() // 60)
+        return (
+            tuple((w["key"], round(w["percent"], 1), int((w.get("resets_at") or 0) // 60)) for w in q.get("windows", [])),
+            q.get("ok"), q.get("error"),
+            tuple((s["session_id"], s["status"], s["model"], s["context_tokens"], s["cwd"], s["name"], s["subagents"],
+                   s["totals"]["messages"], int((now_min * 60 - (s.get("last_activity") or 0)) // 60))
+                  for s in snap.get("sessions", [])),
+            int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
+            snap.get("error"),
+        )
+
+    def _render_panel(self, force=False):
+        snap = self.snap or {}
+        sig = self._signature(snap)
+        if not force and sig == self.sig:
+            self._update_footer()
+            return
+        self.sig = sig
+        self._cards = []
+        self._hot = None
+        S = self.S
+        padx = int(16 * S)
+        # nội dung nằm trong canvas rộng (pw - bar_w); lề phải bớt đi bar_w để hai bên cân nhau
+        cpad = (padx, max(0, padx - self._bar_w))
+        inner_w = self.pw - padx - cpad[1] - self._bar_w - (0 if self._rounded else 2)
+
+        for w in self._hdr.winfo_children() + self._ftr.winfo_children():
+            w.destroy()
+        self._build_header(self._hdr, snap, padx)
+        self._build_footer(self._ftr, padx)
+
+        # dựng nội dung mới rồi mới thay cái cũ: canvas giữ nguyên nên vị trí cuộn được giữ
+        old, old_win = self._content, self._content_win
+        new = tk.Frame(self._scv, bg=BG)
+        self._build_quota(new, snap, cpad, inner_w)
+        self._build_sessions(new, snap, cpad, inner_w)
+        self._build_local(new, snap, cpad, inner_w)
+        tk.Frame(new, bg=BG, height=int(12 * S)).pack(fill="x")
+        self._content = new
+        self._content_win = self._scv.create_window(0, 0, anchor="nw", window=new)
+        if old_win is not None:
+            self._scv.delete(old_win)
+        if old is not None:
+            old.destroy()
+        tk.Misc.lift(self._grip)
+
+        if self.panel_visible:
+            self._place_panel()
+        else:
+            self._sync_scroll()
+
+    def _build_header(self, hd, snap, padx):
+        S = self.S
+        row = tk.Frame(hd, bg=BG)
+        row.pack(fill="x", padx=(padx, int(10 * S)), pady=(int(14 * S), int(12 * S)))
+        d = int(10 * S)
+        logo = self._photo(("dot", d, ACCENT, BG), lambda: render.capsule_rows(d, d, 1.0, ACCENT, ACCENT, BG))
+        lc = tk.Canvas(row, width=d, height=d, bg=BG, highlightthickness=0, bd=0)
+        lc.create_image(0, 0, anchor="nw", image=logo)
+        lc._img = logo
+        lc.pack(side="left", padx=(0, int(8 * S)))
+        titles = tk.Frame(row, bg=BG)
+        titles.pack(side="left", fill="x", expand=True)
+        self._lbl(titles, "Claude PET", font=self.f_title).pack(fill="x")
+        acct = snap.get("account") or {}
+        sub = " · ".join(x for x in (acct.get("email"), fmt_tier(acct.get("tier"))) if x)
+        if sub:
+            self._lbl(titles, self._ellipsis(sub, self.f_xs, self.pw - int(140 * S)), font=self.f_xs, fg=MUTED).pack(fill="x")
+        self._icon_btn(row, ICON_CLOSE, self.hide_panel, hover_fg=FG).pack(side="right")
+        self._icon_btn(row, ICON_REFRESH, self.collector_refresh, hover_fg=BLUE).pack(side="right")
+        self._separator(hd)
+
+    def _build_quota(self, parent, snap, padx, inner_w):
+        S = self.S
+        warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=padx)
+        q = snap.get("quota")
+        ok = bool(q and q.get("ok"))
+        src = "Anthropic API" if ok else ("đã tắt" if not self.cfg.get("quota_api_enabled", True) else "")
+        self._section_title(sec, "GIỚI HẠN SỬ DỤNG", src)
+        if not ok:
+            err = (q or {}).get("error") if q else ("đang tải…" if self.cfg.get("quota_api_enabled", True) else "quota_api_enabled = false")
+            card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
+            card.pack(fill="x")
+            self._lbl(card, f"Không lấy được quota: {err}", font=self.f_xs, fg=YELLOW,
+                      wraplength=inner_w - int(24 * S), justify="left").pack(fill="x")
+            return
+        wins = q.get("windows") or []
+        if not wins:
+            self._lbl(sec, "API không trả về giới hạn nào", font=self.f_xs, fg=MUTED).pack(fill="x")
+        cp = int(12 * S)
+        for i, w in enumerate(wins):
+            col = level_color(w["percent"], warn, danger)
+            card = tk.Frame(sec, bg=SURFACE, padx=cp, pady=int(10 * S))
+            card.pack(fill="x", pady=(0 if i == 0 else int(6 * S), 0))
+            r1 = tk.Frame(card, bg=SURFACE)
+            r1.pack(fill="x")
+            self._lbl(r1, w["label"], font=self.f_smb, fg=FG).pack(side="left", anchor="s")
+            self._lbl(r1, f"{w['percent']:.0f}%", font=self.f_big, fg=col).pack(side="right", anchor="s")
+            self._bar(card, w["percent"], col, inner_w - 2 * cp, 6).pack(fill="x", pady=(int(6 * S), int(6 * S)))
+            r3 = tk.Frame(card, bg=SURFACE)
+            r3.pack(fill="x")
+            rs = fmt_reset(w.get("resets_at"))
+            if rs:
+                self._lbl(r3, rs[0].upper() + rs[1:], font=self.f_xs, fg=MUTED).pack(side="left")
+                self._lbl(r3, fmt_clock(w.get("resets_at")), font=self.f_xs, fg=FAINT).pack(side="right")
+
+    def _build_sessions(self, parent, snap, padx, inner_w):
+        S = self.S
+        warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
+        sessions = snap.get("sessions") or []
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=padx)
+        busy = sum(1 for s in sessions if s["status"] == "busy")
+        right = f"{busy} đang chạy" if busy else ""
+        self._section_title(sec, f"SESSIONS ({len(sessions)})", right, right_fg=ACCENT)
+        if snap.get("error"):
+            self._lbl(sec, snap["error"], font=self.f_xs, fg=RED, wraplength=inner_w, justify="left").pack(fill="x")
+        if not sessions:
+            card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(14 * S))
+            card.pack(fill="x")
+            self._lbl(card, "Không có session Claude Code nào đang chạy.", font=self.f_xs, fg=MUTED).pack()
+            return
+        stripe_w = max(2, int(3 * S))
+        cp = int(12 * S)
+        cw = inner_w - stripe_w - 2 * cp - 2
+        for i, s in enumerate(sessions):
+            is_busy = s["status"] == "busy"
+            status_col = ACCENT if is_busy else (GREEN if s["status"] == "idle" else FAINT)
+            card = tk.Frame(sec, bg=SURFACE, highlightthickness=1, highlightbackground=SURFACE,
+                            highlightcolor=SURFACE)
+            card.pack(fill="x", pady=(0 if i == 0 else int(6 * S), 0))
+            tk.Frame(card, bg=status_col, width=stripe_w).pack(side="left", fill="y")
+            inner = tk.Frame(card, bg=SURFACE, padx=cp, pady=int(10 * S))
+            inner.pack(side="left", fill="both", expand=True)
+
+            # dòng 1: tên + mũi tên + model
+            r1 = tk.Frame(inner, bg=SURFACE)
+            r1.pack(fill="x")
+            more = tk.Label(r1, text=ICON_MORE, font=self.f_icon_sm, fg=MUTED, bg=SURFACE, cursor="hand2",
+                            padx=int(4 * S))
+            more.pack(side="right", padx=(int(4 * S), 0))
+            used = more.winfo_reqwidth() + int(4 * S)
+            if s.get("effort"):
+                ech = self._pill(r1, s["effort"], "#33343e", fg=FG2, font=self.f_xs)
+                ech.pack(side="right", padx=(int(4 * S), 0))
+                used += int(ech.cget("width")) + int(4 * S)
+            model = short_model(s["model"])
+            if model != "?":
+                pill = self._pill(r1, model, model_color(s["model"]))
+                pill.pack(side="right")
+                used += int(pill.cget("width"))
+            arrow = tk.Label(r1, text=ICON_OPEN, font=self.f_icon_sm, fg=SURFACE, bg=SURFACE)
+            arrow.pack(side="right", padx=(0, int(6 * S)))
+            name_w = cw - used - int(22 * S)
+            self._lbl(r1, self._ellipsis(s["name"], self.f_md, name_w), font=self.f_md).pack(side="left")
+
+            # dòng 2: thư mục + branch
+            r2 = tk.Frame(inner, bg=SURFACE)
+            r2.pack(fill="x", pady=(int(2 * S), 0))
+            cwd = (s.get("cwd") or "?").rstrip("\\/")
+            base = os.path.basename(cwd) or cwd
+            parent_dir = os.path.dirname(cwd)
+            base_txt = self._ellipsis(base, self.f_xsb, int(cw * 0.55))
+            self._lbl(r2, base_txt, font=self.f_xsb, fg=FG2).pack(side="left")
+            rest = parent_dir
+            br = s.get("git_branch")
+            if br and br not in ("HEAD", ""):
+                rest = (rest + "   ⎇ " + br) if rest else ("⎇ " + br)
+            if rest:
+                rest_w = cw - self.f_xsb.measure(base_txt) - int(8 * S)
+                self._lbl(r2, self._ellipsis(rest, self.f_xs, rest_w), font=self.f_xs, fg=FAINT).pack(
+                    side="left", padx=(int(6 * S), 0))
+
+            # dòng 3: context
+            col = level_color(s["context_pct"], warn, danger)
+            r3 = tk.Frame(inner, bg=SURFACE)
+            r3.pack(fill="x", pady=(int(10 * S), int(5 * S)))
+            self._lbl(r3, "Context", font=self.f_xs, fg=MUTED).pack(side="left")
+            if s["has_transcript"]:
+                self._lbl(r3, f"{s['context_pct']:.0f}%", font=self.f_xsb, fg=col).pack(side="right")
+                self._lbl(r3, f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}", font=self.f_xs,
+                          fg=FG2).pack(side="right", padx=(0, int(8 * S)))
+            else:
+                self._lbl(r3, "chưa có transcript", font=self.f_xs, fg=FAINT).pack(side="right")
+            self._bar(inner, s["context_pct"], col, cw, 5).pack(fill="x")
+
+            # dòng 4: trạng thái + số liệu
+            r4 = tk.Frame(inner, bg=SURFACE)
+            r4.pack(fill="x", pady=(int(8 * S), 0))
+            self._lbl(r4, "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"])),
+                      font=self.f_xsb, fg=status_col).pack(side="left")
+            bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
+            if s["subagents"]:
+                bits.append(f"{s['subagents']} subagent")
+            ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
+            if ep:
+                bits.append(ep)
+            self._lbl(r4, "  ·  ".join(bits), font=self.f_xs, fg=MUTED).pack(side="left", padx=(int(8 * S), 0))
+            ago = fmt_ago(s.get("last_activity"))
+            if ago:
+                self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
+
+            self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
+            self._bind_menu(card, s)
+            more.bind("<Button-1>", lambda ev, sess=s: self._session_menu(sess, ev.x_root, ev.y_root))
+            more.bind("<Enter>", lambda ev, m=more: m.configure(fg=FG))
+            more.bind("<Leave>", lambda ev, m=more: m.configure(fg=MUTED))
+            self._cards.append((card, arrow))
+
+    def _build_local(self, parent, snap, padx, inner_w):
+        loc = snap.get("local") or {}
+        if not loc:
+            return
+        S = self.S
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=padx)
+        self._section_title(sec, "TRANSCRIPT TRÊN MÁY", "ước tính, không phải quota")
+        card = tk.Frame(sec, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
+        card.pack(fill="x")
+        card.grid_columnconfigure(0, weight=1, uniform="c")
+        card.grid_columnconfigure(1, weight=1, uniform="c")
+        for i, (key, title) in enumerate((("5h", "5 giờ qua"), ("7d", "7 ngày qua"))):
+            u = loc.get(key, {})
+            col = tk.Frame(card, bg=SURFACE)
+            col.grid(row=0, column=i, sticky="w")
+            self._lbl(col, title, font=self.f_xs, fg=MUTED).pack(anchor="w")
+            v = tk.Frame(col, bg=SURFACE)
+            v.pack(anchor="w", pady=(int(2 * S), 0))
+            self._lbl(v, fmt_k(u.get("output")), font=self.f_md, fg=FG).pack(side="left")
+            self._lbl(v, " output", font=self.f_xs, fg=MUTED).pack(side="left", anchor="s", pady=(0, int(1 * S)))
+            fresh = (u.get("input", 0) or 0) + (u.get("cache_create", 0) or 0)
+            self._lbl(col, f"{u.get('messages', 0)} msg · {fmt_k(fresh)} input mới", font=self.f_xs, fg=FAINT).pack(anchor="w")
+
+    # ---------- resize
+    def _build_grip(self):
+        """Tay nắm resize ở góc trên-trái (phía xa bóng). Kéo: đổi rộng/cao. Nhấp đúp: về mặc định."""
+        S = self.S
+        g = int(14 * S)
+        c = tk.Canvas(self.body, width=g, height=g, bg=BG, highlightthickness=0, bd=0, cursor="size_nw_se")
+        step = max(3, int(4 * S))
+        r = max(1, int(1 * S))
+        for i in range(3):
+            for j in range(3 - i):
+                x, y = int(3 * S) + j * step, int(3 * S) + i * step
+                c.create_oval(x - r, y - r, x + r, y + r, fill=FAINT, outline="", tags="dot")
+        c.place(x=0, y=0)
+        tk.Misc.lift(c)  # Canvas.lift() là raise item, cần raise widget
+        c.bind("<Enter>", lambda e: c.itemconfigure("dot", fill=FG2))
+        c.bind("<Leave>", lambda e: c.itemconfigure("dot", fill=FAINT))
+        c.bind("<ButtonPress-1>", self._resize_start)
+        c.bind("<B1-Motion>", self._resize_move)
+        c.bind("<ButtonRelease-1>", self._resize_end)
+        c.bind("<Double-Button-1>", self._resize_reset)
+        self._grip = c
+
+    def _resize_start(self, ev):
+        p = self.panel
+        self._resize = (ev.x_root, ev.y_root, p.winfo_width(), p.winfo_height(),
+                        p.winfo_x() + p.winfo_width(), p.winfo_y() + p.winfo_height())
+        self._modal = True
+
+    def _resize_move(self, ev):
+        if not self._resize:
+            return
+        x0, y0, w0, h0, right, bottom = self._resize
+        l, t, r, b = _work_area()
+        w = max(self._pw_min, min(self._pw_max, w0 - (ev.x_root - x0), right - l))
+        h = max(self._ph_min, min(h0 - (ev.y_root - y0), bottom - t))
+        self.panel.geometry(f"{int(w)}x{int(h)}+{int(right - w)}+{int(bottom - h)}")
+
+    def _resize_end(self, ev):
+        if not self._resize:
+            return
+        self._resize = None
+        self._modal = False
+        self._lbtn_prev = _lbutton_down()
+        self.pw = max(self._pw_min, min(self._pw_max, self.panel.winfo_width()))
+        self._user_h = self.panel.winfo_height()
+        self.state["panel_w"], self.state["panel_h"] = self.pw, self._user_h
+        save_state(self.state)
+        log(f"panel resized to {self.pw}x{self._user_h}")
+        self._render_panel(force=True)
+        self._place_panel()
+
+    def _resize_reset(self, ev=None):
+        self._resize = None
+        self._modal = False
+        self.pw, self._user_h = self._pw_default, None
+        self.state.pop("panel_w", None)
+        self.state.pop("panel_h", None)
+        save_state(self.state)
+        log("panel size reset")
+        self._render_panel(force=True)
+        self._place_panel()
+
+    def _build_footer(self, ft, padx):
+        S = self.S
+        self._separator(ft)
+        row = tk.Frame(ft, bg=BG)
+        row.pack(fill="x", padx=padx, pady=(int(8 * S), int(9 * S)))
+        self.footer_lbl = self._lbl(row, "", font=self.f_xs, fg=FAINT)
+        self.footer_lbl.pack(side="left")
+        self._text_btn(row, "Thoát", self.quit, hover_fg=RED, fg=FAINT).pack(side="right")
+        self._update_footer()
+
+    def _update_footer(self):
+        if not self.footer_lbl or not self.snap:
+            return
+        if self._flash_until > time.time():
+            return
+        try:
+            ts = time.strftime("%H:%M:%S", time.localtime(self.snap.get("ts", 0)))
+            self.footer_lbl.configure(text=f"Cập nhật {ts}  ·  bấm session để mở, chuột phải để thao tác", fg=FAINT)
+        except Exception:
+            pass
+
+    def _flash(self, text: str, color: str, secs: float = 6.0):
+        self._flash_until = time.time() + secs
+        try:
+            if self.footer_lbl:
+                self.footer_lbl.configure(text=self._ellipsis(text, self.f_xs, self.pw - int(90 * self.S)), fg=color)
+        except Exception:
+            pass
+
+    def _bind_click(self, widget, fn):
+        try:
+            widget.configure(cursor="hand2")
+        except Exception:
+            pass
+        widget.bind("<Button-1>", fn)
+        for ch in widget.winfo_children():
+            self._bind_click(ch, fn)
+
+    def _set_hot(self, hot):
+        if hot is self._hot:
+            return
+        try:
+            if self._hot:
+                card, arrow = self._hot
+                card.configure(highlightbackground=SURFACE, highlightcolor=SURFACE)
+                arrow.configure(fg=SURFACE)
+        except Exception:
+            pass
+        self._hot = hot
+        if hot:
+            try:
+                card, arrow = hot
+                card.configure(highlightbackground=HOVER_BORDER, highlightcolor=HOVER_BORDER)
+                arrow.configure(fg=FG2)
+            except Exception:
+                self._hot = None
+
+    def _poll_hover(self):
+        x, y = _cursor_pos()
+        hot = None
+        try:
+            w = self.root.winfo_containing(x, y)
+        except Exception:
+            w = None
+        if w is not None:
+            path = str(w)
+            for card, arrow in self._cards:
+                cp = str(card)
+                if path == cp or path.startswith(cp + "."):
+                    hot = (card, arrow)
+                    break
+        if hot is None or self._hot is None or hot[0] is not self._hot[0]:
+            self._set_hot(hot)
+
+    def _bind_menu(self, widget, sess):
+        widget.bind("<Button-3>", lambda ev, s_=sess: self._session_menu(s_, ev.x_root, ev.y_root))
+        for ch in widget.winfo_children():
+            self._bind_menu(ch, sess)
+
+    # ---------- popup thao tác session
+    def _close_sheet(self):
+        if self._sheet is not None:
+            try:
+                self._sheet.destroy()
+            except Exception:
+                pass
+            self._sheet = None
+            self._lbtn_prev = _lbutton_down()
+
+    def _chip(self, parent, text, width, selected_col=None, enabled=True, on_click=None, font=None):
+        """Nút bo tròn dạng chip: chọn (màu nhấn), thường, hover, mờ."""
+        font = font or self.f_xsb
+        S = self.S
+        h = font.metrics("linespace") + int(10 * S)
+        bg = parent["bg"]
+        if selected_col:
+            fill, hov, fg = selected_col, selected_col, "#15161a"
+        elif enabled:
+            fill, hov, fg = CHIP, CHIP_HOVER, FG2
+        else:
+            fill, hov, fg = CHIP_OFF, CHIP_OFF, FAINT
+        im_n = self._photo(("chip", width, h, fill, bg), lambda: render.capsule_rows(width, h, 1.0, fill, fill, bg))
+        im_h = self._photo(("chip", width, h, hov, bg), lambda: render.capsule_rows(width, h, 1.0, hov, hov, bg))
+        c = tk.Canvas(parent, width=width, height=h, bg=bg, highlightthickness=0, bd=0,
+                      cursor="hand2" if (enabled and not selected_col) else "arrow")
+        item = c.create_image(0, 0, anchor="nw", image=im_n)
+        c.create_text(width / 2, h / 2, text=text, fill=fg, font=font)
+        c._imgs = (im_n, im_h)
+        if enabled and not selected_col and on_click:
+            c.bind("<Enter>", lambda e: c.itemconfigure(item, image=im_h))
+            c.bind("<Leave>", lambda e: c.itemconfigure(item, image=im_n))
+            c.bind("<Button-1>", lambda e: on_click())
+        return c
+
+    def _sheet_row(self, parent, icon, label, hint, on_click, enabled=True, danger=False, confirm=None):
+        S = self.S
+        row = tk.Frame(parent, bg=SHEET_BG, cursor="hand2" if enabled else "arrow")
+        row.pack(fill="x", padx=int(6 * S))
+        fg = (RED if danger else FG) if enabled else FAINT
+        ic = tk.Label(row, text=icon, font=self.f_icon, fg=(RED if danger else MUTED) if enabled else FAINT,
+                      bg=SHEET_BG, width=2)
+        ic.pack(side="left", padx=(int(8 * S), int(8 * S)), pady=int(7 * S))
+        lb = tk.Label(row, text=label, font=self.f_sm, fg=fg, bg=SHEET_BG, anchor="w")
+        lb.pack(side="left", fill="x", expand=True)
+        ht = tk.Label(row, text=hint, font=self.f_xs, fg=FAINT, bg=SHEET_BG)
+        ht.pack(side="right", padx=(0, int(10 * S)))
+        parts = (row, ic, lb, ht)
+        state = {"armed": False}
+
+        def paint(bg):
+            for p in parts:
+                p.configure(bg=bg)
+
+        def reset():
+            if not row.winfo_exists():
+                return
+            state["armed"] = False
+            lb.configure(text=label, fg=fg)
+            ht.configure(text=hint, fg=FAINT)
+            paint(SHEET_BG)
+
+        def click(_e=None):
+            if not enabled:
+                return
+            if confirm and not state["armed"]:
+                state["armed"] = True
+                lb.configure(text=confirm, fg=RED)
+                ht.configure(text="bấm lần nữa", fg=RED)
+                paint(DANGER_BG)
+                self.root.after(3500, reset)
+                return
+            on_click()
+
+        if enabled:
+            for p in parts:
+                p.bind("<Enter>", lambda e: paint(DANGER_BG if state["armed"] else ROW_HOVER))
+                p.bind("<Leave>", lambda e: paint(DANGER_BG if state["armed"] else SHEET_BG))
+                p.bind("<Button-1>", click)
+        return row
+
+    def _new_sheet(self):
+        self._close_sheet()
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.attributes("-alpha", 0.0)
+        top.configure(bg=SHEET_BG)
+        body = tk.Frame(top, bg=SHEET_BG)
+        body.pack(fill="both", expand=True)
+        self._sheet = top
+        return top, body
+
+    def _finish_sheet(self, top, body, W, x, y):
+        """Đặt popup cạnh con trỏ (giữ trong màn hình), bo góc, fade-in, Esc để đóng."""
+        S = self.S
+        top.update_idletasks()
+        h = body.winfo_reqheight()
+        l, t, r, b = _work_area()
+        m = int(8 * S)
+        sx = x - W - m if x + W + m > r else x + m
+        sx = max(l + m, sx)
+        sy = max(t + m, min(y - int(10 * S), b - h - m))
+        top.geometry(f"{W}x{h}+{sx}+{sy}")
+        if not self._dwm_round(top):
+            top.configure(bg=BORDER)
+            body.pack_configure(padx=1, pady=1)
+            top.geometry(f"{W + 2}x{h + 2}+{sx}+{sy}")
+        top.bind("<Escape>", lambda e: self._close_sheet())
+        top.focus_force()
+        self._lbtn_prev = _lbutton_down()
+
+        def fade(a=0.0):
+            if self._sheet is not top:
+                return
+            a = min(1.0, a + 0.25)
+            top.attributes("-alpha", a)
+            if a < 1.0:
+                self.root.after(12, lambda: fade(a))
+        fade()
+
+    def _toggle_autostart(self):
+        try:
+            if autostart.is_enabled():
+                autostart.disable()
+                msg = "Đã tắt chạy cùng Windows"
+            else:
+                autostart.enable()
+                msg = "Đã bật chạy cùng Windows"
+            log(f"{msg}: {autostart.launch_command()}")
+            self._flash(msg, GREEN, 4)
+        except Exception as e:
+            log(f"autostart toggle failed: {e}")
+            self._flash(f"Không đổi được auto-start: {e}", YELLOW)
+
+    def _bubble_menu(self, x, y):
+        S = self.S
+        W = int(230 * S)
+        top, body = self._new_sheet()
+
+        def act(fn):
+            def run():
+                self._close_sheet()
+                fn()
+            return run
+
+        tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
+        self._sheet_row(body, ICON_REFRESH, "Làm mới ngay", "", act(self.collector_refresh))
+        self._sheet_row(body, ICON_FOLDER, "Mở thư mục ~/.claude", "", act(self._open_claude_dir))
+        on = autostart.is_enabled()
+        self._sheet_row(body, ICON_CHECK if on else ICON_STARTUP_OFF, "Chạy cùng Windows", "đang bật" if on else "đang tắt",
+                        act(self._toggle_autostart))
+        tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=int(14 * S), pady=int(4 * S))
+        self._sheet_row(body, ICON_EXIT, "Thoát Claude PET", "", act(self.quit), danger=True)
+        tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
+        self._finish_sheet(top, body, W, x, y)
+
+    def _session_menu(self, sess: dict, x: int, y: int):
+        """Popup thao tác cho một session (thay menu native của Windows)."""
+        S = self.S
+        W = int(304 * S)
+        pad = int(14 * S)
+        inner = W - 2 * pad
+        why = actions.command_block_reason(sess)
+        can_cmd = why is None
+        top, body = self._new_sheet()
+
+        def act(fn):
+            def run():
+                self._close_sheet()
+                fn()
+            return run
+
+        # tiêu đề
+        hd = tk.Frame(body, bg=SHEET_BG)
+        hd.pack(fill="x", padx=pad, pady=(int(12 * S), int(10 * S)))
+        tk.Label(hd, text=self._ellipsis(sess.get("name") or "?", self.f_md, inner - int(26 * S)), font=self.f_md,
+                 fg=FG, bg=SHEET_BG, anchor="w").pack(side="left")
+        x_btn = self._icon_btn(hd, ICON_CLOSE, self._close_sheet, font=self.f_icon_sm)
+        x_btn.configure(bg=SHEET_BG)
+        x_btn.pack(side="right")
+        bits = [short_model(sess.get("model")), sess.get("effort") or "",
+                ENTRYPOINTS.get(sess.get("entrypoint") or "", sess.get("entrypoint") or ""),
+                "đang chạy" if sess.get("status") == "busy" else "rảnh"]
+        tk.Label(body, text="  ·  ".join(b for b in bits if b and b != "?"), font=self.f_xs, fg=MUTED,
+                 bg=SHEET_BG, anchor="w").pack(fill="x", padx=pad, pady=(0, int(10 * S)))
+        tk.Frame(body, bg=LINE, height=1).pack(fill="x")
+
+        # model
+        cur_model = sess.get("model") or ""
+        efforts = actions.DEFAULT_EFFORTS
+        for mid, _n, effs in self._catalog:
+            if cur_model.startswith(mid):
+                efforts = effs
+        cap = tk.Frame(body, bg=SHEET_BG)
+        cap.pack(fill="x", padx=pad, pady=(int(12 * S), int(6 * S)))
+        tk.Label(cap, text="MODEL", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
+        if not can_cmd:
+            tk.Label(cap, text=why, font=self.f_xs, fg=FAINT, bg=SHEET_BG).pack(side="right")
+        grid = tk.Frame(body, bg=SHEET_BG)
+        grid.pack(fill="x", padx=pad)
+        gap = int(6 * S)
+        cw2 = (inner - gap) // 2
+        for i, (mid, name, _effs) in enumerate(self._catalog):
+            sel = model_color(mid) if cur_model.startswith(mid) else None
+            ch = self._chip(grid, name, cw2, selected_col=sel, enabled=can_cmd,
+                            on_click=act(lambda mid=mid: self._run_slash(sess, f"/model {mid}")))
+            ch.grid(row=i // 2, column=i % 2, padx=(0 if i % 2 == 0 else gap, 0), pady=(0, gap), sticky="w")
+
+        # effort
+        cap2 = tk.Frame(body, bg=SHEET_BG)
+        cap2.pack(fill="x", padx=pad, pady=(int(8 * S), int(6 * S)))
+        tk.Label(cap2, text="EFFORT", font=self.f_xsb, fg=MUTED, bg=SHEET_BG).pack(side="left")
+        row = tk.Frame(body, bg=SHEET_BG)
+        row.pack(fill="x", padx=pad)
+        n = max(1, len(efforts))
+        egap = int(4 * S)
+        ew = (inner - egap * (n - 1)) // n
+        for i, e in enumerate(efforts):
+            sel = ACCENT if (sess.get("effort") == e) else None
+            ch = self._chip(row, e, ew, selected_col=sel, enabled=can_cmd, font=self.f_xs,
+                            on_click=act(lambda e=e: self._run_slash(sess, f"/effort {e}")))
+            ch.pack(side="left", padx=(0 if i == 0 else egap, 0))
+        if not actions.is_cli(sess):
+            tk.Label(body, text="Session trong Claude desktop: đổi model, effort và các lệnh khác ngay trong app.",
+                     font=self.f_xs, fg=FAINT, bg=SHEET_BG, wraplength=inner, justify="left", anchor="w").pack(
+                fill="x", padx=pad, pady=(int(8 * S), 0))
+
+        tk.Frame(body, bg=SHEET_BG, height=int(10 * S)).pack(fill="x")
+        tk.Frame(body, bg=LINE, height=1).pack(fill="x")
+        tk.Frame(body, bg=SHEET_BG, height=int(4 * S)).pack(fill="x")
+
+        # thao tác
+        can_fork = bool(sess.get("has_transcript")) and sess.get("totals", {}).get("messages", 0) > 0
+        self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
+        self._sheet_row(body, ICON_HANDOFF, "Handoff sang terminal mới", "fork" if can_fork else "chưa có hội thoại",
+                        act(lambda: self._handoff(sess)), enabled=can_fork)
+        self._sheet_row(body, ICON_COMPACT, "Compact context", "/compact" if can_cmd else why,
+                        act(lambda: self._run_slash(sess, "/compact")), enabled=can_cmd)
+        self._sheet_row(body, ICON_CLEAR, "Clear context", "/clear" if can_cmd else why,
+                        act(lambda: self._run_slash(sess, "/clear")), enabled=can_cmd,
+                        confirm="Xoá context? (vẫn /resume lại được)")
+        tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=pad, pady=int(4 * S))
+        self._sheet_row(body, ICON_EXIT, "Thoát session", "/exit" if can_cmd else why,
+                        act(lambda: self._run_slash(sess, "/exit")), enabled=can_cmd, danger=True,
+                        confirm="Thoát session này?")
+        tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
+
+        self._finish_sheet(top, body, W, x, y)
+
+    def _run_slash(self, sess: dict, cmd: str):
+        try:
+            ok, msg = actions.send_slash(sess, cmd, self.cfg["claude_dir"],
+                                         keep_defaults=self.cfg.get("keep_default_model", True))
+        except Exception as e:
+            ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
+        log(f"action {cmd!r} -> {sess.get('name')!r} pid={sess.get('pid')}: ok={ok} {msg}")
+        self._flash(f"{sess.get('name')}: {msg}", GREEN if ok else YELLOW)
+        if ok:
+            self.root.after(1500, self.collector.refresh_now)
+
+    def _handoff(self, sess: dict):
+        try:
+            ok, msg = actions.handoff(sess)
+        except Exception as e:
+            ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
+        log(f"handoff {sess.get('name')!r} sid={sess.get('session_id')}: ok={ok} {msg}")
+        self._flash(msg, GREEN if ok else YELLOW)
+
+    def _focus_session(self, sess: dict):
+        try:
+            ok, msg = focus_session(sess)
+        except Exception as e:
+            ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
+        log(f"focus session {sess.get('name')!r} pid={sess.get('pid')}: ok={ok} {msg}")
+        self._flash(("Đã mở: " if ok else "Không mở được: ") + msg, GREEN if ok else YELLOW)
+        if ok:
+            self.hide_panel()
+
+    # ---------- loop
+    def request_show(self):
+        """Gọi từ thread single-instance khi người dùng mở pet-tracker lần nữa."""
+        self._want_show = True
+
+    def _pump(self):
+        if self._want_show:
+            self._want_show = False
+            log("second launch -> show panel")
+            if not self.panel_visible:
+                self.show_panel()
+            self._flash("Claude PET đang chạy rồi", ACCENT, 3)
+        got = False
+        try:
+            while True:
+                self.snap = self.q.get_nowait()
+                got = True
+        except queue.Empty:
+            pass
+        if got:
+            self._draw_bubble()
+            if self.panel_visible:
+                self._render_panel()
+        if self._sheet is not None:
+            down = _lbutton_down()
+            if down and not self._lbtn_prev:
+                x, y = _cursor_pos()
+                if not self._inside(self._sheet, x, y):
+                    self._close_sheet()
+                    self._lbtn_prev = True
+                    self.root.after(60 if self.panel_visible else 300, self._pump)
+                    return
+            self._lbtn_prev = down
+        elif self.panel_visible:
+            down = _lbutton_down()
+            if down and not self._lbtn_prev and not self._modal:
+                x, y = _cursor_pos()
+                if not (self._inside(self.panel, x, y) or self._inside(self.bubble, x, y)):
+                    log(f"click outside at {x},{y} -> hide")
+                    self.hide_panel()
+            self._lbtn_prev = down
+            if self.panel_visible:
+                self._poll_hover()
+        self.root.after(60 if self.panel_visible else 300, self._pump)
+
+    @staticmethod
+    def _inside(win, x: int, y: int) -> bool:
+        try:
+            wx, wy = win.winfo_rootx(), win.winfo_rooty()
+            return wx <= x <= wx + win.winfo_width() and wy <= y <= wy + win.winfo_height()
+        except Exception:
+            return False
+
+    def quit(self):
+        self.collector.stop.set()
+        self.collector.kick.set()
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
+    def mainloop(self):
+        self.root.report_callback_exception = lambda et, ev, tb: log(f"tk error: {et.__name__}: {ev}")
+        self.root.mainloop()
+
+
+def run(instance=None):
+    app = PetApp()
+    if instance is not None:
+        instance.listen(app.request_show)
+    try:
+        autostart.refresh_if_enabled()
+    except Exception as e:
+        log(f"autostart refresh failed: {e}")
+    app.mainloop()
