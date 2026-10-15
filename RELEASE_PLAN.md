@@ -108,11 +108,14 @@ trong quy trình.
 
 ## 5. Build pipeline
 
-- **Repo:** tạo git repo cho `pet-tracker` và push lên GitHub (nên là private trong org Vinova).
+- **Repo:** đã có, public: https://github.com/hakienit/pet-tracker (đã làm 2026-10-15).
 - **Python cho build:** máy dev đang dùng Python 3.15. Để build ổn định nên ghim **Python 3.13**
   trong CI, vì PyInstaller thường cần thời gian để hỗ trợ bản Python mới nhất. Trên macOS dùng
   bản python.org universal2 (có sẵn Tk), không dùng Homebrew Python.
-- **GitHub Actions**, một workflow chạy khi push tag `v*`:
+- **GitHub Actions:** phần Windows đã có ở `.github/workflows/release.yml` (đã làm 2026-10-15):
+  push tag `v*` → `windows-latest`, Python 3.13 → kiểm tra tag khớp `__version__` và CHANGELOG →
+  `build.ps1` → `SHA256SUMS.txt` → GitHub Release dạng draft. Chưa ký số, chưa có Inno Setup.
+  Kế hoạch đầy đủ khi có chứng chỉ và bản macOS:
   1. `windows-latest`: cài Python 3.13 và PyInstaller (ghim version) → build `--onedir --noconsole`
      → ký exe → Inno Setup tạo installer → ký installer → zip bản portable.
   2. `macos-14` (Apple Silicon): cài Python universal2 → PyInstaller `--windowed --target-arch universal2`
@@ -124,8 +127,8 @@ trong quy trình.
 - **Versioning:** SemVer. Nguồn duy nhất là `pet_tracker/__init__.py` (`__version__`). Tag `vX.Y.Z`
   phải khớp với giá trị này, CI kiểm tra. Version cũng ghi vào resource Windows (file version) và
   `CFBundleShortVersionString` của macOS.
-- **Changelog:** `CHANGELOG.md` theo định dạng Keep a Changelog, mục `Unreleased` được chuyển thành
-  version khi tag. Nội dung GitHub Release lấy từ mục tương ứng.
+- **Changelog:** đã có `CHANGELOG.md` (Keep a Changelog); `tools/changelog_section.py` trích mục của
+  version làm release notes (đã làm 2026-10-15).
 - **`build.ps1`:** đã chuyển sang `--onedir`, có icon và version info (đã làm 2026-10-15). Bản macOS
   sẽ cần thêm `.spec` cho Info.plist.
 - **Icon app:** đã có `assets/pet-tracker.ico` (tạo bằng `tools/make_icon.py`). macOS cần thêm `.icns` từ cùng hình.
@@ -142,7 +145,11 @@ trong quy trình.
 
 ### Auto-update
 
-- **Giai đoạn 1 (đề xuất):** chỉ thông báo, không tự cài. Khi khởi động và mỗi 24 giờ, widget gọi
+- **Đã làm (2026-10-15, bản Windows):** cả thông báo lẫn cập nhật một chạm, dùng GitHub Releases
+  của repo public `hakienit/pet-tracker`. Kiểm tra khi mở app và mỗi 24 giờ; tải zip, kiểm SHA256 với
+  `SHA256SUMS.txt`, script PowerShell thay thư mục cài (có khôi phục khi lỗi), mở lại app. Đã test
+  bằng release giả lập cục bộ, chưa test với exe build thật và release thật. Chi tiết trong README.
+- **Giai đoạn 1 (kế hoạch ban đầu):** chỉ thông báo, không tự cài. Khi khởi động và mỗi 24 giờ, widget gọi
   GitHub Releases API (`/repos/<org>/pet-tracker/releases/latest`) và so với `__version__`. Có bản
   mới thì hiện chấm trên bóng và dòng "Có bản mới x.y.z" trong panel, bấm vào mở trang release.
   Repo private thì cần token, nên với repo private hãy bỏ qua tính năng này hoặc dùng một file
@@ -205,12 +212,12 @@ trong quy trình.
    chưa ký và chấp nhận cảnh báo SmartScreen.
 3. **Apple Developer Program:** đăng ký tên tổ chức Vinova (cần D-U-N-S, mất vài ngày đến vài tuần)
    hay tài khoản cá nhân. Ai giữ chứng chỉ và API key notarization.
-4. **Kênh phân phối:** GitHub Releases của repo private, repo public, hay thư mục nội bộ.
+4. **Kênh phân phối:** đang dùng GitHub Releases của repo public `hakienit/pet-tracker`.
 5. **Repo:** tạo dưới GitHub org nào, private hay public. Nếu public, có chấp nhận công khai phần
    gọi endpoint usage không chính thức không.
 6. **Phạm vi bản macOS đầu tiên:** có chấp nhận bỏ tính năng gõ lệnh vào session (đổi model,
    effort, clear, exit) và chỉ giữ focus cùng handoff không.
-7. **Auto-update:** chỉ thông báo có bản mới (đề xuất), hay tự tải và cài.
+7. **Auto-update:** đã làm cập nhật một chạm cho Windows (vẫn do người dùng bấm, không tự cài ngầm).
 8. **Thời điểm:** release Windows trước (gần sẵn sàng) rồi macOS sau, hay chờ ra cả hai cùng lúc.
 9. **Máy Mac để khảo sát và test:** có máy Mac nào (Apple Silicon và Intel) dùng được cho bước
    khảo sát Claude Code trên macOS không.

@@ -66,6 +66,59 @@ Script cài PyInstaller, build dạng thư mục, không console, có icon và v
 - Mỗi máy cần đã cài và đăng nhập Claude Code; widget đọc dữ liệu từ `~/.claude` của máy đó.
 - Icon nằm ở `assets/`, tạo lại bằng `python tools/make_icon.py`.
 
+## Cài cho đồng nghiệp (bản exe)
+
+1. Mở https://github.com/hakienit/pet-tracker/releases, tải `pet-tracker-<version>-win-x64.zip` ở bản
+   mới nhất.
+2. Giải nén vào một thư mục cố định mà bạn có quyền ghi, ví dụ
+   `%LOCALAPPDATA%\Programs\ClaudePET`. Không đặt trong `Program Files` (cập nhật một chạm cần quyền
+   ghi vào thư mục cài) và không chạy thẳng từ trong file zip.
+3. Chạy `pet-tracker.exe`. Bản chưa ký số nên lần đầu Windows SmartScreen cảnh báo: bấm "More info" →
+   "Run anyway".
+4. Click phải vào bóng → "Chạy cùng Windows" nếu muốn tự mở khi đăng nhập.
+
+Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.claude` của máy đó).
+
+## Cập nhật
+
+- Khi mở app và mỗi 24 giờ, widget hỏi GitHub Releases
+  (`https://api.github.com/repos/hakienit/pet-tracker/releases/latest`; API này đã bỏ qua draft và
+  pre-release). Có bản mới hơn `__version__` thì bóng hiện chấm xanh ở góc trên-trái và đầu panel có
+  dòng "Có bản mới x.y.z", kèm nút "Cập nhật" và link "Xem thay đổi". Click phải vào bóng →
+  "Kiểm tra cập nhật" để hỏi ngay.
+- Nút "Cập nhật" (bản exe): tải `pet-tracker-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release, so
+  SHA256 (sai thì huỷ), giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên
+  thư mục cài thành `<thư mục>.old`, chép bản mới vào, giữ lại `config.json` cũ, mở lại app và xoá bản
+  cũ. Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Log: `%APPDATA%\pet-tracker\update.log`.
+  Vị trí bóng, kích thước panel, auto-start nằm ngoài thư mục cài nên không mất.
+- Chạy từ source: nút đổi thành "Tải về" và chỉ mở trang release (không tự thay code; dùng `git pull`).
+- Tắt kiểm tra tự động: `"update_check": false` trong `config.json` (vẫn kiểm tra được bằng tay).
+- File app tự tải về không bị Windows gắn "Mark of the Web", nên bản cập nhật không gặp lại cảnh báo
+  SmartScreen.
+
+## Release (người bảo trì)
+
+1. Ghi thay đổi vào mục `[Unreleased]` của `CHANGELOG.md`; khi phát hành, đổi thành
+   `## [x.y.z] - YYYY-MM-DD` và thêm link so sánh ở cuối file.
+2. Tăng `__version__` trong `pet_tracker/__init__.py` cho khớp, commit.
+3. Tạo tag và push:
+
+   ```bash
+   git tag v0.1.0
+   ```
+
+   ```bash
+   git push origin main v0.1.0
+   ```
+
+4. Workflow `.github/workflows/release.yml` (GitHub Actions, `windows-latest`, Python 3.13) kiểm tra
+   tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy `build.ps1`, tạo `SHA256SUMS.txt`, rồi
+   tạo GitHub Release dạng **draft** kèm zip và checksum, release notes lấy từ CHANGELOG.
+5. Mở draft trên GitHub, tải zip về thử, rồi bấm **Publish**. Chỉ sau khi publish thì app của mọi
+   người mới thấy bản mới.
+
+Chạy tay workflow (Actions → release → Run workflow) chỉ build và upload artifact, không tạo release.
+
 ## Cấu hình
 
 Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
@@ -80,6 +133,9 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `warn_percent` / `danger_percent` | 60 / 85 | ngưỡng đổi màu vàng / đỏ |
 | `bubble_size` | 64 | đường kính bóng (px logic, tự nhân theo DPI) |
 | `keep_default_model` | true | khi đổi model/effort từ widget, trả `model`/`modelSettings` trong `~/.claude/settings.json` về giá trị cũ |
+| `update_check` | true | tự kiểm tra bản mới khi mở app và mỗi `update_interval_hours` giờ |
+| `update_interval_hours` | 24 | chu kỳ kiểm tra bản mới |
+| `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
 
 Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\pet-tracker\pet-tracker.log`.
 
@@ -262,6 +318,9 @@ pet-tracker/
   pet-tracker.cmd          launcher ẩn console (pythonw)
   run.ps1 / build.ps1      chạy có console / build exe + zip portable
   tools/make_icon.py       vẽ icon (assets/pet-tracker.ico, .png) bằng stdlib
+  tools/changelog_section.py  trích release notes từ CHANGELOG.md
+  CHANGELOG.md             lịch sử thay đổi (Keep a Changelog)
+  .github/workflows/release.yml  build + tạo GitHub Release draft khi push tag v*
   config.example.json
   pet_tracker/
     config.py              defaults, config.json, state.json (vị trí bóng)
@@ -273,4 +332,5 @@ pet-tracker/
     render.py              vẽ khử răng cưa (bóng, thanh progress, pill) thành PhotoImage
     single.py              chỉ cho chạy một bản (named mutex + event)
     autostart.py           bật/tắt chạy cùng Windows (HKCU Run)
+    updater.py             kiểm tra GitHub Releases, tải + kiểm SHA256, script thay thư mục cài
 ```

@@ -59,7 +59,7 @@ def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str) -> l
 
 
 def bubble_rows(s: int, S: float, pct, prog: str, badge: str | None, warn: str | None,
-                hover: bool, P: dict) -> list:
+                hover: bool, P: dict, update: str | None = None) -> list:
     """Bóng tròn: đĩa gradient + vòng quota (bo đầu) + viền + badge busy + chấm cảnh báo context.
     Pixel ngoài hình = P['key'] (màu trong suốt của cửa sổ)."""
     cx = cy = s / 2.0
@@ -90,6 +90,10 @@ def bubble_rows(s: int, S: float, pct, prog: str, badge: str | None, warn: str |
         rw = 5.5 * S
         k = (R - rw * 0.4) * 0.7071
         dots.append((cx - k, cy + k, rw, hex2rgb(warn)))
+    if update:  # chấm báo có bản mới, góc trên-trái
+        ru = 5.0 * S
+        k = (R - ru * 0.4) * 0.7071
+        dots.append((cx - k, cy - k, ru, hex2rgb(update)))
     ring_cut = 2.0 * S
 
     rows = []

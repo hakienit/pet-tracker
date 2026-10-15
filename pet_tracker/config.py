@@ -33,6 +33,11 @@ DEFAULTS = {
     "danger_percent": 85,
     # Kích thước bóng (px logic, sẽ nhân theo DPI)
     "bubble_size": 64,
+    # Kiểm tra bản mới trên GitHub Releases khi mở app và mỗi update_interval_hours giờ
+    "update_check": True,
+    "update_interval_hours": 24,
+    # Ghi đè URL API (chỉ dùng để test); None = https://api.github.com/repos/hakienit/pet-tracker/releases/latest
+    "update_api_url": None,
 }
 
 

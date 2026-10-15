@@ -10,7 +10,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import font as tkfont
 
-from . import actions, autostart, render
+from . import __version__, actions, autostart, render, updater
 from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
 from .quota import fetch_api_usage, fmt_reset
@@ -60,6 +60,7 @@ ICON_CLOSE = ""
 ICON_OPEN = ""
 ICON_MORE = ""
 ICON_HANDOFF = ""
+ICON_UPDATE = "\ue896"
 ICON_STARTUP_OFF = ""
 ICON_CHECK = ""
 ICON_FOLDER = ""
@@ -239,12 +240,19 @@ class PetApp:
         self._modal = False
         self._sheet = None
         self._want_show = False
+        self._update = None          # kết quả kiểm tra bản mới gần nhất
+        self._update_dirty = False   # thread nền báo cần vẽ lại
+        self._update_busy = None     # "Đang tải 40%" khi đang cập nhật
+        self._update_ready = False
+        self._update_stage = None
+        self._update_kick = threading.Event()
         self._catalog = actions.load_catalog(self.cfg["claude_dir"])
 
         self._build_bubble()
         self._build_panel()
         self.collector = Collector(self.cfg, self.q)
         self.collector.start()
+        self._start_update_checker()
         self._lbtn_prev = False
         self._drag = None
         self._moved = False
@@ -386,11 +394,12 @@ class PetApp:
         busy = sum(1 for x in sessions if x["status"] == "busy")
         worst = max((x["context_pct"] for x in sessions), default=0.0)
         warn_col = level_color(worst, warn, danger) if worst >= warn else None
-        key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble)
+        upd = BLUE if (self._update or {}).get("available") else None
+        key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble, upd)
         if key != self._bub_key:
             self._bub_key = key
             rows = render.bubble_rows(s, S, pct, prog, ACCENT if busy else None, warn_col,
-                                      self._hover_bubble, BUBBLE_PALETTE)
+                                      self._hover_bubble, BUBBLE_PALETTE, update=upd)
             self._bub_img.put(render.to_photo_data(rows))
         c.delete("txt")
         cx = cy = s / 2
@@ -741,6 +750,8 @@ class PetApp:
                   for s in snap.get("sessions", [])),
             int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
             snap.get("error"),
+            ((self._update or {}).get("version"), (self._update or {}).get("available"),
+             (self._update or {}).get("apply_error"), self._update_busy),
         )
 
     def _render_panel(self, force=False):
@@ -766,6 +777,7 @@ class PetApp:
         # dựng nội dung mới rồi mới thay cái cũ: canvas giữ nguyên nên vị trí cuộn được giữ
         old, old_win = self._content, self._content_win
         new = tk.Frame(self._scv, bg=BG)
+        self._build_update_banner(new, cpad, inner_w)
         self._build_quota(new, snap, cpad, inner_w)
         self._build_sessions(new, snap, cpad, inner_w)
         self._build_local(new, snap, cpad, inner_w)
@@ -1037,6 +1049,7 @@ class PetApp:
         self.footer_lbl = self._lbl(row, "", font=self.f_xs, fg=FAINT)
         self.footer_lbl.pack(side="left")
         self._text_btn(row, "Thoát", self.quit, hover_fg=RED, fg=FAINT).pack(side="right")
+        self._lbl(row, f"v{__version__}", font=self.f_xs, fg=FAINT).pack(side="right", padx=(0, int(12 * S)))
         self._update_footer()
 
     def _update_footer(self):
@@ -1243,6 +1256,152 @@ class PetApp:
             log(f"autostart toggle failed: {e}")
             self._flash(f"Không đổi được auto-start: {e}", YELLOW)
 
+    # ---------- cập nhật (GitHub Releases)
+    def _start_update_checker(self):
+        auto = bool(self.cfg.get("update_check", True))
+        api = self.cfg.get("update_api_url") or updater.API_LATEST
+        hours = max(1.0, float(self.cfg.get("update_interval_hours") or 24))
+
+        def loop():
+            # lần đầu chờ vài giây cho app lên xong; nếu tắt auto thì chỉ chạy khi bấm "Kiểm tra cập nhật"
+            self._update_kick.wait(8 if auto else None)
+            while not self.collector.stop.is_set():
+                manual = self._update_kick.is_set()
+                self._update_kick.clear()
+                try:
+                    info = updater.check(api)
+                except Exception as e:
+                    info = {"ok": False, "available": False, "error": f"{type(e).__name__}: {e}"}
+                prev = self._update or {}
+                if prev.get("apply_error") and prev.get("version") == info.get("version"):
+                    info["apply_error"] = prev["apply_error"]
+                info["manual"] = manual
+                self._update = info
+                self._update_dirty = True
+                log(f"update check: ok={info.get('ok')} available={info.get('available')} "
+                    f"latest={info.get('tag')} err={info.get('error')}")
+                self._update_kick.wait(hours * 3600 if auto else None)
+
+        threading.Thread(target=loop, daemon=True, name="update-check").start()
+
+    def check_update_now(self):
+        self._flash("Đang kiểm tra cập nhật…", MUTED, 6)
+        self._update_kick.set()
+
+    def _on_update_state(self):
+        u = self._update or {}
+        self._draw_bubble()
+        if self.panel_visible:
+            self._render_panel()
+        if u.pop("manual", False):
+            if u.get("available"):
+                self._flash(f"Có bản mới {u.get('version')}", BLUE, 6)
+                if not self.panel_visible:
+                    self.show_panel()
+            elif u.get("ok"):
+                self._flash(f"Đang dùng bản mới nhất (v{__version__})", GREEN, 5)
+            else:
+                self._flash(f"Không kiểm tra được cập nhật: {u.get('error')}", YELLOW, 8)
+
+    def _open_url(self, url):
+        try:
+            os.startfile(url)
+        except Exception as e:
+            log(f"open url failed: {e}")
+
+    def _button(self, parent, text, color, cmd):
+        font, S = self.f_xsb, self.S
+        h = font.metrics("linespace") + int(8 * S)
+        w = font.measure(text) + int(22 * S)
+        bg = parent["bg"]
+        hov = render.rgb2hex(render.mix(render.hex2rgb(color), (255, 255, 255), 0.18))
+        im_n = self._photo(("btn", w, h, color, bg), lambda: render.capsule_rows(w, h, 1.0, color, color, bg))
+        im_h = self._photo(("btn", w, h, hov, bg), lambda: render.capsule_rows(w, h, 1.0, hov, hov, bg))
+        c = tk.Canvas(parent, width=w, height=h, bg=bg, highlightthickness=0, bd=0, cursor="hand2")
+        it = c.create_image(0, 0, anchor="nw", image=im_n)
+        c.create_text(w / 2, h / 2, text=text, fill="#10141a", font=font)
+        c._imgs = (im_n, im_h)
+        c.bind("<Enter>", lambda e: c.itemconfigure(it, image=im_h))
+        c.bind("<Leave>", lambda e: c.itemconfigure(it, image=im_n))
+        c.bind("<Button-1>", lambda e: cmd())
+        return c
+
+    def _build_update_banner(self, parent, cpad, inner_w):
+        u = self._update or {}
+        if not u.get("available"):
+            return
+        S = self.S
+        sec = tk.Frame(parent, bg=BG)
+        sec.pack(fill="x", padx=cpad, pady=(int(14 * S), 0))
+        card = tk.Frame(sec, bg=SURFACE)
+        card.pack(fill="x")
+        tk.Frame(card, bg=BLUE, width=max(2, int(3 * S))).pack(side="left", fill="y")
+        inner = tk.Frame(card, bg=SURFACE, padx=int(12 * S), pady=int(10 * S))
+        inner.pack(side="left", fill="both", expand=True)
+        r1 = tk.Frame(inner, bg=SURFACE)
+        r1.pack(fill="x")
+        self._lbl(r1, f"Có bản mới {u.get('version')}", font=self.f_md, fg=FG).pack(side="left")
+        if self._update_busy:
+            self._lbl(r1, self._update_busy, font=self.f_xs, fg=MUTED).pack(side="right")
+        else:
+            label = "Cập nhật" if updater.is_frozen() else "Tải về"
+            self._button(r1, label, BLUE, self._apply_update).pack(side="right")
+        r2 = tk.Frame(inner, bg=SURFACE)
+        r2.pack(fill="x", pady=(int(4 * S), 0))
+        self._lbl(r2, f"Đang dùng {__version__}", font=self.f_xs, fg=MUTED).pack(side="left")
+        self._text_btn(r2, "Xem thay đổi", lambda: self._open_url(u.get("html_url") or updater.RELEASES_PAGE),
+                       hover_fg=FG, fg=BLUE).pack(side="right")
+        if u.get("apply_error"):
+            self._lbl(inner, u["apply_error"], font=self.f_xs, fg=YELLOW, wraplength=inner_w - int(30 * S),
+                      justify="left").pack(fill="x", pady=(int(6 * S), 0))
+
+    def _set_update_busy(self, text):
+        if text != self._update_busy:
+            self._update_busy = text
+            self._update_dirty = True
+
+    def _apply_update(self):
+        u = self._update or {}
+        if not u.get("available") or self._update_busy:
+            return
+        if not updater.is_frozen():  # chạy từ source: không tự thay code, chỉ mở trang release
+            self._open_url(u.get("html_url") or updater.RELEASES_PAGE)
+            self._flash("Đang chạy từ source: đã mở trang release để tải bản mới", MUTED, 6)
+            return
+        u.pop("apply_error", None)
+        self._set_update_busy("Đang tải…")
+        log(f"update: downloading {u.get('tag')}")
+
+        def work():
+            try:
+                stage = updater.download_and_stage(
+                    u, progress=lambda f: self._set_update_busy(f"Đang tải {int(f * 100)}%"))
+            except Exception as e:
+                log(f"update: download failed: {e}")
+                u["apply_error"] = f"Không cập nhật được: {e}"
+                self._update_busy = None
+                self._update_dirty = True
+                return
+            self._update_stage = stage
+            self._set_update_busy("Đang cài…")
+            self._update_ready = True
+
+        threading.Thread(target=work, daemon=True, name="update-download").start()
+
+    def _finish_update(self):
+        u = self._update or {}
+        try:
+            updater.launch_swap(self._update_stage, updater.install_dir(), os.getpid(), env=actions.clean_env())
+        except Exception as e:
+            log(f"update: launch swap failed: {e}")
+            u["apply_error"] = f"Không chạy được trình cài: {e}"
+            self._update_busy = None
+            self._update_dirty = True
+            return
+        log(f"update: installing {u.get('tag')} into {updater.install_dir()}, quitting")
+        self._flash("Đang cài bản mới, Claude PET sẽ tự mở lại…", BLUE, 10)
+        self.root.after(400, self.quit)
+
     def _bubble_menu(self, x, y):
         S = self.S
         W = int(230 * S)
@@ -1257,6 +1416,10 @@ class PetApp:
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
         self._sheet_row(body, ICON_REFRESH, "Làm mới ngay", "", act(self.collector_refresh))
         self._sheet_row(body, ICON_FOLDER, "Mở thư mục ~/.claude", "", act(self._open_claude_dir))
+        u = self._update or {}
+        self._sheet_row(body, ICON_UPDATE, "Kiểm tra cập nhật",
+                        f"có {u['version']}" if u.get("available") else f"v{__version__}",
+                        act(self.check_update_now))
         on = autostart.is_enabled()
         self._sheet_row(body, ICON_CHECK if on else ICON_STARTUP_OFF, "Chạy cùng Windows", "đang bật" if on else "đang tắt",
                         act(self._toggle_autostart))
@@ -1393,6 +1556,12 @@ class PetApp:
         self._want_show = True
 
     def _pump(self):
+        if self._update_dirty:
+            self._update_dirty = False
+            self._on_update_state()
+        if self._update_ready:
+            self._update_ready = False
+            self._finish_update()
         if self._want_show:
             self._want_show = False
             log("second launch -> show panel")
