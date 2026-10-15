@@ -7,6 +7,7 @@ trạng thái, không xoá từ đây (xoá ngoài Orca để lại workspace "m
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
@@ -108,6 +109,53 @@ def worktree_block_reason(sess: dict, sessions: list):
 
 
 # ---------------------------------------------------------------- thao tác (chạy trên thread nền)
+HANDOFF_PROMPT = """Viết bản handoff cho phiên làm việc này để một phiên sau tiếp tục được ngay: mục tiêu, \
+những gì đã làm (commit, file chính), trạng thái hiện tại, việc còn dở, bước tiếp theo, lưu ý và rủi ro.
+Lưu file theo quy định của repo này (CLAUDE.md, AGENTS.md, rules, docs) về nơi và cách lưu handoff hay ghi chú. \
+Nếu repo không quy định thì lưu vào {fallback}.
+Không commit, không sửa file nào khác. Câu trả lời cuối chỉ gồm đường dẫn tuyệt đối của file đã ghi."""
+
+
+def claude_command() -> str:
+    exe = "claude.exe" if sys.platform == "win32" else "claude"
+    return shutil.which("claude") or str(Path.home() / ".local" / "bin" / exe)
+
+
+def write_handoff(sess: dict, fallback_dir: Path, timeout: float = 300.0) -> tuple:
+    """Fork session ở chế độ không tương tác (session gốc không bị đụng tới, bản fork không lưu lại) để nó tự
+    viết handoff theo quy định của repo. (ok, đường dẫn file | lỗi)."""
+    sid = sess.get("session_id")
+    cwd = sess.get("home_cwd") or sess.get("cwd")
+    if not sid or not cwd or not os.path.isdir(cwd):
+        return False, "thiếu sessionId hoặc thư mục không tồn tại"
+    name = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in (sess.get("name") or sid[:8]))[:60]
+    fallback = Path(fallback_dir) / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.md"
+    fallback.parent.mkdir(parents=True, exist_ok=True)
+    args = [claude_command(), "-p", "--resume", sid, "--fork-session", "--no-session-persistence",
+            "--output-format", "json", "--permission-mode", "acceptEdits", "--add-dir", str(fallback.parent),
+            "--allowedTools", "Read", "Glob", "Grep", "Write", "Edit"]
+    if sess.get("model") and sess["model"] != "?":
+        args += ["--model", sess["model"]]
+    args += ["--", HANDOFF_PROMPT.format(fallback=fallback)]
+    try:
+        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, creationflags=_NO_WINDOW, env=clean_env(), stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return False, "viết handoff quá lâu, chưa đóng session"
+    except OSError as e:
+        return False, f"không chạy được claude: {e}"
+    try:
+        res = json.loads(p.stdout)
+        text = (res.get("result") or "").strip()
+        failed = res.get("is_error")
+    except ValueError:
+        text, failed = (p.stderr or p.stdout).strip(), True
+    path = text.strip("`\"' \n").splitlines()[-1].strip("`\"' ") if text else ""
+    if failed or p.returncode != 0 or not path or not os.path.isfile(path):
+        return False, f"handoff lỗi, chưa đóng session: {(text or p.stderr or p.returncode)!s:.200}"
+    return True, path
+
+
 def close_session(sess: dict, wait: float = 6.0) -> tuple:
     """Kết thúc process Claude Code của session. Kiểm tra lại pid + procStart để không giết nhầm process khác
     đã nhận lại pid đó."""

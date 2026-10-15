@@ -1617,7 +1617,10 @@ class PetApp:
         desktop = sess.get("entrypoint") == "claude-desktop"
         no_close = "đóng trong Claude app" if desktop else ""
         self._sheet_row(body, ICON_OPEN, "Mở cửa sổ session", "", act(lambda: self._focus_session(sess)))
-        self._sheet_row(body, ICON_EXIT, "Đóng session", no_close or "giữ transcript",
+        self._sheet_row(body, ICON_EXIT, "Handoff rồi đóng", no_close or "ghi handoff trước",
+                        act(lambda: self._run_op(sess, "handoff")), enabled=not desktop,
+                        confirm="Viết handoff rồi đóng?")
+        self._sheet_row(body, ICON_EXIT, "Đóng session", no_close or "không handoff",
                         act(lambda: self._run_op(sess, "close")), enabled=not desktop,
                         confirm="Đóng session này?")
         self._sheet_row(body, ICON_CLEAR, "Xoá session", no_close or "đóng + xoá transcript",
@@ -1632,13 +1635,21 @@ class PetApp:
         self._finish_sheet(top, body, W, x, y)
 
     def _run_op(self, sess: dict, op: str):
-        """close | delete | worktree. Chạy trên thread nền (git, chờ process thoát); kết quả về qua _ops_done."""
+        """handoff | close | delete | worktree. Chạy trên thread nền (claude -p, git, chờ process thoát);
+        kết quả về qua _ops_done."""
         name = sess.get("name") or "?"
-        self._flash(f"{name}: đang xử lý…", MUTED, 30)
+        self._flash(f"{name}: " + ("đang viết handoff…" if op == "handoff" else "đang xử lý…"), MUTED, 300)
 
         def work():
             try:
-                ok, msg = session_ops.close_session(sess)
+                ok, msg = True, ""
+                if op == "handoff":  # handoff lỗi thì không đóng, tránh mất ngữ cảnh
+                    ok, path = session_ops.write_handoff(sess, STATE_DIR / "handoffs")
+                    msg = path
+                if ok:
+                    ok, msg = session_ops.close_session(sess)
+                    if ok and op == "handoff":
+                        msg = f"đã đóng, handoff ở {path}"
                 if ok and op == "delete":
                     ok, msg = session_ops.delete_transcript(sess, self.cfg["claude_dir"])
                 elif ok and op == "worktree":
