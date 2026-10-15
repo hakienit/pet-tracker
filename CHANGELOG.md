@@ -6,6 +6,12 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-15
+
+### Fixed
+- Bấm vào session chạy trong Orca đưa được cửa sổ Orca lên (trước đây báo "không tìm thấy cửa sổ host
+  session" vì pty host của Orca không còn nối với process có cửa sổ). Chỉ đưa cửa sổ lên, không chọn tab.
+
 ## [0.1.1] - 2026-10-15
 
 ### Changed
@@ -95,6 +101,7 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hakienit/pet-tracker/releases/tag/v0.1.0

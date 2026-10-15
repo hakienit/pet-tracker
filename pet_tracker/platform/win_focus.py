@@ -202,6 +202,16 @@ def find_window_for_session(sess: dict) -> dict | None:
             best["method"] = f"parent:{exe}"
             return best
 
+    # 2b. chuỗi cha bị đứt (vd. Orca: pty host orca.exe sống lâu hơn process đã tạo ra nó, cửa sổ nằm ở
+    # process orca.exe khác): lấy cửa sổ trên cùng của process cùng tên exe với tổ tiên cao nhất
+    top_exe = anc[-1][1] if anc else ""
+    if top_exe and top_exe not in _SKIP_EXES:
+        for wi in wins:
+            if wi["title"] and table.get(wi["pid"], (0, ""))[1] == top_exe:
+                wi = dict(wi)
+                wi["method"] = f"same-exe:{top_exe}"
+                return wi
+
     # 3. tiêu đề cửa sổ chứa tên session (Claude Code đặt title tab = "✳ <tên>")
     names = [n for n in (sess.get("title"), sess.get("name")) if n and len(n) >= 4]
     for wi in wins:
