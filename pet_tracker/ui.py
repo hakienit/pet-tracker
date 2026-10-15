@@ -249,6 +249,8 @@ class PetApp:
         self._flash_until = 0.0
         self._flash_msg = ("", FAINT)
         self.footer_lbl = None
+        self._hdr_key = None
+        self._parts: dict = {}       # tên phần nội dung -> khung chứa nó trong panel
         self._modal = False
         self._sheet = None
         self._want_show = False
@@ -801,21 +803,27 @@ class PetApp:
         tk.Frame(parent, bg=LINE, height=1).pack(fill="x")
 
     # ---------- render
-    def _signature(self, snap: dict):
+    def _signature(self, snap: dict) -> dict:
+        """Khoá dữ liệu của từng phần nội dung: phần nào đổi khoá thì mới dựng lại phần đó."""
         q = snap.get("quota") or {}
+        upd = self._update or {}
         now_min = int(time.time() // 60)
-        return (
-            tuple((w["key"], round(w["percent"], 1), int((w.get("resets_at") or 0) // 60)) for w in q.get("windows", [])),
-            q.get("ok"), q.get("error"), q.get("stale_error"), int((q.get("fetched_at") or 0) // 60),
-            tuple((s["session_id"], s["status"], s["model"], s.get("effort"), s["context_tokens"], s["context_limit"],
-                   s["cwd"], s.get("git_branch"), s["name"], s.get("entrypoint"), s["subagents"],
-                   s["totals"]["messages"], int((now_min * 60 - (s.get("last_activity") or 0)) // 60))
-                  for s in snap.get("sessions", [])),
-            int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
-            snap.get("error"),
-            ((self._update or {}).get("version"), (self._update or {}).get("available"),
-             (self._update or {}).get("apply_error"), self._update_busy),
-        )
+        return {
+            "notice": self.cfg.get("config_error"),
+            "update": (upd.get("version"), upd.get("available"), upd.get("apply_error"), self._update_busy),
+            # giờ lấy số liệu chỉ hiện khi đang dùng số liệu cũ: không đổi số thì làm mới không vẽ lại
+            "quota": (tuple((w["key"], round(w["percent"], 1), int((w.get("resets_at") or 0) // 60))
+                            for w in q.get("windows", [])),
+                      q.get("ok"), q.get("error"), q.get("stale_error"),
+                      int((q.get("fetched_at") or 0) // 60) if q.get("stale_error") else None),
+            "sessions": (tuple((s["session_id"], s["status"], s["model"], s.get("effort"), s["context_tokens"],
+                                s["context_limit"], s["cwd"], s.get("git_branch"), s["name"], s.get("entrypoint"),
+                                s["subagents"], s["totals"]["messages"],
+                                int((now_min * 60 - (s.get("last_activity") or 0)) // 60))
+                               for s in snap.get("sessions", [])),
+                         snap.get("error")),
+            "local": int(snap.get("local", {}).get("5h", {}).get("output", 0) // 1000),
+        }
 
     def _render_panel(self, force=False):
         snap = self.snap or {}
@@ -823,41 +831,86 @@ class PetApp:
         if not force and sig == self.sig:
             self._update_footer()
             return
+        prev = {} if force else (self.sig or {})
         self.sig = sig
-        self._cards = []
-        self._hot = None
         S = self.S
         padx = int(16 * S)
         # nội dung nằm trong canvas rộng (pw - bar_w); lề phải bớt đi bar_w để hai bên cân nhau
         cpad = (padx, max(0, padx - self._bar_w))
         inner_w = self.pw - padx - cpad[1] - self._bar_w - (0 if self._rounded else 2)
 
-        for w in self._hdr.winfo_children() + self._ftr.winfo_children():
-            w.destroy()
-        self._build_header(self._hdr, snap, padx)
-        self._build_footer(self._ftr, padx)
+        # header/footer chỉ dựng lại khi tài khoản hoặc chiều rộng đổi: dựng lại mỗi lần làm mới gây chớp
+        hdr_key = (snap.get("account"), self.pw)
+        if force or hdr_key != self._hdr_key:
+            self._hdr_key = hdr_key
+            for w in self._hdr.winfo_children() + self._ftr.winfo_children():
+                w.destroy()
+            self._build_header(self._hdr, snap, padx)
+            self._build_footer(self._ftr, padx)
+        else:
+            self._update_footer()
 
-        # dựng nội dung mới rồi mới thay cái cũ: canvas giữ nguyên nên vị trí cuộn được giữ
-        old, old_win = self._content, self._content_win
-        new = tk.Frame(self._scv, bg=BG)
-        self._build_config_notice(new, cpad, inner_w)
-        self._build_update_banner(new, cpad, inner_w)
-        self._build_quota(new, snap, cpad, inner_w)
-        self._build_sessions(new, snap, cpad, inner_w)
-        self._build_local(new, snap, cpad, inner_w)
-        tk.Frame(new, bg=BG, height=int(12 * S)).pack(fill="x")
-        self._content = new
-        self._content_win = self._scv.create_window(0, 0, anchor="nw", window=new)
-        if old_win is not None:
-            self._scv.delete(old_win)
-        if old is not None:
-            old.destroy()
+        if force or self._content is None:
+            # khung nội dung mới, mỗi phần một khung con cố định; canvas giữ nguyên nên vị trí cuộn được giữ
+            old, old_win = self._content, self._content_win
+            new = tk.Frame(self._scv, bg=BG)
+            self._parts = {}
+            for name in sig:
+                self._parts[name] = tk.Frame(new, bg=BG)
+                self._parts[name].pack(fill="x")
+            tk.Frame(new, bg=BG, height=int(12 * S)).pack(fill="x")
+            self._content = new
+            # đặt đúng chiều rộng ngay: nếu không, nội dung bị layout và vẽ ở chiều rộng tự nhiên trước rồi mới giãn ra
+            cw = self._scv.winfo_width()
+            cw = cw if cw > 1 else max(1, self._scv.winfo_reqwidth())
+            self._content_win = self._scv.create_window(0, 0, anchor="nw", window=new, width=cw)
+            if old_win is not None:
+                self._scv.delete(old_win)
+            if old is not None:
+                old.destroy()
+
+        # chỉ dựng lại phần có dữ liệu đổi: dựng lại cả panel (~150 widget) mất vài trăm ms và làm panel chớp
+        builders = {
+            "notice": lambda p: self._build_config_notice(p, cpad, inner_w),
+            "update": lambda p: self._build_update_banner(p, cpad, inner_w),
+            "quota": lambda p: self._build_quota(p, snap, cpad, inner_w),
+            "sessions": lambda p: self._build_sessions(p, snap, cpad, inner_w),
+            "local": lambda p: self._build_local(p, snap, cpad, inner_w),
+        }
+        for name, holder in self._parts.items():
+            if name in prev and prev[name] == sig[name]:
+                continue
+            if name == "sessions" and name in prev and self._patch_sessions(snap, prev[name], sig[name], inner_w):
+                continue
+            if name == "sessions":
+                self._cards = []
+                self._hot = None
+            for w in holder.winfo_children():
+                w.destroy()
+            builders[name](holder)
         tk.Misc.lift(self._grip)
 
         if self.panel_visible:
             self._place_panel()
         else:
             self._sync_scroll()
+
+    def _patch_sessions(self, snap, old, new, inner_w) -> bool:
+        """Chỉ dựng lại card có dữ liệu đổi (session đang chạy đổi số liệu liên tục).
+        False nếu danh sách, trạng thái hoặc lỗi đổi: khi đó dựng lại cả phần (tiêu đề đếm số đang chạy)."""
+        (old_cards, old_err), (new_cards, new_err) = old, new
+        if (old_err != new_err or len(self._cards) != len(new_cards)
+                or [k[:2] for k in old_cards] != [k[:2] for k in new_cards]):  # (session_id, status)
+            return False
+        for i, (ok, nk, s) in enumerate(zip(old_cards, new_cards, snap.get("sessions") or [])):
+            if ok == nk:
+                continue
+            old_card = self._cards[i][0]
+            if self._hot and self._hot[0] is old_card:
+                self._hot = None
+            self._cards[i] = self._build_session_card(self._card_parent, s, i, inner_w, before=old_card)
+            old_card.destroy()
+        return True
 
     def _build_header(self, hd, snap, padx):
         S = self.S
@@ -933,7 +986,6 @@ class PetApp:
 
     def _build_sessions(self, parent, snap, padx, inner_w):
         S = self.S
-        warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
         sessions = snap.get("sessions") or []
         sec = tk.Frame(parent, bg=BG)
         sec.pack(fill="x", padx=padx)
@@ -947,85 +999,92 @@ class PetApp:
             card.pack(fill="x")
             self._lbl(card, "Không có session Claude Code nào đang chạy.", font=self.f_xs, fg=MUTED).pack()
             return
+        self._card_parent = sec
+        for i, s in enumerate(sessions):
+            self._cards.append(self._build_session_card(sec, s, i, inner_w))
+
+    def _build_session_card(self, sec, s, i, inner_w, before=None):
+        """Một card session; trả (card, arrow). `before`: chèn vào chỗ card cũ khi chỉ card này đổi."""
+        S = self.S
+        warn, danger = self.cfg["warn_percent"], self.cfg["danger_percent"]
         stripe_w = max(2, int(3 * S))
         cp = int(12 * S)
         cw = inner_w - stripe_w - 2 * cp - 2
-        for i, s in enumerate(sessions):
-            is_busy = s["status"] == "busy"
-            status_col = ACCENT if is_busy else (GREEN if s["status"] == "idle" else FAINT)
-            card = tk.Frame(sec, bg=SURFACE, highlightthickness=1, highlightbackground=SURFACE,
-                            highlightcolor=SURFACE)
-            card.pack(fill="x", pady=(0 if i == 0 else int(6 * S), 0))
-            tk.Frame(card, bg=status_col, width=stripe_w).pack(side="left", fill="y")
-            inner = tk.Frame(card, bg=SURFACE, padx=cp, pady=int(10 * S))
-            inner.pack(side="left", fill="both", expand=True)
+        is_busy = s["status"] == "busy"
+        status_col = ACCENT if is_busy else (GREEN if s["status"] == "idle" else FAINT)
+        card = tk.Frame(sec, bg=SURFACE, highlightthickness=1, highlightbackground=SURFACE,
+                        highlightcolor=SURFACE)
+        card.pack(fill="x", pady=(0 if i == 0 else int(6 * S), 0), before=before)
+        tk.Frame(card, bg=status_col, width=stripe_w).pack(side="left", fill="y")
+        inner = tk.Frame(card, bg=SURFACE, padx=cp, pady=int(10 * S))
+        inner.pack(side="left", fill="both", expand=True)
 
-            # dòng 1: tên + mũi tên + model + effort
-            r1 = tk.Frame(inner, bg=SURFACE)
-            r1.pack(fill="x")
-            used = 0
-            if s.get("effort"):
-                ech = self._pill(r1, s["effort"], "#33343e", fg=FG2, font=self.f_xs)
-                ech.pack(side="right", padx=(int(4 * S), 0))
-                used += int(ech.cget("width")) + int(4 * S)
-            model = short_model(s["model"])
-            if model != "?":
-                pill = self._pill(r1, model, model_color(s["model"]))
-                pill.pack(side="right")
-                used += int(pill.cget("width"))
-            arrow = tk.Label(r1, text=ICON_OPEN, font=self.f_icon_sm, fg=SURFACE, bg=SURFACE)
-            arrow.pack(side="right", padx=(0, int(6 * S)))
-            name_w = cw - used - int(22 * S)
-            self._lbl(r1, self._ellipsis(s["name"], self.f_md, name_w), font=self.f_md).pack(side="left")
+        # dòng 1: tên + mũi tên + model + effort
+        r1 = tk.Frame(inner, bg=SURFACE)
+        r1.pack(fill="x")
+        used = 0
+        if s.get("effort"):
+            ech = self._pill(r1, s["effort"], "#33343e", fg=FG2, font=self.f_xs)
+            ech.pack(side="right", padx=(int(4 * S), 0))
+            used += int(ech.cget("width")) + int(4 * S)
+        model = short_model(s["model"])
+        if model != "?":
+            pill = self._pill(r1, model, model_color(s["model"]))
+            pill.pack(side="right")
+            used += int(pill.cget("width"))
+        arrow = tk.Label(r1, text=ICON_OPEN, font=self.f_icon_sm, fg=SURFACE, bg=SURFACE)
+        arrow.pack(side="right", padx=(0, int(6 * S)))
+        name_w = cw - used - int(22 * S)
+        self._lbl(r1, self._ellipsis(s["name"], self.f_md, name_w), font=self.f_md).pack(side="left")
 
-            # dòng 2: thư mục + branch
-            r2 = tk.Frame(inner, bg=SURFACE)
-            r2.pack(fill="x", pady=(int(2 * S), 0))
-            cwd = (s.get("cwd") or "?").rstrip("\\/")
-            base = os.path.basename(cwd) or cwd
-            parent_dir = os.path.dirname(cwd)
-            base_txt = self._ellipsis(base, self.f_xsb, int(cw * 0.55))
-            self._lbl(r2, base_txt, font=self.f_xsb, fg=FG2).pack(side="left")
-            rest = parent_dir
-            br = s.get("git_branch")
-            if br and br not in ("HEAD", ""):
-                rest = (rest + "   ⎇ " + br) if rest else ("⎇ " + br)
-            if rest:
-                rest_w = cw - self.f_xsb.measure(base_txt) - int(8 * S)
-                self._lbl(r2, self._ellipsis(rest, self.f_xs, rest_w), font=self.f_xs, fg=FAINT).pack(
-                    side="left", padx=(int(6 * S), 0))
+        # dòng 2: thư mục + branch
+        r2 = tk.Frame(inner, bg=SURFACE)
+        r2.pack(fill="x", pady=(int(2 * S), 0))
+        cwd = (s.get("cwd") or "?").rstrip("\\/")
+        base = os.path.basename(cwd) or cwd
+        parent_dir = os.path.dirname(cwd)
+        base_txt = self._ellipsis(base, self.f_xsb, int(cw * 0.55))
+        self._lbl(r2, base_txt, font=self.f_xsb, fg=FG2).pack(side="left")
+        rest = parent_dir
+        br = s.get("git_branch")
+        if br and br not in ("HEAD", ""):
+            rest = (rest + "   ⎇ " + br) if rest else ("⎇ " + br)
+        if rest:
+            rest_w = cw - self.f_xsb.measure(base_txt) - int(8 * S)
+            self._lbl(r2, self._ellipsis(rest, self.f_xs, rest_w), font=self.f_xs, fg=FAINT).pack(
+                side="left", padx=(int(6 * S), 0))
 
-            # dòng 3: context
-            col = level_color(s["context_pct"], warn, danger)
-            r3 = tk.Frame(inner, bg=SURFACE)
-            r3.pack(fill="x", pady=(int(10 * S), int(5 * S)))
-            self._lbl(r3, "Context", font=self.f_xs, fg=MUTED).pack(side="left")
-            if s["has_transcript"]:
-                self._lbl(r3, f"{s['context_pct']:.0f}%", font=self.f_xsb, fg=col).pack(side="right")
-                self._lbl(r3, f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}", font=self.f_xs,
-                          fg=FG2).pack(side="right", padx=(0, int(8 * S)))
-            else:
-                self._lbl(r3, "chưa có transcript", font=self.f_xs, fg=FAINT).pack(side="right")
-            self._bar(inner, s["context_pct"], col, cw, 5).pack(fill="x")
+        # dòng 3: context
+        col = level_color(s["context_pct"], warn, danger)
+        r3 = tk.Frame(inner, bg=SURFACE)
+        r3.pack(fill="x", pady=(int(10 * S), int(5 * S)))
+        self._lbl(r3, "Context", font=self.f_xs, fg=MUTED).pack(side="left")
+        if s["has_transcript"]:
+            self._lbl(r3, f"{s['context_pct']:.0f}%", font=self.f_xsb, fg=col).pack(side="right")
+            self._lbl(r3, f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}", font=self.f_xs,
+                      fg=FG2).pack(side="right", padx=(0, int(8 * S)))
+        else:
+            self._lbl(r3, "chưa có transcript", font=self.f_xs, fg=FAINT).pack(side="right")
+        self._bar(inner, s["context_pct"], col, cw, 5).pack(fill="x")
 
-            # dòng 4: trạng thái + số liệu
-            r4 = tk.Frame(inner, bg=SURFACE)
-            r4.pack(fill="x", pady=(int(8 * S), 0))
-            self._lbl(r4, "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"])),
-                      font=self.f_xsb, fg=status_col).pack(side="left")
-            bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
-            if s["subagents"]:
-                bits.append(f"{s['subagents']} subagent")
-            ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
-            if ep:
-                bits.append(ep)
-            self._lbl(r4, "  ·  ".join(bits), font=self.f_xs, fg=MUTED).pack(side="left", padx=(int(8 * S), 0))
-            ago = fmt_ago(s.get("last_activity"))
-            if ago:
-                self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
+        # dòng 4: trạng thái + số liệu
+        r4 = tk.Frame(inner, bg=SURFACE)
+        r4.pack(fill="x", pady=(int(8 * S), 0))
+        self._lbl(r4, "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"])),
+                  font=self.f_xsb, fg=status_col).pack(side="left")
+        bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
+        if s["subagents"]:
+            bits.append(f"{s['subagents']} subagent")
+        ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
+        if ep:
+            bits.append(ep)
+        self._lbl(r4, "  ·  ".join(bits), font=self.f_xs, fg=MUTED).pack(side="left", padx=(int(8 * S), 0))
+        ago = fmt_ago(s.get("last_activity"))
+        if ago:
+            self._lbl(r4, ago, font=self.f_xs, fg=FAINT).pack(side="right")
 
-            self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
-            self._cards.append((card, arrow))
+        self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
+        return card, arrow
 
     def _build_local(self, parent, snap, padx, inner_w):
         loc = snap.get("local") or {}
