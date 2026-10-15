@@ -6,11 +6,12 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-16
+
 ### Changed
 - Kiểm tra bản mới mỗi giờ thay vì mỗi 24 giờ (`update_interval_hours` mặc định 1): bản vừa publish
   hiện banner trong vòng một giờ, không phải chờ tới hôm sau hoặc mở lại app.
-
-## [0.1.2] - 2026-10-15
+- Workflow release publish release ngay khi push tag, không còn tạo draft.
 
 ### Fixed
 - Bấm vào session chạy trong Orca đưa được cửa sổ Orca lên (trước đây báo "không tìm thấy cửa sổ host
@@ -105,7 +106,7 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.2
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hakienit/pet-tracker/releases/tag/v0.1.0

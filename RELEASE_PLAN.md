@@ -122,13 +122,13 @@ trong quy trình.
   bản python.org universal2 (có sẵn Tk), không dùng Homebrew Python.
 - **GitHub Actions:** phần Windows đã có ở `.github/workflows/release.yml` (đã làm 2026-10-15):
   push tag `v*` → `windows-latest`, Python 3.13 → kiểm tra tag khớp `__version__` và CHANGELOG →
-  `build.ps1` → `SHA256SUMS.txt` → GitHub Release dạng draft. Chưa ký số, chưa có Inno Setup.
+  `build.ps1` → `SHA256SUMS.txt` → GitHub Release (publish ngay, từ 0.1.3; trước đó là draft). Chưa ký số, chưa có Inno Setup.
   Kế hoạch đầy đủ khi có chứng chỉ và bản macOS:
   1. `windows-latest`: cài Python 3.13 và PyInstaller (ghim version) → build `--onedir --noconsole`
      → ký exe → Inno Setup tạo installer → ký installer → zip bản portable.
   2. `macos-14` (Apple Silicon): cài Python universal2 → PyInstaller `--windowed --target-arch universal2`
      → codesign → tạo dmg → notarytool → staple.
-  3. Job `release`: tạo GitHub Release dạng **draft**, đính kèm artifact và `SHA256SUMS.txt`.
+  3. Job `release`: tạo và publish GitHub Release, đính kèm artifact và `SHA256SUMS.txt`.
      Người duyệt publish bằng tay.
 - PR và push thường chỉ chạy build không ký, cộng một smoke test: import module, render bubble
   ra PNG, parse transcript mẫu.

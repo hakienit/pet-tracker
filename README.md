@@ -118,7 +118,7 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
 
 4. Workflow `.github/workflows/release.yml` (GitHub Actions, `windows-latest`, Python 3.13) kiểm tra
    tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy `build.ps1`, tạo `SHA256SUMS.txt`, ký nó
-   thành `SHA256SUMS.txt.sig` bằng secret `WISP_SIGNING_KEY`, rồi tạo GitHub Release dạng **draft** kèm
+   thành `SHA256SUMS.txt.sig` bằng secret `WISP_SIGNING_KEY`, rồi tạo và **publish** GitHub Release kèm
    zip, checksum và chữ ký, release notes lấy từ CHANGELOG. Thiếu secret thì job release lỗi.
    - Khoá ký: tạo một lần bằng `python tools/release_sign.py keygen <file ngoài repo>`. Đặt khoá công
      khai vào `SIGNING_PUBLIC_KEY` (`pet_tracker/updater.py`), nội dung file khoá bí mật vào secret
@@ -126,8 +126,8 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
      cài không nhận bản cập nhật ký bằng khoá mới, người dùng phải tải tay một lần.
    - Action trong workflow được pin theo commit SHA; khi nâng version, lấy SHA mới bằng
      `git ls-remote https://github.com/actions/<tên> refs/tags/<tag>`.
-5. Mở draft trên GitHub, tải zip về thử, rồi bấm **Publish**. Chỉ sau khi publish thì app của mọi
-   người mới thấy bản mới.
+5. Release được publish ngay (không qua draft): app của mọi người thấy bản mới ở lần kiểm tra kế tiếp
+   (tối đa một giờ). Bản lỗi thì sửa và ra version mới; đừng xoá release đang có người cài.
 
 Chạy tay workflow (Actions → release → Run workflow) chỉ build và upload artifact, không tạo release.
 
@@ -331,7 +331,7 @@ pet-tracker/
   tools/make_icon.py       vẽ icon (assets/wisp.ico, .png; --png-size cho .icns) bằng stdlib
   tools/changelog_section.py  trích release notes từ CHANGELOG.md
   CHANGELOG.md             lịch sử thay đổi (Keep a Changelog)
-  .github/workflows/release.yml  build Windows + macOS, tạo GitHub Release draft khi push tag v*
+  .github/workflows/release.yml  build Windows + macOS, tạo và publish GitHub Release khi push tag v*
   config.example.json
   pet_tracker/
     config.py              defaults, config.json, state.json (vị trí bóng), thư mục state theo OS

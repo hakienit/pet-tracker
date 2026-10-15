@@ -1,10 +1,9 @@
 name: release
 
-# Push tag vX.Y.Z -> build Windows + macOS, tạo GitHub Release dạng DRAFT kèm zip, dmg, SHA256SUMS.txt và
+# Push tag vX.Y.Z -> build Windows + macOS, tạo và publish GitHub Release kèm zip, dmg, SHA256SUMS.txt và
 # SHA256SUMS.txt.sig (ký bằng secret WISP_SIGNING_KEY, xem tools/release_sign.py).
 # Action được pin theo commit SHA (tag có thể bị dời); khi nâng version, lấy SHA mới bằng git ls-remote.
-# Người duyệt mở draft trên GitHub, kiểm tra rồi bấm Publish; chỉ khi đó app của người dùng mới thấy bản mới
-# (API releases/latest bỏ qua draft và pre-release).
+# Release được publish ngay, không qua draft: app của người dùng thấy bản mới ở lần kiểm tra kế tiếp.
 # Bản macOS đang ở giai đoạn 1 (thử nghiệm): nếu job macOS lỗi, release vẫn được tạo với bản Windows.
 # Chạy tay (workflow_dispatch) chỉ build và upload artifact, không tạo release.
 
@@ -13,7 +12,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-# Mặc định chỉ đọc; chỉ job release (tạo draft) được ghi.
+# Mặc định chỉ đọc; chỉ job release được ghi.
 permissions:
   contents: read
 
@@ -111,7 +110,7 @@ jobs:
         env:
           WISP_SIGNING_KEY: ${{ secrets.WISP_SIGNING_KEY }}
         run: python3 tools/release_sign.py sign out/SHA256SUMS.txt
-      - name: Tạo GitHub Release (draft)
+      - name: Tạo và publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -124,4 +123,4 @@ jobs:
           fi
           printf '%s%s\n' "$(cat notes.md)" "$extra" > release-notes.md
           gh release create "$TAG" out/* --repo "$REPO" \
-            --draft --title "Wisp $TAG" --notes-file release-notes.md
+            --title "Wisp $TAG" --notes-file release-notes.md
