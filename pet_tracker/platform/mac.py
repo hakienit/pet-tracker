@@ -26,7 +26,7 @@ __all__ = [
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
     "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
-    "install_dir", "launch_swap",
+    "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
 ]
 
 NAME = "macOS"
@@ -45,6 +45,56 @@ MENU_BAR_PT = 25                # TODO(mac): lấy đúng vùng dùng được (
 
 def _run(args, timeout=5.0) -> subprocess.CompletedProcess:
     return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+
+
+# ---------------------------------------------------------------- giao diện hệ thống
+def system_theme() -> str:
+    try:
+        return "dark" if "Dark" in _run(["defaults", "read", "-g", "AppleInterfaceStyle"]).stdout else "light"
+    except Exception:
+        return "light"
+
+
+def reduce_motion() -> bool:
+    try:
+        return _run(["defaults", "read", "com.apple.universalaccess", "reduceMotion"]).stdout.strip() == "1"
+    except Exception:
+        return False
+
+
+def ui_language() -> str:
+    try:
+        langs = _run(["defaults", "read", "-g", "AppleLanguages"]).stdout
+    except Exception:
+        return "en"
+    # dạng '( "vi-VN", "en-US" )' trải trên nhiều dòng: lấy mục đầu tiên
+    items = [x.strip().strip('"') for x in langs.strip().strip("()").split(",")]
+    first = next((x for x in items if x), "")
+    return "vi" if first.lower().startswith("vi") else "en"
+
+
+def register_font(path) -> bool:
+    """Nạp font cho process (CTFontManagerRegisterFontsForURL, scope process). TODO(mac): kiểm trên Mac thật."""
+    try:
+        import ctypes
+        import ctypes.util
+        cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+        ct = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreText"))
+        cf.CFURLCreateFromFileSystemRepresentation.restype = ctypes.c_void_p
+        cf.CFURLCreateFromFileSystemRepresentation.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long,
+                                                               ctypes.c_bool]
+        ct.CTFontManagerRegisterFontsForURL.restype = ctypes.c_bool
+        ct.CTFontManagerRegisterFontsForURL.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+        raw = os.fsencode(str(path))
+        url = cf.CFURLCreateFromFileSystemRepresentation(None, raw, len(raw), False)
+        if not url:
+            return False
+        ok = ct.CTFontManagerRegisterFontsForURL(url, 1, None)  # kCTFontManagerScopeProcess
+        cf.CFRelease.argtypes = [ctypes.c_void_p]
+        cf.CFRelease(url)
+        return bool(ok)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------- cửa sổ
