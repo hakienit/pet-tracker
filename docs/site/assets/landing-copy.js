@@ -180,4 +180,5 @@ function applyShot() {
   if (document.fonts) document.fonts.ready.then(measure);
 }
 const langSwitch = (cls = '') => `<div class="${cls}" role="group" aria-label="Language">${['en', 'vi'].map((l) => `<button data-l="${l}" aria-pressed="${LANG === l}">${l.toUpperCase()}</button>`).join('')}</div>`;
-const footLinks = () => `<a href="${REPO}/blob/main/docs/GUIDE.md">${C().guide}</a> · <a href="${REPO}/blob/main/CHANGELOG.md">${C().changelog}</a> · <a href="../design.html">${C().spec}</a> · <a href="${REPO}">GitHub</a>`;
+const SITE_BASE = /\/landing\/[^/]*$/.test(location.pathname) ? '../' : '';  // mẫu trong landing/ lùi một cấp
+const footLinks = () => `<a href="${REPO}/blob/main/docs/GUIDE.md">${C().guide}</a> · <a href="${REPO}/blob/main/CHANGELOG.md">${C().changelog}</a> · <a href="${SITE_BASE}design.html">${C().spec}</a> · <a href="${REPO}">GitHub</a>`;

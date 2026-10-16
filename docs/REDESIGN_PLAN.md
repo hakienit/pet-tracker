@@ -413,15 +413,16 @@ File (chưa commit):
 |---|---|
 | `docs/site/assets/wisp-ui.js`, `wisp-ui.css` | Thư viện component dùng chung: màu, chữ, icon, 40 mascot, island, bóng nổi, panel, cài đặt, menu, thông báo. Bản app port màu / chữ / chuyển động từ đây sang `theme.py`, và path mascot sang `render.py`. |
 | `docs/site/design.html` | Spec final (EN/VI), là nguồn đối chiếu khi code. |
-| `docs/site/index.html` | Landing song ngữ, host tĩnh được (GitHub Pages với thư mục `docs/`, hoặc web host bất kỳ). Có playground chọn bóng nổi. `?shot=<khối>` dùng để chụp ảnh. |
-| `docs/site/README.md`, `README.vi.md` | Bản nháp README tiếng Anh / tiếng Việt cho 0.2. |
-| `docs/site/img/*.png` | 6 ảnh × 2 ngôn ngữ, tạo bằng `python tools/shoot.py` (Chrome/Edge headless). |
+| `docs/site/index.html` | Landing chính (mẫu B · Terminal, chọn 2026-10-17), song ngữ, host tĩnh được (GitHub Pages với thư mục `docs/`, hoặc web host bất kỳ). Có demo 4 trạng thái và playground chọn bóng nổi. `?shot=<khối>` dùng để chụp ảnh. |
+| `docs/site/landing/` | Các mẫu landing khác (A Aurora, C Bento, E Parade) lưu lại để dùng sau, kèm trang `index.html` liệt kê mẫu. |
+| `docs/site/README.md`, `README.vi.md` | Bản nháp README tiếng Anh / tiếng Việt cho 0.2, sinh từ landing chính. |
+| `docs/site/img/*.png` | Ảnh README (hero, demo APNG, tính năng, bóng nổi, mascot) × 2 ngôn ngữ, rộng 2000 px. Tạo cùng README bằng `python tools/shoot_landing.py` (Chrome/Edge headless). |
 | `docs/redesign/` | Lịch sử bản nháp, không link từ README. |
 
 Việc khi release 0.2.0 (không làm sớm hơn, vì README không được mô tả tính năng chưa có):
-1. Chụp lại ảnh từ app thật, hoặc chạy lại `tools/shoot.py` nếu giao diện app khớp spec.
+1. Chạy lại `python tools/shoot_landing.py --preview` nếu landing đổi, xem `docs/site/landing/readme/main/preview-*.html`.
 2. Chuyển `docs/site/README.md` → `README.md` và `README.vi.md` ra gốc repo, sửa đường dẫn tương đối
-   (`img/` → `docs/site/img/`, `../../` → `./`, `../GUIDE.md` → `docs/GUIDE.md`).
+   (`img/` → `docs/site/img/`, `../../CHANGELOG.md` → `CHANGELOG.md`, `../GUIDE.md` → `docs/GUIDE.md`).
 3. Bật GitHub Pages (Settings → Pages → branch `main`, thư mục `/docs`). Landing có ở
    `https://hakienit.github.io/pet-tracker/site/`. Link này đã ghi sẵn trong README nháp.
 
