@@ -1,0 +1,90 @@
+/* Wisp UI: component dùng chung cho landing (index.html) và spec (design.html). */
+:root{--t-meta:12px;--t-body:13px;--t-title:14px;--t-head:15px;--t-num:18px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-family:'Cascadia Mono',Consolas,'SF Mono',Menlo,monospace}
+.num{font-variant-numeric:tabular-nums}
+/* viền động theo trạng thái: dải gradient chạy vòng quanh mép, nằm TRONG mép hình (bản tkinter cũng vậy) */
+@property --fa{syntax:'<angle>';inherits:false;initial-value:0deg}
+.ab{position:relative;isolation:isolate}
+.ab::before,.ab::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:var(--bw,2.5px);pointer-events:none;z-index:2;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.ab::before{background:conic-gradient(from var(--fa),var(--c1),var(--c2) 20%,var(--c3) 35%,var(--c1) 50%,var(--c2) 70%,var(--c3) 85%,var(--c1));animation:fspin var(--sp) linear infinite}
+.ab::after{display:none}
+.ab-wait{--c1:#ffb02e;--c2:#ff6a1a;--c3:#e8432f;--sp:1.8s}
+.ab-wait::after{display:block;background:conic-gradient(from calc(var(--fa) * -1.6),transparent,rgba(255,240,180,.9) 8%,transparent 16%,transparent 50%,rgba(255,220,140,.75) 58%,transparent 66%);animation:fspin 2.6s linear infinite}
+.ab-run{--c1:#58a6ff;--c2:#b9dbff;--c3:#2f6fd6;--sp:2.6s}
+.ab-done{--c1:#3fd0a4;--c2:#b4f2df;--c3:#1f9e7a;--sp:4.5s}
+.ab-idle{--c1:#4f525b;--c2:#a3a6af;--c3:#4f525b;--sp:6s}
+.ab-quota{--c1:#ff6166;--c2:#ffc2c4;--c3:#c62828;--sp:2.2s}
+.ab-quota::before{animation:fspin var(--sp) linear infinite,pulse 1.2s ease-in-out infinite}
+.ab-update{--c1:#58a6ff;--c2:#b9dbff;--c3:#2f6fd6;--sp:3s}
+.light .ab-wait{--c1:#e08a00;--c2:#ff6a1a;--c3:#c2410c}
+.light .ab-run{--c1:#1f5fd6;--c2:#8fb8ff;--c3:#123f99}
+.light .ab-done{--c1:#0b7a5a;--c2:#7fd8b8;--c3:#065c43}
+.light .ab-idle{--c1:#b7bac2;--c2:#6b6e78;--c3:#b7bac2}
+.light .ab-quota{--c1:#c62828;--c2:#ff9a9a;--c3:#8e1b1b}
+@keyframes fspin{to{--fa:360deg}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.4}}
+.breathe{animation:breathe 1.6s ease-in-out infinite}
+/* biểu cảm mascot trong panel */
+@keyframes m-breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.03,.97)}}
+@keyframes m-flick{0%,100%{transform:scale(1)}35%{transform:scale(1.05,.96)}70%{transform:scale(.96,1.05)}}
+@keyframes m-bounce{0%,100%{transform:translateY(0)}30%{transform:translateY(-6%)}55%{transform:translateY(0)}70%{transform:translateY(-2%)}}
+@keyframes m-hop{0%,70%,100%{transform:translateY(0) rotate(0)}80%{transform:translateY(-8%) rotate(-4deg)}90%{transform:translateY(0) rotate(3deg)}}
+@keyframes m-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-2%)}75%{transform:translateX(2%)}}
+.m-idle{animation:m-breathe 3.2s ease-in-out infinite;transform-origin:50% 90%}
+.m-run{animation:m-flick 1.4s ease-in-out infinite;transform-origin:50% 90%}
+.m-wait{animation:m-bounce .9s ease-in-out infinite;transform-origin:50% 90%}
+.m-done{animation:m-hop 2.4s ease-in-out infinite;transform-origin:50% 90%}
+.m-quota{animation:m-shake .18s linear infinite}
+/* bóng nổi dạng mascot: di chuyển, nhảy múa theo trạng thái; bóng đổ co giãn theo cú nhảy */
+@keyframes b-sway{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes b-walk{0%,100%{transform:translate(-4px,0) rotate(-4deg)}25%{transform:translate(0,-6px)}50%{transform:translate(4px,0) rotate(4deg)}75%{transform:translate(0,-6px)}}
+@keyframes b-jump{0%,100%{transform:translateY(0) scale(1.06,.94)}15%{transform:translateY(0) scale(.95,1.06)}45%{transform:translateY(-22px) scale(1,1)}75%{transform:translateY(0) scale(1.08,.92)}}
+@keyframes b-dance{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(-12deg) translateY(-8px)}40%{transform:rotate(0) translateY(0)}60%{transform:rotate(12deg) translateY(-8px)}80%{transform:rotate(0) translateY(0)}}
+@keyframes b-tremble{0%,100%{transform:translateX(0)}25%{transform:translateX(-2px) rotate(-1deg)}75%{transform:translateX(2px) rotate(1deg)}}
+@keyframes sh-jump{0%,100%{transform:scaleX(1);opacity:.45}45%{transform:scaleX(.55);opacity:.18}}
+@keyframes sh-walk{0%,50%,100%{transform:scaleX(1)}25%,75%{transform:scaleX(.8)}}
+.b-idle{animation:b-sway 3.6s ease-in-out infinite;transform-origin:50% 100%}
+.b-run{animation:b-walk .9s ease-in-out infinite;transform-origin:50% 100%}
+.b-wait{animation:b-jump .8s cubic-bezier(.3,.7,.4,1) infinite;transform-origin:50% 100%}
+.b-done{animation:b-dance 1.3s ease-in-out infinite;transform-origin:50% 100%}
+.b-quota{animation:b-tremble .16s linear infinite;transform-origin:50% 100%}
+.sh-wait{animation:sh-jump .8s cubic-bezier(.3,.7,.4,1) infinite}
+.sh-run{animation:sh-walk .9s ease-in-out infinite}
+.sh-done{animation:sh-walk 1.3s ease-in-out infinite}
+/* hiệu ứng phụ quanh bóng mascot */
+@keyframes fx-z{0%{transform:translate(0,0) scale(.7);opacity:0}20%{opacity:1}100%{transform:translate(10px,-26px) scale(1.1);opacity:0}}
+@keyframes fx-dust{0%{transform:translate(0,0) scale(.6);opacity:.7}100%{transform:translate(-14px,-4px) scale(1.4);opacity:0}}
+@keyframes fx-wave{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+@keyframes fx-pop{0%,100%{transform:scale(0);opacity:0}30%{transform:scale(1.1);opacity:1}70%{transform:scale(.9) translateY(-6px);opacity:.8}}
+@keyframes fx-drip{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(22px);opacity:0}}
+@keyframes fx-glow{0%,100%{opacity:.25;transform:scaleX(1)}50%{opacity:.6;transform:scaleX(1.15)}}
+@keyframes look{0%,40%,100%{transform:translateX(0)}50%,70%{transform:translateX(1.6px)}80%,90%{transform:translateX(-1.6px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+.fx{position:absolute;pointer-events:none}
+.fx-z{animation:fx-z 2.4s ease-out infinite;font-weight:800}
+.fx-dust{animation:fx-dust .9s ease-out infinite}
+.fx-wave{animation:fx-wave 1.2s ease-out infinite;border-radius:50%}
+.fx-pop{animation:fx-pop 1.3s ease-in-out infinite}
+.fx-drip{animation:fx-drip 1.1s ease-in infinite}
+.fx-glow{animation:fx-glow 1s ease-in-out infinite}
+.look-run{animation:look 3s ease-in-out infinite}
+.blink{animation:blink 4s linear infinite;transform-origin:50% 45%;transform-box:fill-box}
+/* xác nhận xoá: giữ để xoá, đếm ngược */
+@keyframes holdfill{0%{width:0}80%,100%{width:100%}}
+.holdfill{animation:holdfill 2.2s ease-in infinite}
+@keyframes countdown{from{stroke-dashoffset:0}to{stroke-dashoffset:100}}
+.countdown{animation:countdown 5s linear infinite}
+@keyframes slidehint{0%,100%{transform:translateX(0)}50%{transform:translateX(150px)}}
+.slidehint{animation:slidehint 2.4s ease-in-out infinite}
+@keyframes indet{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+.indet{animation:indet 1.2s ease-in-out infinite}
+@keyframes comet{to{stroke-dashoffset:-100}}
+.comet{animation:comet var(--sp,2.4s) linear infinite}
+@media (prefers-reduced-motion: reduce){.ab::before,.ab::after,.breathe,.m-idle,.m-run,.m-wait,.m-done,.m-quota,.indet,.comet,
+  .b-idle,.b-run,.b-wait,.b-done,.b-quota,.sh-wait,.sh-run,.sh-done,.fx,.look-run,.blink,.holdfill,.countdown,.slidehint{animation:none}}
+.sw{width:36px;height:22px;border-radius:11px;position:relative;flex:none}
+.sw i{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+.lane-h{display:flex;align-items:center;gap:6px;font-size:var(--t-body);font-weight:700;border:0;background:transparent;padding:4px 2px;min-height:30px;cursor:pointer;width:100%;text-align:left}

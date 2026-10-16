@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · Claude Code companion</title>
+<meta name="description" content="Wisp floats at the top of your screen and shows Claude Code quota, every running session and what needs you. Windows and macOS.">
+<meta property="og:title" content="Wisp">
+<meta property="og:description" content="Quota, sessions and what needs you, always at the top edge of your screen.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/wisp-ui.css">
+<style>
+:root{--bg:#0b0c0f;--bg2:#121318;--fg:#eef0f4;--mut:#a3a7b2;--line:#24262d;--acc:#ffb02e;--acc2:#ff8a4c}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Archivo',system-ui,sans-serif;line-height:1.5}
+button{font-family:inherit}
+a{color:#8cc2ff}
+button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+nav.top{position:sticky;top:0;z-index:40;background:rgba(11,12,15,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;align-items:center;gap:18px;min-height:58px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px;color:var(--fg);text-decoration:none}
+nav.top .links{display:flex;gap:16px;flex-wrap:wrap}
+nav.top .links a{color:var(--mut);text-decoration:none;font-size:14px}
+nav.top .links a:hover{color:var(--fg)}
+.seg{display:flex;border:1px solid #363944;border-radius:9px;overflow:hidden}
+.seg button{font-size:13px;font-weight:600;padding:7px 11px;min-height:34px;border:0;background:transparent;color:var(--mut);cursor:pointer}
+.seg button[aria-pressed="true"]{background:#2a2c33;color:var(--fg)}
+.ml{margin-left:auto}
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:40px;align-items:start;padding:56px 0 40px}
+.hero .copy-col{padding-top:40px}
+@media (max-width:960px){.hero{grid-template-columns:minmax(0,1fr)}}
+.hero h1{font-size:clamp(40px,6vw,64px);line-height:1.02;margin:0;font-weight:800;letter-spacing:-.02em}
+.hero .tag{font-size:clamp(18px,2.2vw,22px);margin:14px 0 6px;color:var(--fg)}
+.hero .sub{font-size:16px;color:var(--mut);margin:0 0 24px;max-width:520px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;padding:11px 16px;min-height:44px;border-radius:11px;text-decoration:none;border:1px solid transparent}
+.btn.pri{background:var(--acc);color:#1a1205}
+.btn.sec{border-color:#3a3d47;color:var(--fg)}
+.cmd{background:var(--bg2);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:560px}
+.cmd .tabs{display:flex;border-bottom:1px solid var(--line)}
+.cmd .tabs button{font-size:13px;font-weight:600;padding:9px 14px;border:0;background:transparent;color:var(--mut);cursor:pointer;min-height:38px}
+.cmd .tabs button[aria-pressed="true"]{color:var(--fg);box-shadow:inset 0 -2px 0 var(--acc)}
+.cmd pre{margin:0;padding:12px 14px;overflow-x:auto;font-size:13px}
+.cmd .copy{float:right;margin:8px;font-size:12px;padding:5px 9px;border-radius:7px;border:1px solid #3a3d47;background:transparent;color:var(--mut);cursor:pointer}
+.scene{position:relative;border-radius:18px;border:1px solid var(--line);padding:16px 16px 22px;display:flex;flex-direction:column;align-items:center;gap:12px;overflow:hidden;min-height:560px}
+.scene.dark{background:linear-gradient(180deg,#252a31,#1d2128)}
+.scene.light{background:linear-gradient(180deg,#d5dbe3,#c7ced8)}
+section.blk{padding:56px 0;border-top:1px solid var(--line)}
+section.blk h2{font-size:clamp(26px,3.4vw,34px);margin:0 0 8px;letter-spacing:-.01em}
+section.blk .lead{color:var(--mut);font-size:16px;margin:0 0 26px;max-width:760px}
+.feat{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.feat div{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px}
+.feat .ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-bottom:12px}
+.feat h3{margin:0 0 6px;font-size:16px}
+.feat p{margin:0;color:var(--mut);font-size:14px}
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.states{grid-template-columns:minmax(0,1fr)}}
+.stage{border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);min-width:0}
+.stage.dark{background:#252a31}.stage.light{background:#cfd6df}
+.stage .cap{font-size:12px;font-weight:600}
+.stage.dark .cap,.stage.dark .lb{color:#b4b8c2}.stage.light .cap,.stage.light .lb{color:#3d4350}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:6px}
+.lb{font-size:12px}
+.play{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start}
+@media (max-width:960px){.play{grid-template-columns:minmax(0,1fr)}}
+.big{border-radius:18px;padding:26px;min-height:300px;display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:center;border:1px solid var(--line)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.mgrid button{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--mut);font-size:11px;cursor:pointer;min-height:44px}
+.mgrid button[aria-pressed="true"]{border-color:var(--acc);color:var(--fg)}
+.tabs2{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.tabs2 button{font-size:13px;padding:7px 12px;min-height:34px;border-radius:999px;border:1px solid #3a3d47;background:transparent;color:var(--mut);cursor:pointer}
+.tabs2 button[aria-pressed="true"]{background:#2a2c33;color:var(--fg)}
+.install{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.install{grid-template-columns:minmax(0,1fr)}}
+.install > div{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px}
+.install h3{margin:0 0 4px}
+.install p{color:var(--mut);margin:0 0 10px;font-size:14px}
+.install pre{background:#08090b;border-radius:9px;padding:10px 12px;overflow-x:auto;font-size:13px;margin:0 0 10px}
+.sw{width:36px;height:22px;border-radius:11px;position:relative;flex:none}
+.sw i{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+.lane-h{display:flex;align-items:center;gap:6px;font-size:var(--t-body);font-weight:700;border:0;background:transparent;padding:4px 2px;min-height:30px;cursor:pointer;width:100%;text-align:left}
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--mut);font-size:13px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between}
+footer a{color:var(--mut)}
+/* chế độ chụp ảnh cho README: ?shot=<id> chỉ hiện một khối, nền cố định */
+body.shot nav.top,body.shot footer{display:none}
+body.shot [data-shot]{display:none}
+body.shot [data-shot].on{display:block;padding:24px;border:0}
+body.shot .hero{display:block;padding:0}
+body.shot .hero .copy-col{display:none}
+body.shot .hero .scene{max-width:760px;margin:0 auto}
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap">
+  <a class="brand" href="#top" id="brand"></a>
+  <div class="links" id="links"></div>
+  <div class="seg ml" role="group" aria-label="Theme" id="themeSeg"></div>
+  <div class="seg" role="group" aria-label="Language"><button data-l="en">EN</button><button data-l="vi">VI</button></div>
+</div></nav>
+<main id="top">
+  <div class="wrap" data-shot="hero"><div class="hero" id="hero"></div></div>
+  <section class="blk" id="features" data-shot="features"><div class="wrap" id="featBody"></div></section>
+  <section class="blk" id="island" data-shot="island"><div class="wrap" id="islBody"></div></section>
+  <section class="blk" id="custom" data-shot="custom"><div class="wrap" id="customBody"></div></section>
+  <section class="blk" id="mascots" data-shot="mascots"><div class="wrap" id="mBody"></div></section>
+  <section class="blk" id="panel" data-shot="panel"><div class="wrap" id="panelBody"></div></section>
+  <section class="blk" id="install" data-shot="install"><div class="wrap" id="instBody"></div></section>
+  <section class="blk" id="privacy"><div class="wrap" id="privBody"></div></section>
+</main>
+<footer><div class="wrap" id="foot"></div></footer>
+<script src="assets/wisp-ui.js"></script>
+<script>
+const REPO = 'https://github.com/hakienit/pet-tracker';
+const WIN_CMD = 'irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex';
+const MAC_CMD = 'curl -fsSL https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.sh | bash';
+const LP = {
+  en: {
+    links: ['Features', 'Customize', 'Mascots', 'Install', 'GitHub'], theme: ['Dark', 'Light'],
+    tag: 'A small flame that watches your Claude Code agents.',
+    sub: 'Quota, every running session and what needs you, always at the top edge of your screen. Windows 10/11 and macOS (beta).',
+    dlWin: 'Download for Windows', dlMac: 'macOS (beta)', copy: 'Copy', copied: 'Copied',
+    fH: 'What Wisp does', fL: 'Everything it shows comes from Claude Code on your machine. Nothing to configure to get started.',
+    feats: [
+      ['bell', 'wait', 'Knows when you are needed', 'Permission prompts, questions and finished turns show up on the island with a sound, through Claude Code hooks.'],
+      ['trend', 'warn', 'Quota with a forecast', '5-hour and 7-day usage, reset times, and when you will run out at the current pace.'],
+      ['run', 'run', 'Every session in one place', 'CLI, IDE and desktop sessions with model, effort, context, git branch and the tool running now.'],
+      ['open', 'done', 'One click back', 'Click a session to bring its terminal, IDE or Claude desktop window to the front.'],
+      ['trash', 'danger', 'Clean up safely', 'Handoff and close, close, delete, or remove merged worktrees, each with a clear confirmation.'],
+      ['gear', 'upd', 'Make it yours', 'Island or bubble, 6 signal styles, 40 mascots in 8 colours or your own image, light or dark, English or Vietnamese.'],
+    ],
+    iH: 'The island', iL: 'A pill pinned to the top of the screen. Quota on the left, lamps for needs you · running · done on the right. The border moves with the state.',
+    cH: 'Pick your bubble', cL: 'Prefer a draggable bubble? Choose a signal ring or a mascot that walks, jumps and dances with your sessions. Try it here; the same options live in Settings.',
+    mH: '40 mascots', mL: 'Each one has five expressions: idle, running, needs you, done and quota low. Click one to use it above.',
+    pH: 'The panel', pL: 'Click the island. Sessions are grouped by what they need from you, with context, model and effort on every card. Lanes collapse.',
+    inH: 'Install', inL: 'One command downloads the latest release, checks its SHA256 and starts Wisp. Run it again to update. Requires Claude Code, installed and signed in.',
+    win: 'Windows 10/11', winP: 'Paste into PowerShell:', mac: 'macOS (beta)', macP: 'Paste into Terminal:', manual: 'Manual download:', all: 'all releases',
+    prH: 'Privacy', prL: 'Wisp only reads Claude Code data on your machine (~/.claude). Your login token is sent only to api.anthropic.com to fetch quota; turn that off with "quota_api_enabled": false. Hooks post events to 127.0.0.1 only.',
+    foot: 'Wisp is a personal project, not an Anthropic product. Quota comes from the unofficial endpoint used by Claude Code\'s /usage command and may change at any time.',
+    guide: 'Guide', changelog: 'Changelog', spec: 'Design spec',
+  },
+  vi: {
+    links: ['Tính năng', 'Tuỳ biến', 'Mascot', 'Cài đặt', 'GitHub'], theme: ['Tối', 'Sáng'],
+    tag: 'Đốm lửa nhỏ canh các agent Claude Code của bạn.',
+    sub: 'Quota, mọi session đang chạy và việc cần bạn, luôn ở mép trên màn hình. Windows 10/11 và macOS (thử nghiệm).',
+    dlWin: 'Tải cho Windows', dlMac: 'macOS (thử nghiệm)', copy: 'Sao chép', copied: 'Đã chép',
+    fH: 'Wisp làm gì', fL: 'Mọi thứ lấy từ Claude Code trên máy bạn. Không cần cấu hình để bắt đầu.',
+    feats: [
+      ['bell', 'wait', 'Biết khi nào cần bạn', 'Yêu cầu duyệt quyền, câu hỏi và lượt vừa xong hiện trên island kèm âm thanh, qua hooks của Claude Code.'],
+      ['trend', 'warn', 'Quota có dự báo', 'Mức dùng 5 giờ và 7 ngày, giờ reset, và lúc nào sẽ hết theo tốc độ hiện tại.'],
+      ['run', 'run', 'Mọi session một chỗ', 'Session CLI, IDE và desktop, kèm model, effort, context, git branch và tool đang chạy.'],
+      ['open', 'done', 'Một click về đúng cửa sổ', 'Bấm vào session để đưa terminal, IDE hoặc Claude desktop của nó lên trước.'],
+      ['trash', 'danger', 'Dọn dẹp an toàn', 'Handoff rồi đóng, đóng, xoá, hoặc xoá worktree đã merge, mỗi thao tác có xác nhận rõ ràng.'],
+      ['gear', 'upd', 'Theo ý bạn', 'Island hoặc bóng nổi, 6 kiểu tín hiệu, 40 mascot với 8 màu hoặc ảnh riêng, sáng hoặc tối, tiếng Việt hoặc tiếng Anh.'],
+    ],
+    iH: 'Island', iL: 'Viên thuốc ghim ở mép trên màn hình. Quota bên trái, đèn cần bạn · đang chạy · xong bên phải. Viền chuyển động theo trạng thái.',
+    cH: 'Chọn bóng nổi', cL: 'Thích bóng kéo thả? Chọn vòng tín hiệu hoặc mascot biết đi, nhảy và múa theo session. Thử ngay ở đây; các lựa chọn này cũng có trong Cài đặt.',
+    mH: '40 mascot', mL: 'Mỗi mascot có năm biểu cảm: rảnh, đang chạy, cần bạn, xong và gần hết quota. Bấm một mascot để dùng ở trên.',
+    pH: 'Panel', pL: 'Bấm vào island. Session xếp theo việc chúng cần từ bạn, card nào cũng có context, model và effort. Làn thu gọn được.',
+    inH: 'Cài đặt', inL: 'Một lệnh tải bản mới nhất, kiểm SHA256 rồi mở Wisp. Chạy lại để cập nhật. Cần Claude Code đã cài và đăng nhập.',
+    win: 'Windows 10/11', winP: 'Dán vào PowerShell:', mac: 'macOS (thử nghiệm)', macP: 'Dán vào Terminal:', manual: 'Tải tay:', all: 'mọi bản',
+    prH: 'Riêng tư', prL: 'Wisp chỉ đọc dữ liệu Claude Code trên máy (~/.claude). Token đăng nhập chỉ gửi tới api.anthropic.com để lấy quota; tắt bằng "quota_api_enabled": false. Hooks chỉ gửi sự kiện tới 127.0.0.1.',
+    foot: 'Wisp là dự án cá nhân, không phải sản phẩm của Anthropic. Quota lấy từ endpoint không chính thức mà lệnh /usage của Claude Code dùng, có thể đổi bất kỳ lúc nào.',
+    guide: 'Hướng dẫn', changelog: 'Lịch sử thay đổi', spec: 'Spec thiết kế',
+  },
+};
+const q = new URLSearchParams(location.search);
+if (!ls('wisp-lang') && !q.get('lang')) LANG = (navigator.language || 'en').toLowerCase().startsWith('vi') ? 'vi' : 'en';
+let THEME = q.get('theme') || ls('wisp-site-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+let OS = /Mac/i.test(navigator.platform || navigator.userAgent) ? 'mac' : 'win';
+const SHOT = q.get('shot');
+if (q.get('bub') === 'mascot' || q.get('bub') === 'signal') BUBTYPE = q.get('bub');  // dùng khi chụp ảnh README
+if (q.get('coll')) q.get('coll').split(',').forEach((k) => { COLL[k] = true; });
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function cmdBox(lp) {
+  return `<div class="cmd"><div class="tabs" role="tablist">${[['win', 'Windows'], ['mac', 'macOS']].map(([k, n]) => `<button data-os="${k}" aria-pressed="${OS === k}">${n}</button>`).join('')}<button class="copy" data-copy="${OS}" style="margin-left:auto">${lp.copy}</button></div><pre class="mono">${esc(OS === 'win' ? WIN_CMD : MAC_CMD)}</pre></div>`;
+}
+function render() {
+  const l = L(), lp = LP[LANG], t = T[THEME];
+  uid = 0;
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-l]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.l === LANG));
+  document.getElementById('brand').innerHTML = `${mascot(MASCOT, 26, 'run', T.dark, '')}Wisp`;
+  document.getElementById('links').innerHTML = ['#features', '#custom', '#mascots', '#install', REPO].map((h, i) => `<a href="${h}">${lp.links[i]}</a>`).join('');
+  document.getElementById('themeSeg').innerHTML = ['dark', 'light'].map((k, i) => `<button data-theme="${k}" aria-pressed="${THEME === k}">${lp.theme[i]}</button>`).join('');
+  document.getElementById('hero').innerHTML = `<div class="copy-col"><h1>Wisp</h1><p class="tag">${lp.tag}</p><p class="sub">${lp.sub}</p>
+      <div class="cta"><a class="btn pri" href="${REPO}/releases/latest/download/wisp-win-x64.zip">${ic('dl', 18, 2.2)}${lp.dlWin}</a><a class="btn sec" href="${REPO}/releases/latest/download/wisp-macos-universal2.dmg">${lp.dlMac}</a></div>${cmdBox(lp)}</div>
+    <div class="scene ${THEME}">${island('wait', t, false)}${panel(t)}</div>`;
+  document.getElementById('featBody').innerHTML = `<h2>${lp.fH}</h2><p class="lead">${lp.fL}</p><div class="feat">${lp.feats.map(([icn, col, h, p]) => `<div><span class="ic" style="background:${T.dark[col]}22;color:${T.dark[col]}">${ic(icn, 20, 2.2)}</span><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>`;
+  const st4 = ['idle', 'run', 'wait', 'quota'];
+  document.getElementById('islBody').innerHTML = `<h2>${lp.iH}</h2><p class="lead">${lp.iL}</p><div class="states">${both((tt) => st4.map((v) => `<div class="row" style="gap:16px"><span class="lb" style="width:110px">${l.st[v]}</span>${island(v, tt)}</div>`).join(''))}</div>`;
+  const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : st4;
+  document.getElementById('customBody').innerHTML = `<h2>${lp.cH}</h2><p class="lead">${lp.cL}</p><div class="play">
+      <div class="big" style="min-height:300px;background:${THEME === 'dark' ? '#252a31' : '#cfd6df'}">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="color:${t.fg2};margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div>
+      <div>${bubbleSettings(t)}</div></div>`;
+  const list = CATSEL === 'all' ? MASCOTS : MASCOTS.filter((x) => CAT[CATSEL].includes(x.id));
+  document.getElementById('mBody').innerHTML = `<h2>${lp.mH}</h2><p class="lead">${lp.mL}</p>
+    <div class="tabs2">${Object.keys(l.cats).map((k) => `<button data-cat="${k}" aria-pressed="${k === CATSEL}">${l.cats[k]}</button>`).join('')}</div>
+    <div class="mgrid">${list.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 56, m.id === MASCOT ? 'done' : 'run', T.dark, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:84px">${m[LANG]}</span></button>`).join('')}</div>`;
+  document.getElementById('panelBody').innerHTML = `<h2>${lp.pH}</h2><p class="lead">${lp.pL}</p><div class="states">${both((tt) => `<div style="display:flex;justify-content:center">${panel(tt)}</div>`)}</div>`;
+  document.getElementById('instBody').innerHTML = `<h2>${lp.inH}</h2><p class="lead">${lp.inL}</p><div class="install">
+      <div><h3>${lp.win}</h3><p>${lp.winP}</p><pre class="mono">${esc(WIN_CMD)}</pre><p>${lp.manual} <a href="${REPO}/releases/latest/download/wisp-win-x64.zip">wisp-win-x64.zip</a> · <a href="${REPO}/releases">${lp.all}</a></p></div>
+      <div><h3>${lp.mac}</h3><p>${lp.macP}</p><pre class="mono">${esc(MAC_CMD)}</pre><p>${lp.manual} <a href="${REPO}/releases/latest/download/wisp-macos-universal2.dmg">wisp-macos-universal2.dmg</a></p></div></div>`;
+  document.getElementById('privBody').innerHTML = `<h2>${lp.prH}</h2><p class="lead" style="margin:0">${lp.prL}</p>`;
+  document.getElementById('foot').innerHTML = `<span>${lp.foot}</span><span><a href="${REPO}/blob/main/docs/GUIDE.md">${lp.guide}</a> · <a href="${REPO}/blob/main/CHANGELOG.md">${lp.changelog}</a> · <a href="design.html">${lp.spec}</a></span>`;
+  if (SHOT) { document.body.classList.add('shot'); document.body.style.background = '#0b0c0f'; document.querySelectorAll('[data-shot]').forEach((x) => x.classList.toggle('on', x.dataset.shot === SHOT)); }
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.copy) {
+    const txt = b.dataset.copy === 'win' ? WIN_CMD : MAC_CMD;
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => { b.textContent = LP[LANG].copied; setTimeout(render, 1500); }, () => {});
+    return;
+  }
+  const y = scrollY;
+  let changed = handleCustomize(b);
+  if (b.dataset.theme) { THEME = b.dataset.theme; ls('wisp-site-theme', THEME); changed = true; }
+  if (b.dataset.os) { OS = b.dataset.os; changed = true; }
+  if (b.dataset.cat) { CATSEL = b.dataset.cat; changed = true; }
+  if (changed) { render(); scrollTo(0, y); }
+});
+render();
+</script>
+</body>
+</html>
