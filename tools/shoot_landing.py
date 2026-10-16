@@ -27,8 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LANDING = ROOT / "docs" / "site" / "landing"
 OUT = LANDING / "readme"
-WIDTH = 1180   # bề rộng khối khi chụp (CSS px), khớp .shot-on trong landing-copy.js
-DPR = 1.5
+WIDTH = 1000   # bề rộng khối khi chụp (CSS px), khớp .shot-on trong landing-copy.js; README hiện ảnh rộng 880 nên chữ gần đúng cỡ thật
+DPR = 2        # ảnh rộng 2000 px: nét trên màn hình retina
 REPO = "https://github.com/hakienit/pet-tracker"
 WIN_CMD = "irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex"
 MAC_CMD = "curl -fsSL https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.sh | bash"
@@ -38,7 +38,6 @@ VARIANTS = {
     "a-aurora": (["hero", "features", "custom", "mascots"], ["idle", "run", "wait", "done"]),
     "b-terminal": (["hero", "features", "custom", "mascots"], ["idle", "run", "wait", "done"]),
     "c-bento": (["hero", "features", "custom"], None),
-    "d-paper": (["hero", "features", "how", "custom", "mascots"], None),
     "e-parade": (["hero", "features", "mascots", "custom"], ["idle", "run", "wait", "done", "quota"]),
 }
 
@@ -102,6 +101,7 @@ class Shooter:
                    f"--screenshot={out}"], url)
         if not out.exists():
             raise RuntimeError(f"chụp lỗi: {url}")
+        recompress(out)
 
 
 # ---------------------------------------------------------------- APNG (không cần thư viện ngoài)
@@ -115,6 +115,14 @@ def _chunks(data: bytes):
 
 def _chunk(tag: bytes, body: bytes) -> bytes:
     return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
+
+
+def recompress(path: Path) -> None:
+    """Nén lại IDAT của Chrome ở mức zlib 9 (không mất dữ liệu), gộp thành một IDAT, bỏ chunk phụ."""
+    chunks = list(_chunks(path.read_bytes()))
+    raw = zlib.decompress(b"".join(b for t, b in chunks if t == b"IDAT"))
+    keep = [_chunk(t, b) for t, b in chunks if t in (b"IHDR", b"PLTE", b"tRNS")]
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"".join(keep) + _chunk(b"IDAT", zlib.compress(raw, 9)) + _chunk(b"IEND", b""))
 
 
 def apng(frames: list, out: Path, delay_ms: int = 1600) -> None:

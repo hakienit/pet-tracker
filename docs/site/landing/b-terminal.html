@@ -143,14 +143,14 @@ function render() {
       <div class="prompt">wisp <span>--watch claude-code</span></div>
       <h1>${c.h1}<span class="cur"></span></h1>
       <p class="sub">${c.sub}</p>
+      <div class="dl"><a href="${WIN_ZIP}">↓ wisp-win-x64.zip</a><a href="${MAC_DMG}">↓ wisp-macos.dmg (beta)</a></div>
+      <div class="free"># ${c.free}</div>
     </div><div data-shot="demo">
       <div class="wnd" id="wnd"></div>
       <div class="steps" id="steps"></div>
       <div class="free m" id="cap"></div>
   </div><div class="wide">
       <div class="term-cmd"><div class="tabs">${[['win', 'PowerShell'], ['mac', 'zsh · macOS']].map(([k, n]) => `<button data-os="${k}" aria-pressed="${OS === k}">${n}</button>`).join('')}${copyBtn(cmd)}</div><pre class="m">${cmdHL(cmd)}</pre></div>
-      <div class="dl"><a href="${WIN_ZIP}">↓ wisp-win-x64.zip</a><a href="${MAC_DMG}">↓ wisp-macos.dmg (beta)</a></div>
-      <div class="free"># ${c.free}</div>
   </div></div>
   <section id="features" data-shot="features"><div class="wrap"><div class="h2"><span class="n">01</span><h2>${c.fH}</h2><p>${c.fL}</p></div>
     <div class="man">${c.feats.map(([icn, col, h, p]) => `<div><span class="ic" style="background:${t[col]}1c;color:${t[col]}">${ic(icn, 18, 2.2)}</span><span><b>${h}</b><p>${p}</p></span></div>`).join('')}</div></div></section>

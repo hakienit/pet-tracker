@@ -84,15 +84,13 @@ const C = () => LC[LANG];
   if (!ls('wisp-lang') && !q.get('lang')) LANG = (navigator.language || 'en').toLowerCase().startsWith('vi') ? 'vi' : 'en';
 }
 const escH = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-// lệnh cài: chỉ cho xuống dòng ngay sau "/" hoặc khoảng trắng, không cắt giữa chữ
 // tô màu lệnh giống code block trên GitHub: PowerShell tô "//host/" và từng "/" màu lam, "|" màu đỏ; bash chỉ tô "|"
 function cmdHL(cmd) {
   const e = escH(cmd).replace(/ \| /g, ' <span class="p">|</span> ');
   if (!cmd.startsWith('irm ')) return e;
   return e.replace(/https:(\/\/[^/\s]+\/)([^\s<]+)/, (m, host, path) => 'https:<span class="u">' + host + '</span>' + path.replace(/\//g, '<span class="u">/</span>'));
 }
-const cmdHTML = cmdHL;
-// một dòng, không xuống dòng, không thanh cuộn (vẫn cuộn ngang được khi màn hình hẹp), icon copy bên phải
+// một dòng, không xuống dòng, không thanh cuộn (vẫn cuộn ngang được khi màn hình hẹp), icon copy bên phải; khối co theo độ dài lệnh
 const cmdBlock = (cmd) => `<div class="ghcmd"><code>${cmdHL(cmd)}</code>${copyBtn(cmd)}</div>`;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -138,9 +136,8 @@ function wireCopy(root = document) {
   }, true);
 }
 
-// CSS chung cho mọi mẫu: lệnh cài xuống dòng thay vì cuộn ngang, nút copy dạng icon, chế độ chụp
+// CSS chung cho mọi mẫu: khối lệnh kiểu GitHub, nút copy dạng icon, chế độ chụp
 document.head.insertAdjacentHTML('beforeend', `<style>
-.cmdtxt{white-space:pre-wrap!important;word-break:normal!important;overflow-wrap:anywhere;overflow:visible!important;text-overflow:clip!important;text-align:left!important}
 button.cp{display:inline-grid;place-items:center;width:34px;height:34px;min-height:34px;flex:none;cursor:pointer;line-height:0}
 button.cp.ok{color:#3fb950!important}
 .ghcmd{display:flex;align-items:center;gap:12px;box-sizing:border-box;max-width:100%;min-width:0;margin:0;padding:12px 10px 12px 16px;border-radius:6px;
@@ -154,15 +151,18 @@ button.cp.ok{color:#3fb950!important}
 .ghcmd .cp:hover{border-color:var(--cmd-line,#3d444d);background:var(--cmd-hover,#262c36);color:var(--cmd-fg,#f0f6fc)}
 .ghcmd .cp:focus-visible{outline:2px solid #4493f8;outline-offset:0}
 .ghcmd .cp.ok{color:#3fb950}
-.cmdbox{margin-top:16px;max-width:640px}.cmdlbl{margin-top:16px;font-size:13px;color:var(--mut)}.cmdlbl+.cmdbox{margin-top:8px}
-.cmdbox.wide,.hero>.wide{grid-column:1/-1;max-width:none;margin-top:0}.wide .term-cmd{max-width:none}
+.cmdbox{margin-top:16px;width:fit-content;max-width:100%}.cmdlbl{margin-top:16px;font-size:13px;color:var(--mut)}.cmdlbl+.cmdbox{margin-top:8px}
+.cmdbox.wide,.hero>.wide{grid-column:1/-1;justify-self:start;margin-top:0}.wide .term-cmd{width:fit-content;max-width:100%}
 .inst .ghcmd{margin:0 0 12px}
+.play{align-items:stretch!important}
+.bigb{flex-wrap:wrap;align-content:center;justify-content:center;column-gap:0!important;row-gap:34px!important}
+.bigb .cell{flex:0 0 42%}.bigb:has(.cell:nth-child(5)) .cell{flex-basis:31%}
 .inst{grid-template-columns:minmax(0,1fr)!important}
 .term-cmd pre{white-space:pre!important;scrollbar-width:none}.term-cmd pre::-webkit-scrollbar{display:none}
 .term-cmd .u{color:#79c0ff}.term-cmd .p{color:#ff7b72}
 body.shot{margin:0;padding:0;background:transparent!important;background-image:none!important}
 body.shot::before{display:none!important}
-.shot-on{width:1180px!important;max-width:none!important;margin:0!important;border-radius:28px;overflow:hidden;background-color:var(--bg);padding:40px 44px!important;border:0!important}
+.shot-on{width:1000px!important;max-width:none!important;margin:0!important;border-radius:28px;overflow:hidden;background-color:var(--bg);padding:40px 44px!important;border:0!important}
 </style>`);
 let SHOT_DONE = false;
 function applyShot() {

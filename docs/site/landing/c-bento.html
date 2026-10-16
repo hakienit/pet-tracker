@@ -96,7 +96,7 @@ function render() {
       ${tile('scene', b.mascot, '', mascotBubble(MASCOT, 'done', t))}
       ${tile('w2', b.toast, '', `<div style="display:flex;flex-direction:column;gap:8px;width:100%;align-items:center">${toast('wait')}${toast('done')}</div>`)}
       ${tile('', b.quota, l.fc, `<div style="width:100%"><div class="big" style="color:${t.warn}">15:10</div><div style="margin-top:12px">${bar(62, t.warn, t.track, 6)}</div></div>`)}
-      ${tile('', b.tokens, l.localNote, `<div style="display:flex;gap:14px;width:100%;justify-content:space-between">${[['4.2M', l.today], ['38.6M', l.week], ['152M', l.month]].map(([n, s]) => `<div><div style="font-size:22px;font-weight:800">${n}</div><div style="font-size:12px;color:${t.mut}">${s}</div></div>`).join('')}</div>`)}
+      ${tile('', b.tokens, l.localNote, `<div style="display:flex;flex-direction:column;gap:6px;width:100%">${[['4.2M', l.today], ['38.6M', l.week], ['152M', l.month]].map(([n, s]) => `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-direction:row-reverse"><div style="font-size:20px;font-weight:800">${n}</div><div style="font-size:12.5px;color:${t.mut}">${s}</div></div>`).join('')}</div>`)}
       ${tile('w2', c.mH, '', `<div class="mstrip">${MASCOTS.slice(0, 16).map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 34, 'run', t, '')}</button>`).join('')}</div>`)}
       ${tile('', b.langs, '', `<div style="display:flex;flex-direction:column;gap:6px;font-size:14px"><span>${STR.en.st.wait} · ${STR.en.st.run}</span><span style="color:${t.mut}">${STR.vi.st.wait} · ${STR.vi.st.run}</span></div>`)}
       ${tile('w2', c.prH, c.prL, `<div style="color:${t.ok}">${ic('shield', 56, 1.6)}</div>`)}
