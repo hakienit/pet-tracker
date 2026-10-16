@@ -26,6 +26,7 @@ from pathlib import Path
 
 from . import __version__
 from . import platform as plat
+from . import tls
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 
@@ -60,7 +61,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=tls.context()))
 
 
 def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:

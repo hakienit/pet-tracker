@@ -30,6 +30,7 @@ from pathlib import Path
 
 from . import __version__, ed25519
 from . import platform as plat
+from . import tls
 
 REPO = "hakienit/pet-tracker"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -105,13 +106,13 @@ def install_dir_problem(target: Path):
 # ---------------------------------------------------------------- http
 def _get(url: str, timeout: float, accept: str = "application/octet-stream") -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout, context=tls.context()) as r:
         return r.read()
 
 
 def _download(url: str, dest: Path, timeout: float = 60.0, progress=None) -> None:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"})
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+    with urllib.request.urlopen(req, timeout=timeout, context=tls.context()) as r, open(dest, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         done = 0
         while True:

@@ -6,6 +6,23 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-16
+
+### Fixed
+- macOS: app không còn thoát ngay khi mở. Con trỏ resize dùng tên chỉ có trên Windows (`size_ne_sw`) làm Tk báo `bad cursor spec`.
+- macOS: lấy quota và kiểm tra cập nhật không còn lỗi `CERTIFICATE_VERIFY_FAILED` (Python của python.org không có chứng chỉ gốc; app đóng gói kèm `certifi`).
+- macOS: panel và popup đóng khi bấm ra ngoài; chuột phải vào session, bóng và island mở menu ngay lần bấm đầu; cuộn chuột và touchpad theo đúng đơn vị của Tk trên macOS.
+- macOS: bóng nổi và island vẽ được trên Tk 8.6 (ảnh PNG không hiện trong cửa sổ trong suốt) và nổi trên mọi app; popup không bị panel che.
+
+### Changed
+- macOS: bóng nổi là một bó lửa có mặt, màu đổi từ xanh sang đỏ theo % quota, đổi biểu cảm (vui, bình thường, lo lắng, giận) và cháy nhanh hơn khi có agent đang chạy; nhãn ghi % và số agent (`1 agent`, `2 agents`).
+- macOS: island sát mép trên, kéo ngang được, có viền lửa đổi màu theo % quota và đốm lửa mascot.
+- macOS: panel và popup bo góc, có viền và bóng đổ; icon trong menu vẽ cùng một kiểu nét mảnh; glyph nhánh git đổi sang `⑂`.
+- Nhãn số agent ghi `agents` khi có nhiều hơn một (mọi nền tảng).
+
+### Added
+- `tools/dev.py`: chạy Wisp từ source và tự khởi động lại khi file `.py` đổi.
+
 ## [0.1.7] - 2026-10-16
 
 ### Added

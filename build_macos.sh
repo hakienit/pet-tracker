@@ -5,6 +5,7 @@
 #
 # Yêu cầu: Python từ python.org bản universal2 (có sẵn Tk). Python của Homebrew hoặc setup-python thường
 # chỉ có một kiến trúc, PyInstaller --target-arch universal2 sẽ lỗi.
+# Build thử trên máy: TARGET_ARCH=arm64 (hoặc x86_64) khi Python chỉ có một kiến trúc.
 # Output: dist/Wisp.app, dist/wisp-<version>-macos-universal2.dmg
 # Bản build KHÔNG ký số / notarize: chỉ ký ad-hoc (Apple Silicon bắt buộc có chữ ký, kể cả ad-hoc).
 set -euo pipefail
@@ -13,7 +14,7 @@ PY="${PYTHON:-python3}"
 VER="$("$PY" -c 'import pet_tracker; print(pet_tracker.__version__)')"
 echo "Wisp $VER, $("$PY" -c 'import platform, sys; print(sys.version.split()[0], platform.machine())')"
 
-"$PY" -m pip install --upgrade "pyinstaller==6.22.3"
+"$PY" -m pip install --upgrade "pyinstaller==6.22.3" certifi
 
 # Icon .icns từ hình vẽ bằng tools/make_icon.py
 mkdir -p build
@@ -30,7 +31,7 @@ iconutil -c icns "$ICONSET" -o build/wisp.icns
 "$PY" -m PyInstaller --noconfirm --clean --windowed \
   --name "Wisp" \
   --osx-bundle-identifier sg.vinova.wisp \
-  --target-arch universal2 \
+  --target-arch "${TARGET_ARCH:-universal2}" \
   --icon build/wisp.icns \
   main.py
 

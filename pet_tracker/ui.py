@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import math
 import queue
 import threading
 import time
@@ -10,7 +11,6 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import font as tkfont
 
-import base64
 
 from . import __version__, procenv, render, session_ops, updater
 from . import platform as plat
@@ -80,11 +80,199 @@ FALLBACK_ICONS = {
     "ICON_MORE": "\u22ef", "ICON_CLEAR": "\u232b",
 }
 
+BRANCH = "\u2442" if plat.IS_MAC else "\u2387"  # ⑂ / ⎇: font hệ thống macOS vẽ ⎇ nghiêng, lệch dòng
+
+SHEET_ICON_KINDS: dict = {}  # glyph -> loại icon vẽ bằng Canvas (macOS), điền ở _init_fonts
+
 ENTRYPOINTS = {"cli": "CLI", "claude-desktop": "Desktop", "sdk-ts": "SDK", "sdk-py": "SDK", "vscode": "VS Code"}
 WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
 
 
 # ---------------------------------------------------------------- helpers
+FIRE_IDLE = ("#e25f48", "#f8a85c", "#fff0c8")  # (ngoài, giữa, lõi): màu mascot khi chưa có số liệu quota
+FIRE_STOPS = (  # mốc màu lửa theo % quota: xanh -> vàng -> đỏ
+    ("#2ea043", "#5fd47f", "#dcffe3"),
+    ("#d99a1a", "#f5cf5e", "#fff3c4"),
+    ("#e0443f", "#f58b6a", "#ffe0d4"),
+)
+
+
+def fire_palette(pct, warn: float, danger: float) -> tuple:
+    """Bộ ba màu lửa theo % quota: xanh tới nửa ngưỡng cảnh báo, rồi vàng ở warn, đỏ từ danger."""
+    if pct is None:
+        return FIRE_IDLE
+    g, y, r = FIRE_STOPS
+    if pct <= warn / 2:
+        return g
+    if pct < warn:
+        a, b, t = g, y, (pct - warn / 2) / (warn / 2)
+    elif pct < danger:
+        a, b, t = y, r, (pct - warn) / max(1.0, danger - warn)
+    else:
+        return r
+    return tuple(render.rgb2hex(render.mix(render.hex2rgb(x), render.hex2rgb(z), t)) for x, z in zip(a, b))
+
+
+def _drop(c, cx: float, by: float, hk: float, r: float, col: str, bend: float, tag: str) -> None:
+    """Một ngọn lửa: giọt nước đáy tròn bán kính r, cao hk, ngọn cong sang phải theo bend (đáy giữa tại (cx, by))."""
+    cy = by - r
+    alpha = math.acos(min(0.98, r / max(r * 1.02, hk - r)))
+    pts = []
+    for i in range(25):
+        th = alpha + (2 * math.pi - 2 * alpha) * i / 24
+        pts.append((r * math.sin(th), cy - r * math.cos(th)))
+    pts.append((0.0, by - hk))
+    flat = []
+    for x, y in pts:
+        hh = max(0.0, (by - y) / hk)
+        flat += [cx + x + bend * r * hh * hh, y]
+    c.create_polygon(*flat, fill=col, outline=col, width=0.6, tags=tag)
+
+
+def _eyes(c, cx: float, base: float, H: float, tag: str) -> None:
+    ey, ex, er = base - 0.30 * H, 0.11 * H, max(1.0, 0.045 * H)
+    for sx in (-1, 1):
+        c.create_oval(cx + sx * ex - er, ey - er * 1.3, cx + sx * ex + er, ey + er * 1.3, fill="#2a1714",
+                      outline="", tags=tag)
+
+
+def draw_flame(c, cx: float, base: float, H: float, tag: str = "shape", pal=FIRE_IDLE, lean: float = 0.0,
+               layers=(1.0, 0.80, 0.42), eyes: bool = True) -> None:
+    """Đốm lửa (mascot của Wisp, xem render._logo_sample) vẽ bằng Canvas: giọt nước cong sang phải, lớp ngoài /
+    giữa / lõi lấy màu từ pal, `lean` nghiêng ngọn (hoạt hình). (cx, base) = giữa đáy; H = chiều cao."""
+    for i, k in enumerate(layers[:3]):
+        _drop(c, cx, base - (0.0, 0.02, 0.06)[i] * H, H * k, 0.34 * H * k, pal[i], (0.30, 0.30, 0.10)[i] + lean, tag)
+    if eyes and H >= 13:
+        _eyes(c, cx, base, H, tag)
+
+
+FACE_COL = "#2a1714"
+
+
+def mood_of(pct) -> int:
+    """Biểu cảm theo % quota: 0 vui, 1 bình thường, 2 lo lắng, 3 giận."""
+    return 1 if pct is None else 0 if pct < 40 else 1 if pct < 70 else 2 if pct < 85 else 3
+
+
+def _face(c, cx: float, base: float, H: float, mood: int, t: float, tag: str) -> None:
+    """Mặt của đốm lửa theo biểu cảm (xem mood_of), vẽ trên lõi sáng: mắt, miệng, má hồng / mồ hôi / lông mày."""
+    ey, ex, er = base - 0.30 * H, 0.11 * H, max(1.0, 0.045 * H)
+    w = max(1.2, 0.028 * H)
+    kw = dict(outline=FACE_COL, width=w, tags=tag)
+    for s in (-1, 1):
+        x = cx + s * ex
+        if mood == 0:  # mắt cười ^ ^
+            c.create_arc(x - er * 1.5, ey - er * 1.1, x + er * 1.5, ey + er * 1.9, start=15, extent=150, style="arc", **kw)
+            c.create_oval(x * 1 + s * 0.06 * H - er * 1.1, ey + 0.09 * H, x + s * 0.06 * H + er * 1.1, ey + 0.09 * H + er * 1.4,
+                          fill="#ff9a9a", outline="", tags=tag)  # má hồng
+        else:
+            r = er * (1.15 if mood == 2 else 1.0)
+            c.create_oval(x - r, ey - r * 1.3, x + r, ey + r * 1.3, fill=FACE_COL, outline="", tags=tag)
+        if mood == 3:  # lông mày nhíu
+            c.create_line(x + s * 0.07 * H, ey - 0.14 * H, x - s * 0.05 * H, ey - 0.07 * H, fill=FACE_COL, width=w, capstyle="round", tags=tag)
+    my = ey + 0.12 * H
+    if mood == 0:
+        c.create_arc(cx - 0.07 * H, my - 0.05 * H, cx + 0.07 * H, my + 0.06 * H, start=200, extent=140, style="arc", **kw)
+    elif mood == 1:
+        c.create_arc(cx - 0.05 * H, my - 0.03 * H, cx + 0.05 * H, my + 0.04 * H, start=205, extent=130, style="arc", **kw)
+    elif mood == 2:  # miệng gợn sóng + giọt mồ hôi rơi
+        pts = [cx - 0.07 * H + k * 0.035 * H for k in range(5)]
+        c.create_line(*[v for k, x in enumerate(pts) for v in (x, my + (0.012 if k % 2 else -0.012) * H)], fill=FACE_COL,
+                      width=w, smooth=True, capstyle="round", tags=tag)
+        d = (t * 0.9) % 1.0
+        sx, sy, sr = cx + 0.27 * H, ey - 0.12 * H + d * 0.16 * H, 0.032 * H
+        c.create_polygon(sx, sy - sr * 1.8, sx + sr, sy, sx, sy + sr, sx - sr, sy, fill="#8fd0ff", outline="#8fd0ff", smooth=True, tags=tag)
+    else:  # giận: miệng mếu + lông mày nhíu + khói bốc lên
+        c.create_arc(cx - 0.06 * H, my - 0.005 * H, cx + 0.06 * H, my + 0.08 * H, start=20, extent=140, style="arc", **kw)
+        for i in range(3):
+            p = (t * 0.7 + i * 0.33) % 1.0
+            x, y, r = cx + (i - 1) * 0.16 * H + math.sin(t * 3 + i) * 0.02 * H, base - H * (1.02 + 0.3 * p), (0.03 + 0.05 * p) * H
+            c.create_oval(x - r, y - r, x + r, y + r, fill=render.rgb2hex(render.mix((0xd8, 0xd8, 0xe0), (0x12, 0x13, 0x17), p * 0.85)),
+                          outline="", tags=tag)
+
+
+# (lệch ngang, cao, pha) của từng ngọn trong bó lửa (nhân với H); ngọn giữa vẽ cuối nên nằm trên cùng
+BLAZE = ((-0.22, 0.58, 0.0), (0.21, 0.52, 2.1), (-0.11, 0.82, 4.0), (0.11, 0.78, 1.3), (0.0, 1.0, 3.2))
+
+
+def draw_blaze(c, cx: float, base: float, H: float, t: float, pal, tag: str = "shape", hot: float = 1.0,
+               mood: int = 1) -> None:
+    """Bó lửa cháy rực (bóng nổi macOS): nhiều ngọn lung lay lệch pha theo t, ba lớp màu ngoài / giữa / lõi trắng
+    nóng, quầng sáng phía sau, tia lửa bay lên. hot > 1: cháy mạnh hơn (có agent đang chạy)."""
+    bg = (0x12, 0x13, 0x17)
+    for k, a in ((1.28, 0.88), (1.14, 0.72)):  # quầng sáng mờ dần
+        col = render.rgb2hex(render.mix(render.hex2rgb(pal[0]), bg, a))
+        _drop(c, cx, base + 0.03 * H, H * k, 0.30 * H * k, col, 0.2, tag)
+    for layer, (scale, dy, ci) in enumerate(((1.0, 0.0, 0), (0.70, 0.04, 1), (0.40, 0.08, 2))):
+        for i, (dx, hf, ph) in enumerate(BLAZE):
+            if layer == 2 and i < 2:
+                continue  # lõi chỉ ở hai ngọn giữa
+            sway = 0.35 * math.sin(t * (2.4 + 0.5 * i) * hot + ph) + 0.10 * math.sin(t * 6.1 * hot + ph * 2)
+            beat = 1 + 0.07 * hot * math.sin(t * (3.6 + 0.8 * i) + ph)
+            hk = H * hf * scale * beat
+            _drop(c, cx + dx * H, base - dy * H, hk, 0.27 * hk, pal[ci], 0.25 + sway, tag)
+    _face(c, cx, base - 0.02 * H, H, mood, t, tag)
+    for i in range(4):  # tia lửa bay lên rồi tắt (nhỏ dần)
+        p = (t * 0.55 * hot + i * 0.27) % 1.0
+        x = cx + (0.30 * math.sin(t * 1.7 + i * 2.3) + (i - 1.5) * 0.12) * H
+        y = base - H * (0.70 + 0.55 * p)
+        r = max(0.6, (1 - p) * 0.045 * H)
+        c.create_oval(x - r, y - r, x + r, y + r, fill=pal[1], outline="", tags=tag)
+
+
+def draw_icon(c, kind: str, col: str, n: float, S: float) -> None:
+    """Vẽ icon nét mảnh (đường 1.6px, đầu tròn) vào Canvas c cỡ n x n. macOS: glyph Unicode của font hệ thống
+    lệch cỡ và độ dày nét nhau, nên mọi icon vẽ cùng một kiểu bằng primitive."""
+    m, w = n / 2, max(1.5, 1.6 * S)
+    k = S
+
+    def line(*pts, **kw):
+        c.create_line(*pts, fill=col, width=w, capstyle="round", joinstyle="round", **kw)
+
+    def P(x, y):  # toạ độ theo lưới 20 đơn vị, gốc ở tâm
+        return m + x * k, m + y * k
+
+    c.delete("all")
+    if kind == "close":
+        line(*P(-4.5, -4.5), *P(4.5, 4.5))
+        line(*P(-4.5, 4.5), *P(4.5, -4.5))
+    elif kind == "refresh":
+        r, t = 6 * k, math.radians(100)  # cung hở ở đỉnh, đầu mũi tên tại 100° (góc toán học)
+        c.create_arc(m - r, m - r, m + r, m + r, start=40, extent=-300, style="arc", outline=col, width=w)
+        px, py = m + r * math.cos(t), m - r * math.sin(t)
+        tx, ty, nx, ny = math.sin(t), math.cos(t), math.cos(t), -math.sin(t)
+        h = 3.4 * k
+        c.create_polygon(px + tx * h * 1.2, py + ty * h * 1.2, px + nx * h, py + ny * h, px - nx * h, py - ny * h,
+                         fill=col, outline=col, width=1)
+    elif kind == "folder":
+        line(*P(-7, -4), *P(-7, 5.5), *P(7, 5.5), *P(7, -2.5), *P(0.5, -2.5), *P(-1, -5), *P(-5.5, -5), *P(-7, -4))
+    elif kind == "download":
+        line(*P(0, -6.5), *P(0, 3))
+        line(*P(-4, -1), *P(0, 3), *P(4, -1))
+        line(*P(-6, 6.5), *P(6, 6.5))
+    elif kind in ("check_on", "check_off"):
+        line(*P(-6, -6), *P(6, -6), *P(6, 6), *P(-6, 6), *P(-6, -6))
+        if kind == "check_on":
+            line(*P(-3, 0), *P(-0.8, 2.6), *P(3.4, -2.6))
+    elif kind == "power":
+        r = 6 * k
+        c.create_arc(m - r, m - r + 1 * k, m + r, m + r + 1 * k, start=125, extent=290, style="arc", outline=col,
+                     width=w)
+        line(*P(0, -7), *P(0, 0))
+    elif kind == "open":
+        line(*P(-5, 5), *P(5, -5))
+        line(*P(-1, -5), *P(5, -5), *P(5, 1))
+    elif kind == "trash":
+        line(*P(-6.5, -4.5), *P(6.5, -4.5))
+        line(*P(-2.5, -4.5), *P(-2.5, -6.5), *P(2.5, -6.5), *P(2.5, -4.5))
+        line(*P(-5, -2), *P(-4.2, 6.5), *P(4.2, 6.5), *P(5, -2))
+        line(*P(-1.8, 0), *P(-1.8, 4)), line(*P(1.8, 0), *P(1.8, 4))
+
+
+def agents_label(n: int) -> str:
+    return f"{n} agent{'s' if n > 1 else ''}"
+
+
 def fmt_k(n: float) -> str:
     n = float(n or 0)
     if n < 1000:
@@ -276,6 +464,9 @@ class PetApp:
         self._cards: list = []
         self._hot = None
         self._hover_bubble = False
+        self._phase, self._anim_speed, self._pal = 0.0, 1.0, FIRE_IDLE  # hoạt hình lửa (macOS)
+        self._isl_pill = self._bub_args = self._bub_label = None
+        self._sheet_at = 0.0  # lúc popup mở gần nhất (chống mở đôi khi cả Tk lẫn poll cùng bắt cú chuột phải)
         self._bub_key = None
         self.island = bool(self.state.get("island", True))  # False = bóng tròn kéo thả kiểu cũ
         self._isl_wh = None
@@ -317,6 +508,9 @@ class PetApp:
         if self.cfg.get("config_error"):
             log(self.cfg["config_error"])
         self.root.after(200, self._pump)
+        if plat.IS_MAC:
+            self._poll_right_click()
+            self._anim_tick()
 
     def _init_fonts(self):
         fams = set(tkfont.families(self.root))
@@ -337,10 +531,13 @@ class PetApp:
         icons = pick("Segoe Fluent Icons", "Segoe MDL2 Assets")
         if icons is None:  # không có font icon: dùng ký tự Unicode thường
             globals().update(FALLBACK_ICONS)
+            SHEET_ICON_KINDS.update({
+                ICON_REFRESH: "refresh", ICON_FOLDER: "folder", ICON_UPDATE: "download", ICON_CHECK: "check_on",
+                ICON_STARTUP_OFF: "check_off", ICON_EXIT: "power", ICON_OPEN: "open", ICON_CLEAR: "trash"})
             icons = text
         bold = "bold" if not semi.lower().endswith(("semibold", "semib")) and "Segoe" not in semi else "normal"
         # macOS tính size theo point, chữ trông nhỏ hơn Windows ở cùng size -> cộng thêm
-        bump = 3 if plat.IS_MAC else 0
+        bump = 4 if plat.IS_MAC else 0
         F = tkfont.Font
         self.f_xs = F(family=text, size=8 + bump)
         self.f_xsb = F(family=semi, size=8 + bump, weight=bold)
@@ -349,11 +546,13 @@ class PetApp:
         self.f_md = F(family=semi, size=10 + bump, weight=bold)
         self.f_title = F(family=disp, size=11 + bump, weight=bold)
         self.f_big = F(family=disp, size=15 + bump, weight=bold)
-        self.f_bub = F(family=disp, size=13 + bump, weight=bold)
+        self.f_bub = F(family=disp, size=11 if plat.IS_MAC else 13, weight=bold)  # macOS: chữ nằm dưới đốm lửa, trong vòng quota
         self.f_bub_sm = F(family=text, size=7 + bump)
         self.f_badge = F(family=semi, size=8 + bump, weight=bold)
-        self.f_icon = F(family=icons, size=10 + bump)
-        self.f_icon_sm = F(family=icons, size=8 + bump)
+        # glyph Unicode thay cho Segoe Fluent Icons trông nhỏ và mảnh hơn: to thêm trên macOS
+        ib = 2 if plat.IS_MAC and icons == text else 0
+        self.f_icon = F(family=icons, size=10 + bump + ib)
+        self.f_icon_sm = F(family=icons, size=8 + bump + ib)
 
     # ---------- image cache
     def _photo(self, key, rows_fn):
@@ -369,7 +568,7 @@ class PetApp:
 
     # ---------- bubble
     def _build_bubble(self):
-        self.size = int(self.cfg["bubble_size"] * self.S)
+        self.size = int(self.cfg["bubble_size"] * self.S * (1.55 if plat.IS_MAC else 1))  # macOS: chừa chỗ cho nhãn % + agents
         b = tk.Toplevel(self.root)
         b.overrideredirect(True)
         b.attributes("-topmost", True)
@@ -392,11 +591,11 @@ class PetApp:
         self.canvas.bind("<Leave>", lambda e: self._set_bubble_hover(False))
         self._draw_bubble()
 
-    def _clamp_bubble(self, x: int, y: int) -> tuple:
-        """Giữ bóng trong vùng dùng được của màn hình chứa tâm bóng (màn hình gần nhất nếu nằm ngoài)."""
-        s = self.size
-        l, t, r, b = _work_area((x + s // 2, y + s // 2))
-        return max(l, min(x, r - s)), max(t, min(y, b - s))
+    def _clamp_bubble(self, x: int, y: int, w: int = 0, h: int = 0) -> tuple:
+        """Giữ bóng (hoặc island cỡ w x h) trong vùng dùng được của màn hình chứa tâm (màn hình gần nhất nếu ngoài)."""
+        w, h = w or self.size, h or self.size
+        l, t, r, b = _work_area((x + w // 2, y + h // 2))
+        return max(l, min(x, r - w)), max(t, min(y, b - h))
 
     def _bubble_center(self) -> tuple:
         return self.bubble.winfo_x() + self.size // 2, self.bubble.winfo_y() + self.size // 2
@@ -431,6 +630,44 @@ class PetApp:
             self._hover_bubble = v
             self._draw_bubble()
 
+    def _anim_tick(self):
+        """macOS: lửa lung lay ~11 fps (nhanh hơn khi có agent đang chạy). Chỉ vẽ lại hình, chữ giữ nguyên."""
+        if self._alpha_bubble:
+            self._phase += 0.1 * self._anim_speed
+            try:
+                if self.island and self._isl_pill:
+                    self._vec_island(self._phase)
+                elif not self.island and self._bub_args:
+                    self._vec_bubble(*self._bub_args, self._phase)
+            except tk.TclError:
+                pass
+        self.root.after(90, self._anim_tick)
+
+    def _poll_right_click(self, prev: bool = False):
+        """macOS: Wisp không phải app đang active thì Tk nuốt cú chuột phải đầu tiên (chỉ để kích hoạt app) và
+        không gửi Enter/Leave. Đọc nút phải toàn cục (rẻ) và mở menu nếu con trỏ đang trên bóng/island."""
+        down = plat.mouse_down(1)
+        if down and not prev and time.time() - self._sheet_at > 0.5:
+            x, y = _cursor_pos()
+            sess = self._session_at(x, y) if self.panel_visible and self._sheet is None else None
+            if sess is not None:
+                self._session_menu(sess, x, y)
+            elif self._inside(self.bubble, x, y):
+                self._bubble_menu(x, y)
+        self.root.after(50, self._poll_right_click, down)
+
+    def _session_at(self, x: int, y: int):
+        """Session của card nằm dưới (x, y) trong panel, hoặc None."""
+        try:
+            w = self.panel.winfo_containing(x, y)
+        except Exception:
+            return None
+        while w is not None:
+            if hasattr(w, "_sess"):
+                return w._sess
+            w = w.master
+        return None
+
     def collector_refresh(self):
         self.collector.refresh_now()
         self._flash("Đang làm mới…", MUTED, 2)
@@ -442,17 +679,20 @@ class PetApp:
             pass
 
     def _context_menu(self, ev):
-        self._bubble_menu(ev.x_root, ev.y_root)
+        if not plat.IS_MAC or time.time() - self._sheet_at > 0.5:  # macOS: _poll_right_click có thể đã mở menu cho cùng cú bấm
+            self._bubble_menu(ev.x_root, ev.y_root)
 
     def _drag_start(self, ev):
         self._drag = (ev.x_root, ev.y_root, self.bubble.winfo_x(), self.bubble.winfo_y())
         self._moved = False
 
     def _drag_move(self, ev):
-        if self._drag is None or self.island:  # island ghim cố định giữa mép trên
+        if self._drag is None or (self.island and not plat.IS_MAC):  # Windows: island ghim giữa mép trên
             return
         x0, y0, wx, wy = self._drag
         dx, dy = ev.x_root - x0, ev.y_root - y0
+        if self.island:  # island chỉ trượt ngang, luôn sát mép trên
+            dy = 0
         if abs(dx) > 3 or abs(dy) > 3:
             self._moved = True
         if self._moved:
@@ -464,7 +704,18 @@ class PetApp:
         if self._drag is None:  # nhả chuột sau Control-click (chuột phải trên macOS)
             return
         moved, self._drag, self._moved = self._moved, None, False
-        if moved:
+        if moved and self.island:  # macOS: island trượt ngang (tránh che tab/nút của app khác), nhớ tâm ngang
+            iw, ih = self._isl_wh
+            l, _, r, _ = _work_area()
+            x = max(l, min(self.bubble.winfo_x(), r - iw))
+            self.bubble.geometry(f"+{x}+{self.bubble.winfo_y()}")
+            self.state["ix"] = x + iw // 2
+            self.state.pop("iy", None)
+            save_state(self.state)
+            log(f"moved island to x={x}")
+            if self.panel_visible:
+                self._place_panel()
+        elif moved:
             x, y = self._clamp_bubble(self.bubble.winfo_x(), self.bubble.winfo_y())
             self.bubble.geometry(f"+{x}+{y}")
             self.state["x"], self.state["y"] = x, y
@@ -496,47 +747,140 @@ class PetApp:
         warn_col = level_color(worst, warn, danger) if worst >= warn else None
         upd = BLUE if (self._update or {}).get("available") else None
         if self.island:
-            self._draw_island(pct, prog, "7 ngày" if weekly else f"{len(sessions)} agent", busy, warn_col, upd)
+            self._draw_island(pct, prog, "7 ngày" if weekly else agents_label(len(sessions)), busy, warn_col, upd)
             return
         key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble, upd)
-        sub = "7 ngày" if weekly else f"{len(sessions)} agent"
-        if key != self._bub_key:
+        sub = "7 ngày" if weekly else agents_label(len(sessions))
+        if self._alpha_bubble:
+            self._pal = fire_palette(pct, warn, danger)
+            self._anim_speed = 2.2 if busy else 1.0
+            parts = [(f"{pct:.0f}%" if pct is not None else "–", prog, self.f_bub), (sub, MUTED, self.f_xs)]
+            gap = int(6 * S)
+            self._bub_label = (parts, [f.measure(t) for t, _, f in parts], gap)
+            self._bub_args = (pct, warn_col, upd)
+            self._vec_bubble(*self._bub_args, self._phase)
+        elif key != self._bub_key:
             self._bub_key = key
             img = self._bub_cache.get(key)
             if img is None:
                 if len(self._bub_cache) > 8:
                     self._bub_cache.clear()
-                if self._alpha_bubble:
-                    png = render.bubble_png(s, S, pct, prog, ACCENT if busy else None, warn_col,
-                                            self._hover_bubble, BUBBLE_PALETTE, update=upd)
-                    img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
-                else:
-                    img = render.to_photo_data(render.bubble_rows(s, S, pct, prog, ACCENT if busy else None,
-                                                                  warn_col, self._hover_bubble, BUBBLE_PALETTE,
-                                                                  update=upd))
+                img = render.to_photo_data(render.bubble_rows(s, S, pct, prog, ACCENT if busy else None,
+                                                              warn_col, self._hover_bubble, BUBBLE_PALETTE,
+                                                              update=upd))
                 self._bub_cache[key] = img
-            if self._alpha_bubble:
-                self._bub_img = img
-                self.canvas.itemconfigure(self._bub_item, image=self._bub_img)
-            else:
-                self._bub_img.put(img)
-                self.canvas.itemconfigure(self._bub_item, image=self._bub_img)  # có thể đang trỏ ảnh island
+            self._bub_img.put(img)
+            self.canvas.itemconfigure(self._bub_item, image=self._bub_img)  # có thể đang trỏ ảnh island
         c.delete("txt")
         cx = cy = s / 2
         n = len(sessions)
-        if pct is not None:
+        if self._alpha_bubble:  # macOS: nhãn "82%  3 agents" trong viên thuốc dưới đốm lửa
+            parts, widths, gap = self._bub_label
+            x = (s - sum(widths) - gap * (len(parts) - 1)) / 2
+            for (text, col, font), tw in zip(parts, widths):
+                c.create_text(x, 0.835 * s, text=text, fill=col, font=font, anchor="w", tags="txt")
+                x += tw + gap
+        elif pct is not None:
             c.create_text(cx, cy - 4 * S, text=f"{pct:.0f}%", fill=FG, font=self.f_bub, tags="txt")
             c.create_text(cx, cy + 11 * S, text=sub, fill=MUTED, font=self.f_bub_sm, tags="txt")
         else:
             c.create_text(cx, cy - 4 * S, text=str(n), fill=FG, font=self.f_bub, tags="txt")
             c.create_text(cx, cy + 11 * S, text="agent", fill=MUTED, font=self.f_bub_sm, tags="txt")
-        if busy:
+        if busy and not self._alpha_bubble:  # macOS: bỏ huy hiệu số, lửa cháy nhanh hơn đã báo có agent chạy
             rb = 8.5 * S
             c.create_text(s - rb - 0.75, rb + 0.75, text=str(busy), fill="#1a1a1a", font=self.f_badge, tags="txt")
 
+    def _vec_bubble(self, pct, warn, upd, t: float):
+        """macOS: Tk 8.6 không vẽ PhotoImage trong cửa sổ trong suốt, Tk 9 vẽ nền đen quanh ảnh -> vẽ bằng
+        primitive của Canvas. Bóng nổi = đốm lửa mascot (có mắt) màu theo % quota, lung lay theo t (_anim_tick),
+        bên dưới là viên thuốc đen ghi % và số agent (chữ vẽ ở _draw_bubble)."""
+        c, s, S, P = self.canvas, self.size, self.S, BUBBLE_PALETTE
+        pal = self._pal
+        H = 0.62 * s * (1.06 if self._hover_bubble else 1.0)
+        base = 0.70 * s
+        c.delete("shape")
+        draw_blaze(c, s / 2, base, H, t, pal, hot=self._anim_speed, mood=mood_of(pct))
+        parts, widths, gap = self._bub_label
+        pw = min(s, sum(widths) + gap * (len(parts) - 1) + int(18 * S))
+        x0, x1, y0, y1 = (s - pw) / 2, (s + pw) / 2, 0.74 * s, 0.93 * s
+        fill = ISLAND_HOVER if self._hover_bubble else ISLAND
+        for inset, col in ((0, pal[1]), (1.3 * S, fill)):  # viền màu lửa + nền đen
+            rr = (y1 - y0) / 2 - inset
+            c.create_oval(x0 + inset, y0 + inset, x0 + inset + 2 * rr, y1 - inset, fill=col, outline="", tags="shape")
+            c.create_oval(x1 - inset - 2 * rr, y0 + inset, x1 - inset, y1 - inset, fill=col, outline="", tags="shape")
+            c.create_rectangle(x0 + inset + rr, y0 + inset, x1 - inset - rr, y1 - inset, fill=col, outline="",
+                               tags="shape")
+        dots = []
+        if warn:
+            dots.append((0.2 * s, 0.52 * s, 5.5 * S, warn))
+        if upd:
+            dots.append((0.24 * s, 0.26 * s, 5 * S, upd))
+        for x, y, r, col in dots:  # chấm có viền tối
+            q = r + 2 * S
+            c.create_oval(x - q, y - q, x + q, y + q, fill=P["cutout"], outline="", tags="shape")
+            c.create_oval(x - r, y - r, x + r, y + r, fill=col, outline="", tags="shape")
+        c.tag_lower("shape")
+
+    def _vec_island(self, t: float):
+        """macOS: viên thuốc đen bọc viền lửa (các lưỡi lửa quanh chu vi, ngọn hướng lên dài hơn), màu theo % quota."""
+        w, h, m, fill = self._isl_pill
+        c, S, pal = self.canvas, self.S, self._pal
+        c.delete("shape")
+        r = h / 2
+        straight = w - h
+        total = 2 * straight + math.pi * h
+        n = max(14, int(total / (10 * S)))
+        step = total / n
+
+        def at(sd: float):  # điểm, pháp tuyến ngoài, tiếp tuyến trên chu vi viên thuốc
+            if sd < straight:
+                return (m + r + sd, m), (0, -1), (1, 0)
+            sd -= straight
+            if sd < math.pi * r:
+                a = -math.pi / 2 + sd / r
+                return (m + w - r + r * math.cos(a), m + r + r * math.sin(a)), (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+            sd -= math.pi * r
+            if sd < straight:
+                return (m + w - r - sd, m + h), (0, 1), (-1, 0)
+            sd -= straight
+            a = math.pi / 2 + sd / r
+            return (m + r + r * math.cos(a), m + r + r * math.sin(a)), (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+
+        reach = m - 1
+        for scale, col, bw_k in ((1.0, pal[0], 0.85), (0.62, pal[1], 0.55)):
+            for i in range(n):
+                (px, py), (nx, ny), (tx, ty) = at(i * step)
+                flick = 0.55 + 0.45 * math.sin(t * 4.1 + i * 1.7) * math.sin(t * 2.3 + i * 0.6)
+                up = max(0.0, -ny)  # ngọn lửa hướng lên cao hơn, đáy viên thuốc chỉ gợn nhẹ
+                ln = reach * scale * abs(flick) * (0.45 + 0.55 * up)
+                lean = 3.0 * S * math.sin(t * 3.0 + i * 0.9) * (0.4 + 0.6 * up)
+                bw = step * bw_k
+                tip = (px + nx * ln + tx * lean, py + ny * ln + ty * lean)
+                mid = 0.5 * ln + 0.4 * lean  # thân phình ra rồi thon dần lên ngọn (smooth làm tròn thành giọt lửa)
+                c.create_polygon(px - tx * bw, py - ty * bw,
+                                 px - tx * bw * 0.8 + nx * ln * 0.45, py - ty * bw * 0.8 + ny * ln * 0.45,
+                                 px + tx * mid * 0.5 + nx * ln * 0.8, py + ty * mid * 0.5 + ny * ln * 0.8,
+                                 *tip,
+                                 px + tx * mid * 0.5 + nx * ln * 0.8 + tx * bw * 0.25, py + ty * mid * 0.5 + ny * ln * 0.8 + ty * bw * 0.25,
+                                 px + tx * bw * 0.8 + nx * ln * 0.45, py + ty * bw * 0.8 + ny * ln * 0.45,
+                                 px + tx * bw, py + ty * bw, px - nx * 1.5, py - ny * 1.5,
+                                 fill=col, outline=col, width=0.6, smooth=True, tags="shape")
+
+        def pill(inset: float, color: str):
+            x0, y0, x1, y1 = m + inset, m + inset, m + w - inset, m + h - inset
+            rr = (y1 - y0) / 2
+            c.create_oval(x0, y0, x0 + 2 * rr, y1, fill=color, outline="", tags="shape")
+            c.create_oval(x1 - 2 * rr, y0, x1, y1, fill=color, outline="", tags="shape")
+            c.create_rectangle(x0 + rr, y0, x1 - rr, y1, fill=color, outline="", tags="shape")
+
+        pill(0, pal[1])  # viền sáng
+        pill(1.4 * S, fill)
+        c.tag_lower("shape")
+
     def _draw_island(self, pct, prog, sub, busy, warn_col, upd):
         """Viên thuốc đen kiểu Dynamic Island giữa mép trên: % quota · số agent · ● busy/cảnh báo/bản mới.
-        Chấm dùng glyph ● (font tự khử răng cưa) thay vì oval của Canvas."""
+        Chấm dùng glyph ● (font tự khử răng cưa) thay vì oval của Canvas. macOS: thêm đốm lửa mascot bên trái
+        và viền lửa bao quanh (cửa sổ rộng hơn viên thuốc một lề m)."""
         c, S = self.canvas, self.S
         segs = [(f"{pct:.0f}%" if pct is not None else "–", prog, self.f_md), (sub, MUTED, self.f_sm)]
         if busy:
@@ -545,30 +889,39 @@ class PetApp:
             if col:
                 segs.append(("●", col, self.f_sm))
         gap, pad, h = int(10 * S), int(16 * S), int(30 * S)
+        fw = int(14 * S) if self._alpha_bubble else 0  # macOS: đốm lửa mascot bên trái
+        m = int(10 * S) if self._alpha_bubble else 0    # macOS: lề cho viền lửa
         widths = [f.measure(t) for t, _, f in segs]
-        w = max(int(150 * S), sum(widths) + gap * (len(segs) - 1) + 2 * pad)
+        w = max(int(150 * S), fw + (gap if fw else 0) + sum(widths) + gap * (len(segs) - 1) + 2 * pad)
         fill = ISLAND_HOVER if self._hover_bubble else ISLAND
-        key = ("island", w, h, fill)
-        img = self._img_cache.get(key)
-        if img is None:
-            if self._alpha_bubble:
-                png = render.png_bytes(render.capsule_rows(w, h, 0, fill, fill, TRANSPARENT, rgba=True))
-                img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
-                self._img_cache[key] = img
-            else:
-                img = self._photo(key, lambda: render.capsule_rows(w, h, 0, fill, fill, TRANSPARENT))
-        c.itemconfigure(self._bub_item, image=img)
-        if self._isl_wh != (w, h):
-            self._isl_wh = (w, h)
+        W, H = w + 2 * m, h + 2 * m
+        if self._alpha_bubble:
+            self._pal = fire_palette(pct, self.cfg["warn_percent"], self.cfg["danger_percent"])
+            self._anim_speed = 2.0 if busy else 1.0
+            self._isl_pill = (w, h, m, fill)
+            self._vec_island(self._phase)
+        else:
+            key = ("island", w, h, fill)
+            img = self._photo(key, lambda: render.capsule_rows(w, h, 0, fill, fill, TRANSPARENT))
+            c.itemconfigure(self._bub_item, image=img)
+        if self._isl_wh != (W, H):
+            self._isl_wh = (W, H)
             l, t, r, _ = _work_area()
-            c.configure(width=w, height=h)
-            self.bubble.geometry(f"{w}x{h}+{(l + r - w) // 2}+{t + int(6 * S)}")
+            c.configure(width=W, height=H)
+            cx = (l + r) // 2
+            y = t + int((2 if m else 6) * S) - m  # macOS: viên thuốc sát mép trên, viền lửa nằm ngoài viên thuốc
+            if plat.IS_MAC and "ix" in self.state:  # vị trí ngang người dùng đã kéo tới
+                cx = max(l + W // 2, min(int(self.state["ix"]), r - W // 2))
+            self.bubble.geometry(f"{W}x{H}+{cx - W // 2}+{y}")
             if self.panel_visible:
                 self._place_panel()
         c.delete("txt")
-        x = (w - sum(widths) - gap * (len(segs) - 1)) / 2
+        x = (w - fw - (gap if fw else 0) - sum(widths) - gap * (len(segs) - 1)) / 2 + m
+        if fw:
+            draw_flame(c, x + fw / 2, m + h / 2 + 8.5 * S, 17 * S, tag="txt")
+            x += fw + gap
         for (text, col, font), sw in zip(segs, widths):
-            c.create_text(x, h / 2, text=text, fill=col, font=font, anchor="w", tags="txt")
+            c.create_text(x, m + h / 2, text=text, fill=col, font=font, anchor="w", tags="txt")
             x += sw + gap
 
     # ---------- panel
@@ -810,14 +1163,14 @@ class PetApp:
         self._wheel_by(dy)
 
     def _wheel_by(self, delta: float):
-        """delta theo đơn vị Windows: 120 = một nấc con lăn; touchpad gửi nhiều delta nhỏ."""
+        """delta theo đơn vị của nền tảng (plat.WHEEL_PX_PER_DELTA); touchpad gửi nhiều delta nhỏ."""
         if not delta or not self.panel_visible or not self._scrollable or self._sheet:
             return
         x, y = _cursor_pos()
         if not self._inside(self.panel, x, y):
             return
         base = self._scroll_target if self._scroll_target is not None else self._offset()
-        self._scroll_to(base - (delta / 120.0) * 72 * self.S, animate=True)
+        self._scroll_to(base - delta * plat.WHEEL_PX_PER_DELTA * self.S, animate=True)
 
     def _set_thumb_hover(self, v: bool):
         self._thumb_hover = v
@@ -928,6 +1281,20 @@ class PetApp:
         b.bind("<Leave>", lambda e: b.configure(fg=fg))
         b.bind("<Button-1>", self._guarded(lambda e: cmd()))
         return b
+
+    def _vec_icon_btn(self, parent, kind: str, cmd, hover_fg=FG, fg=MUTED):
+        """Nút icon vẽ bằng Canvas (macOS): glyph Unicode ↻ ✕ của font hệ thống lệch cỡ và nét nhau."""
+        S = self.S
+        n = int(26 * S)
+        c = tk.Canvas(parent, width=n, height=n, bg=parent["bg"], highlightthickness=0, bd=0, cursor="hand2")
+        def draw(col):
+            draw_icon(c, kind, col, n, S)
+
+        draw(fg)
+        c.bind("<Enter>", lambda e: draw(hover_fg))
+        c.bind("<Leave>", lambda e: draw(fg))
+        c.bind("<Button-1>", self._guarded(lambda e: cmd()))
+        return c
 
     def _text_btn(self, parent, text: str, cmd, hover_fg=FG, fg=MUTED):
         b = tk.Label(parent, text=text, font=self.f_xs, fg=fg, bg=parent["bg"], cursor="hand2")
@@ -1087,8 +1454,9 @@ class PetApp:
         sub = " · ".join(x for x in (acct.get("email"), fmt_tier(acct.get("tier"))) if x)
         if sub:
             self._lbl(titles, self._ellipsis(sub, self.f_xs, self.pw - int(140 * S)), font=self.f_xs, fg=MUTED).pack(fill="x")
-        self._icon_btn(row, ICON_CLOSE, self.hide_panel, hover_fg=FG).pack(side="right")
-        self._icon_btn(row, ICON_REFRESH, self.collector_refresh, hover_fg=BLUE).pack(side="right")
+        btn = self._vec_icon_btn if plat.IS_MAC else self._icon_btn
+        btn(row, "close" if plat.IS_MAC else ICON_CLOSE, self.hide_panel, hover_fg=FG).pack(side="right")
+        btn(row, "refresh" if plat.IS_MAC else ICON_REFRESH, self.collector_refresh, hover_fg=BLUE).pack(side="right")
         self._bind_events(row, plat.RIGHT_CLICK_EVENTS, self._context_menu)  # cùng menu với chuột phải vào bóng
         self._separator(hd)
 
@@ -1209,7 +1577,7 @@ class PetApp:
         rest = parent_dir
         br = s.get("git_branch")
         if br and br not in ("HEAD", ""):
-            rest = (rest + "   ⎇ " + br) if rest else ("⎇ " + br)
+            rest = (rest + f"   {BRANCH} " + br) if rest else (f"{BRANCH} " + br)
         if rest:
             rest_w = cw - self.f_xsb.measure(base_txt) - int(8 * S)
             self._lbl(r2, self._ellipsis(rest, self.f_xs, rest_w), font=self.f_xs, fg=FAINT).pack(
@@ -1253,9 +1621,11 @@ class PetApp:
                                     fg=GREEN if gkind == "done" else YELLOW)
             refs["git"].pack(side="left")
         card._refs = refs
+        card._sess = s  # chuột phải khi app không active: _poll_right_click tìm session qua card
 
         self._bind_click(card, lambda ev, sess=s: self._focus_session(sess))
-        menu = lambda ev, sess=s: self._session_menu(sess, ev.x_root, ev.y_root)
+        menu = lambda ev, sess=s: (not plat.IS_MAC or time.time() - self._sheet_at > 0.5) and \
+            self._session_menu(sess, ev.x_root, ev.y_root)
         self._bind_events(card, plat.RIGHT_CLICK_EVENTS, menu)
         more.bind("<Button-1>", menu)
         more.bind("<Enter>", lambda ev: more.configure(fg=FG))
@@ -1274,6 +1644,7 @@ class PetApp:
 
     def _update_card(self, card, s: dict):
         """Sửa các ô số liệu của card có sẵn (context, msg, thời gian, git) mà không dựng lại."""
+        card._sess = s
         refs = card._refs
         col = level_color(s["context_pct"], self.cfg["warn_percent"], self.cfg["danger_percent"])
         if "pct" in refs:
@@ -1289,7 +1660,7 @@ class PetApp:
 
     @staticmethod
     def _git_label(st: dict, text: str) -> str:
-        return f"⎇ {'worktree' if st['linked'] else (st['branch'] or 'git')}: {text}"
+        return f"{BRANCH} {'worktree' if st['linked'] else (st['branch'] or 'git')}: {text}"
 
     def _build_closed(self, parent, padx, inner_w):
         items = self._closed_list()
@@ -1364,6 +1735,7 @@ class PetApp:
         c.delete("dot")
         step = max(3, int(4 * S))
         r = max(1, int(1 * S))
+        inset = int(3 * S) if plat.IS_MAC else 0  # góc panel bo tròn: dời tay nắm vào trong
         for i in range(3):
             for j in range(3 - i):
                 x, y = int(3 * S) + j * step, int(3 * S) + i * step
@@ -1371,11 +1743,11 @@ class PetApp:
                     y = g - 1 - y
                 c.create_oval(x - r, y - r, x + r, y + r, fill=FAINT, outline="", tags="dot")
         if self.island:
-            c.configure(cursor="size_ne_sw")
-            c.place(x=0, y=0, rely=1.0, anchor="sw")
+            c.configure(cursor="size_ne_sw" if plat.IS_WINDOWS else "bottom_left_corner")
+            c.place(x=inset, y=-inset, rely=1.0, anchor="sw")
         else:
-            c.configure(cursor="size_nw_se")
-            c.place(x=0, y=0, rely=0.0, anchor="nw")
+            c.configure(cursor="size_nw_se" if plat.IS_WINDOWS else "top_left_corner")
+            c.place(x=inset, y=inset, rely=0.0, anchor="nw")
         tk.Misc.lift(c)  # Canvas.lift() là raise item, cần raise widget
 
     def _resize_start(self, ev):
@@ -1520,8 +1892,14 @@ class PetApp:
         row = tk.Frame(parent, bg=SHEET_BG, cursor="hand2" if enabled else "arrow")
         row.pack(fill="x", padx=int(6 * S))
         fg = (RED if danger else FG) if enabled else FAINT
-        ic = tk.Label(row, text=icon, font=self.f_icon, fg=(RED if danger else MUTED) if enabled else FAINT,
-                      bg=SHEET_BG, width=2)
+        icol = (RED if danger else MUTED) if enabled else FAINT
+        kind = SHEET_ICON_KINDS.get(icon) if plat.IS_MAC else None
+        if kind:  # macOS: icon vẽ bằng Canvas, cùng cỡ cùng nét
+            n = int(20 * S)
+            ic = tk.Canvas(row, width=n, height=n, bg=SHEET_BG, highlightthickness=0, bd=0)
+            draw_icon(ic, kind, icol, n, S)
+        else:
+            ic = tk.Label(row, text=icon, font=self.f_icon, fg=icol, bg=SHEET_BG, width=2)
         ic.pack(side="left", padx=(int(8 * S), int(8 * S)), pady=int(7 * S))
         lb = tk.Label(row, text=label, font=self.f_sm, fg=fg, bg=SHEET_BG, anchor="w")
         lb.pack(side="left", fill="x", expand=True)
@@ -1562,6 +1940,7 @@ class PetApp:
 
     def _new_sheet(self):
         self._close_sheet()
+        self._sheet_at = time.time()
         top = tk.Toplevel(self.root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
@@ -1582,11 +1961,18 @@ class PetApp:
         sx = x - W - m if x + W + m > r else x + m
         sx = max(l + m, sx)
         sy = max(t + m, min(y - int(10 * S), b - h - m))
+        if plat.IS_MAC and self.island and self._isl_wh:  # island nổi ở level 20, cao hơn popup: đặt popup dưới island
+            sy = max(sy, self.bubble.winfo_y() + self.bubble.winfo_height() + m)
         top.geometry(f"{W}x{h}+{sx}+{sy}")
         if not self._dwm_round(top):
             top.configure(bg=BORDER)
             body.pack_configure(padx=1, pady=1)
             top.geometry(f"{W + 2}x{h + 2}+{sx}+{sy}")
+        if plat.IS_MAC:  # -topmost đặt lúc cửa sổ chưa dựng không có tác dụng: popup nằm dưới panel (level 19)
+            top.attributes("-topmost", False)
+            top.attributes("-topmost", True)
+            top.lift()
+            plat.set_level(top, 26)  # trên bóng/island (25): menu không bị che
         top.bind("<Escape>", lambda e: self._close_sheet())
         top.focus_force()
         if not plat.GLOBAL_MOUSE:
@@ -1764,7 +2150,7 @@ class PetApp:
 
     def _bubble_menu(self, x, y):
         S = self.S
-        W = int(230 * S)
+        W = int((260 if plat.IS_MAC else 230) * S)  # chữ macOS rộng hơn: hint không bị cắt
         top, body = self._new_sheet()
 
         def act(fn):
