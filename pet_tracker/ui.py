@@ -57,6 +57,8 @@ BUBBLE_PALETTE = {
     "rim": "#4b4c5a", "rim_hover": ACCENT, "fringe": "#0d0d11", "cutout": "#121317",
     "key": TRANSPARENT,
 }
+ISLAND = "#0b0b0e"
+ISLAND_HOVER = "#1f2028"
 
 ICON_REFRESH = ""
 ICON_CLOSE = ""
@@ -275,6 +277,9 @@ class PetApp:
         self._hot = None
         self._hover_bubble = False
         self._bub_key = None
+        self.island = bool(self.state.get("island", True))  # False = bóng tròn kéo thả kiểu cũ
+        self._isl_wh = None
+        self.panel_visible = False
         self._rounded = False
         self._dwm_done = False
         self._scrollable = False
@@ -377,12 +382,7 @@ class PetApp:
         self._bub_img = tk.PhotoImage(width=self.size, height=self.size)
         self._bub_item = self.canvas.create_image(0, 0, anchor="nw", image=self._bub_img)
         self.bubble = b
-        if "x" in self.state and "y" in self.state:
-            x, y = self._clamp_bubble(int(self.state["x"]), int(self.state["y"]))
-        else:  # lần đầu: góc dưới-phải màn hình chính
-            l, t, r, btm = _work_area()
-            x, y = r - self.size - int(24 * self.S), btm - self.size - int(24 * self.S)
-        b.geometry(f"{self.size}x{self.size}+{x}+{y}")
+        self._place_bubble()
         self.canvas.bind("<ButtonPress-1>", self._drag_start)
         self.canvas.bind("<B1-Motion>", self._drag_move)
         self.canvas.bind("<ButtonRelease-1>", self._drag_end)
@@ -400,6 +400,31 @@ class PetApp:
 
     def _bubble_center(self) -> tuple:
         return self.bubble.winfo_x() + self.size // 2, self.bubble.winfo_y() + self.size // 2
+
+    def _place_bubble(self):
+        """Bóng: vị trí đã lưu. Island: _draw_island tự đặt giữa mép trên (rộng theo nội dung)."""
+        self._isl_wh = None
+        if self.island:
+            return
+        if "x" in self.state and "y" in self.state:
+            x, y = self._clamp_bubble(int(self.state["x"]), int(self.state["y"]))
+        else:  # lần đầu: góc dưới-phải màn hình chính
+            l, t, r, btm = _work_area()
+            x, y = r - self.size - int(24 * self.S), btm - self.size - int(24 * self.S)
+        self.canvas.configure(width=self.size, height=self.size)
+        self.bubble.geometry(f"{self.size}x{self.size}+{x}+{y}")
+
+    def _toggle_island(self):
+        self.island = not self.island
+        self.state["island"] = self.island
+        save_state(self.state)
+        log(f"island={self.island}")
+        self._bub_key = None
+        self._place_bubble()
+        self._place_grip()
+        self._draw_bubble()
+        if self.panel_visible:
+            self._place_panel()
 
     def _set_bubble_hover(self, v: bool):
         if self._hover_bubble != v:
@@ -424,7 +449,7 @@ class PetApp:
         self._moved = False
 
     def _drag_move(self, ev):
-        if self._drag is None:
+        if self._drag is None or self.island:  # island ghim cố định giữa mép trên
             return
         x0, y0, wx, wy = self._drag
         dx, dy = ev.x_root - x0, ev.y_root - y0
@@ -470,6 +495,9 @@ class PetApp:
         worst = max((x["context_pct"] for x in sessions), default=0.0)
         warn_col = level_color(worst, warn, danger) if worst >= warn else None
         upd = BLUE if (self._update or {}).get("available") else None
+        if self.island:
+            self._draw_island(pct, prog, "7 ngày" if weekly else f"{len(sessions)} agent", busy, warn_col, upd)
+            return
         key = (None if pct is None else round(pct, 1), prog, bool(busy), warn_col, self._hover_bubble, upd)
         sub = "7 ngày" if weekly else f"{len(sessions)} agent"
         if key != self._bub_key:
@@ -492,6 +520,7 @@ class PetApp:
                 self.canvas.itemconfigure(self._bub_item, image=self._bub_img)
             else:
                 self._bub_img.put(img)
+                self.canvas.itemconfigure(self._bub_item, image=self._bub_img)  # có thể đang trỏ ảnh island
         c.delete("txt")
         cx = cy = s / 2
         n = len(sessions)
@@ -504,6 +533,43 @@ class PetApp:
         if busy:
             rb = 8.5 * S
             c.create_text(s - rb - 0.75, rb + 0.75, text=str(busy), fill="#1a1a1a", font=self.f_badge, tags="txt")
+
+    def _draw_island(self, pct, prog, sub, busy, warn_col, upd):
+        """Viên thuốc đen kiểu Dynamic Island giữa mép trên: % quota · số agent · ● busy/cảnh báo/bản mới.
+        Chấm dùng glyph ● (font tự khử răng cưa) thay vì oval của Canvas."""
+        c, S = self.canvas, self.S
+        segs = [(f"{pct:.0f}%" if pct is not None else "–", prog, self.f_md), (sub, MUTED, self.f_sm)]
+        if busy:
+            segs.append((f"● {busy}", ACCENT, self.f_smb))
+        for col in (warn_col, upd):
+            if col:
+                segs.append(("●", col, self.f_sm))
+        gap, pad, h = int(10 * S), int(16 * S), int(30 * S)
+        widths = [f.measure(t) for t, _, f in segs]
+        w = max(int(150 * S), sum(widths) + gap * (len(segs) - 1) + 2 * pad)
+        fill = ISLAND_HOVER if self._hover_bubble else ISLAND
+        key = ("island", w, h, fill)
+        img = self._img_cache.get(key)
+        if img is None:
+            if self._alpha_bubble:
+                png = render.png_bytes(render.capsule_rows(w, h, 0, fill, fill, TRANSPARENT, rgba=True))
+                img = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"), format="png")
+                self._img_cache[key] = img
+            else:
+                img = self._photo(key, lambda: render.capsule_rows(w, h, 0, fill, fill, TRANSPARENT))
+        c.itemconfigure(self._bub_item, image=img)
+        if self._isl_wh != (w, h):
+            self._isl_wh = (w, h)
+            l, t, r, _ = _work_area()
+            c.configure(width=w, height=h)
+            self.bubble.geometry(f"{w}x{h}+{(l + r - w) // 2}+{t + int(6 * S)}")
+            if self.panel_visible:
+                self._place_panel()
+        c.delete("txt")
+        x = (w - sum(widths) - gap * (len(segs) - 1)) / 2
+        for (text, col, font), sw in zip(segs, widths):
+            c.create_text(x, h / 2, text=text, fill=col, font=font, anchor="w", tags="txt")
+            x += sw + gap
 
     # ---------- panel
     def _build_panel(self):
@@ -645,6 +711,8 @@ class PetApp:
         l, t, r, b = _work_area(self._bubble_center())
         margin = int(12 * self.S)
         max_h = (b - t) - 2 * margin - (0 if self._rounded else 2)
+        if self.island and self._isl_wh:  # panel treo dưới island
+            max_h -= self.bubble.winfo_y() - t + self._isl_wh[1]
         if self._user_h:
             max_h = max(self._ph_min, min(max_h, int(self._user_h)))
         hh = self._hdr.winfo_reqheight()
@@ -664,6 +732,11 @@ class PetApp:
         bx, by = self.bubble.winfo_x(), self.bubble.winfo_y()
         gap = int(10 * self.S)
         margin = int(12 * self.S)
+        if self.island and self._isl_wh:  # nở xuống từ island, căn giữa
+            iw, ih = self._isl_wh
+            x = max(l + margin, min(bx + (iw - pw) // 2, r - margin - pw))
+            self.panel.geometry(f"{pw}x{ph}+{x}+{by + ih + gap}")
+            return
         x = bx - pw - gap  # ưu tiên bên trái bóng; nếu không đủ chỗ thì bên phải
         if x < l + margin:
             x = bx + self.size + gap
@@ -1272,38 +1345,55 @@ class PetApp:
 
     # ---------- resize
     def _build_grip(self):
-        """Tay nắm resize ở góc trên-trái (phía xa bóng). Kéo: đổi rộng/cao. Nhấp đúp: về mặc định."""
-        S = self.S
-        g = int(14 * S)
-        c = tk.Canvas(self.body, width=g, height=g, bg=BG, highlightthickness=0, bd=0, cursor="size_nw_se")
-        step = max(3, int(4 * S))
-        r = max(1, int(1 * S))
-        for i in range(3):
-            for j in range(3 - i):
-                x, y = int(3 * S) + j * step, int(3 * S) + i * step
-                c.create_oval(x - r, y - r, x + r, y + r, fill=FAINT, outline="", tags="dot")
-        c.place(x=0, y=0)
-        tk.Misc.lift(c)  # Canvas.lift() là raise item, cần raise widget
+        """Tay nắm resize ở góc xa bóng/island. Kéo: đổi rộng/cao. Nhấp đúp: về mặc định."""
+        g = int(14 * self.S)
+        c = tk.Canvas(self.body, width=g, height=g, bg=BG, highlightthickness=0, bd=0)
+        self._grip = c
+        self._place_grip()
         c.bind("<Enter>", lambda e: c.itemconfigure("dot", fill=FG2))
         c.bind("<Leave>", lambda e: c.itemconfigure("dot", fill=FAINT))
         c.bind("<ButtonPress-1>", self._resize_start)
         c.bind("<B1-Motion>", self._resize_move)
         c.bind("<ButtonRelease-1>", self._resize_end)
         c.bind("<Double-Button-1>", self._resize_reset)
-        self._grip = c
+
+    def _place_grip(self):
+        """Bóng: góc trên-trái (panel neo đáy). Island: góc dưới-trái (panel treo từ trên)."""
+        c, S = self._grip, self.S
+        g = int(c["width"])
+        c.delete("dot")
+        step = max(3, int(4 * S))
+        r = max(1, int(1 * S))
+        for i in range(3):
+            for j in range(3 - i):
+                x, y = int(3 * S) + j * step, int(3 * S) + i * step
+                if self.island:
+                    y = g - 1 - y
+                c.create_oval(x - r, y - r, x + r, y + r, fill=FAINT, outline="", tags="dot")
+        if self.island:
+            c.configure(cursor="size_ne_sw")
+            c.place(x=0, y=0, rely=1.0, anchor="sw")
+        else:
+            c.configure(cursor="size_nw_se")
+            c.place(x=0, y=0, rely=0.0, anchor="nw")
+        tk.Misc.lift(c)  # Canvas.lift() là raise item, cần raise widget
 
     def _resize_start(self, ev):
         p = self.panel
         self._resize = (ev.x_root, ev.y_root, p.winfo_width(), p.winfo_height(),
-                        p.winfo_x() + p.winfo_width(), p.winfo_y() + p.winfo_height())
+                        p.winfo_x() + p.winfo_width(), p.winfo_y() + p.winfo_height(), p.winfo_y())
         self._modal = True
 
     def _resize_move(self, ev):
         if not self._resize:
             return
-        x0, y0, w0, h0, right, bottom = self._resize
+        x0, y0, w0, h0, right, bottom, top = self._resize
         l, t, r, b = _work_area((right - 1, bottom - 1))
         w = max(self._pw_min, min(self._pw_max, w0 - (ev.x_root - x0), right - l))
+        if self.island:  # mép trên neo dưới island, kéo xuống để cao thêm
+            h = max(self._ph_min, min(h0 + (ev.y_root - y0), b - top))
+            self.panel.geometry(f"{int(w)}x{int(h)}+{int(right - w)}+{int(top)}")
+            return
         h = max(self._ph_min, min(h0 - (ev.y_root - y0), bottom - t))
         self.panel.geometry(f"{int(w)}x{int(h)}+{int(right - w)}+{int(bottom - h)}")
 
@@ -1694,6 +1784,8 @@ class PetApp:
         self._sheet_row(body, ICON_CHECK if on else ICON_STARTUP_OFF,
                         "Chạy cùng Windows" if plat.IS_WINDOWS else "Mở khi đăng nhập", "đang bật" if on else "đang tắt",
                         act(self._toggle_autostart))
+        self._sheet_row(body, ICON_CHECK if self.island else ICON_STARTUP_OFF, "Dạng Dynamic Island",
+                        "đang bật" if self.island else "bóng nổi", act(self._toggle_island))
         tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=int(14 * S), pady=int(4 * S))
         self._sheet_row(body, ICON_EXIT, "Thoát Wisp", "", act(self.quit), danger=True)
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")

@@ -6,6 +6,11 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+### Added
+- Dạng Dynamic Island (mặc định): viên thuốc đen ghim giữa mép trên màn hình, hiện % quota, số agent,
+  số session đang chạy và chấm cảnh báo; click để panel nở xuống. Bật/tắt trong menu chuột phải,
+  bóng tròn kéo thả kiểu cũ vẫn dùng được.
+
 ## [0.1.4] - 2026-10-16
 
 ### Added

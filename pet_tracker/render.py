@@ -32,8 +32,9 @@ def to_photo_data(rows) -> str:
     return " ".join("{" + " ".join(r) + "}" for r in rows)
 
 
-def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str) -> list:
-    """Thanh bo tròn hai đầu: nền `track`, phần đã dùng `frac` (0..1) màu `fg`, ngoài hình là `bg`."""
+def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str, rgba: bool = False) -> list:
+    """Thanh bo tròn hai đầu: nền `track`, phần đã dùng `frac` (0..1) màu `fg`, ngoài hình là `bg`.
+    rgba=True: pixel (r, g, b, a) alpha thật thay vì trộn với `bg` (macOS)."""
     r = h / 2.0
     fg_, tr_, bg_ = hex2rgb(fg), hex2rgb(track), hex2rgb(bg)
     frac = 0.0 if frac < 0 else 1.0 if frac > 1 else frac
@@ -47,7 +48,7 @@ def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str) -> l
             sx = r if px < r else (w - r if px > w - r else px)
             a = _c(0.5 - (math.hypot(px - sx, dy) - r))
             if a <= 0:
-                row.append(bg)
+                row.append((0, 0, 0, 0) if rgba else bg)
                 continue
             col = tr_
             if x_end is not None:
@@ -55,7 +56,10 @@ def capsule_rows(w: int, h: int, frac: float, fg: str, track: str, bg: str) -> l
                 p = _c(0.5 - (math.hypot(px - sx2, dy) - r))
                 if p > 0:
                     col = mix(col, fg_, p)
-            row.append(rgb2hex(mix(bg_, col, a)))
+            if rgba:
+                row.append((int(col[0] + 0.5), int(col[1] + 0.5), int(col[2] + 0.5), int(255 * a + 0.5)))
+            else:
+                row.append(rgb2hex(mix(bg_, col, a)))
         rows.append(row)
     return rows
 

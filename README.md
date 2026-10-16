@@ -47,7 +47,8 @@ Thao tác:
 | Click trái vào bóng | mở / đóng panel |
 | Click ra ngoài panel | đóng panel |
 | Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\Wisp\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
-| Click phải vào bóng hoặc header của panel (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Thoát |
+| Click phải vào bóng hoặc header của panel (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Dạng Dynamic Island, Thoát |
+| Click phải → "Dạng Dynamic Island" | đổi giữa viên thuốc ghim giữa mép trên màn hình chính (mặc định, panel nở xuống ngay dưới, không kéo được) và bóng tròn kéo thả kiểu cũ; lựa chọn lưu trong `state.json` |
 | Click vào một session trong panel | đưa cửa sổ đang host session đó lên foreground (xem mục "Focus cửa sổ session") |
 | Kéo tay nắm ở góc trên-trái panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
 
