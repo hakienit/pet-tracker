@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · Bento</title>
+<meta name="description" content="Wisp: know the moment your Claude Code agents need you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/wisp-ui.css">
+<style>
+:root{--bg:#0a0b0e;--fg:#f0f2f6;--mut:#99a0ad;--line:#1e2128;--tile:#111318;--acc:#ffb02e}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;overflow-x:hidden}
+a{color:#9cc7ff}
+button{font-family:inherit}
+button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 20px}
+nav .wrap{display:flex;align-items:center;gap:22px;min-height:64px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:18px;color:var(--fg);text-decoration:none}
+.links{display:flex;gap:18px;flex-wrap:wrap}.links a{color:var(--mut);text-decoration:none;font-size:14px}.links a:hover{color:var(--fg)}
+.sp{flex:1}
+.seg{display:flex;background:#16181e;border-radius:10px;padding:3px}
+.seg button{font-size:12px;font-weight:700;padding:6px 11px;min-height:32px;border:0;border-radius:8px;background:transparent;color:var(--mut);cursor:pointer}
+.seg button[aria-pressed="true"]{background:#2a2d36;color:var(--fg)}
+.hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:30px;align-items:end;padding:56px 0 30px}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr)}}
+h1{font-size:clamp(40px,6vw,72px);line-height:.98;letter-spacing:-.035em;margin:0;font-weight:800;font-stretch:88%}
+.sub{color:var(--mut);font-size:17px;margin:0 0 18px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;padding:12px 18px;min-height:46px;border-radius:12px;text-decoration:none}
+.btn.pri{background:var(--fg);color:#0a0b0e}.btn.sec{background:#1a1c22;color:var(--fg)}
+.cmd{margin-top:14px;display:flex;gap:8px;align-items:center;background:#111318;border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 12px}
+.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;color:#cfd3dc}
+.cmd button{font-size:12px;font-weight:700;border:0;background:#22252c;color:var(--fg);border-radius:8px;padding:8px 12px;cursor:pointer}
+.bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:190px;grid-auto-flow:dense;gap:12px;margin-top:20px}
+@media (max-width:980px){.bento{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.bento{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}.bento > *{grid-column:auto!important;grid-row:auto!important;min-height:190px}}
+.tile{position:relative;background:var(--tile);border:1px solid var(--line);border-radius:22px;padding:18px;overflow:hidden;display:flex;flex-direction:column}
+.tile h3{margin:0;font-size:15px}.tile p{margin:4px 0 0;color:var(--mut);font-size:13px}
+.tile .body{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.tile.scene{background:linear-gradient(160deg,#1c2330,#141922)}
+.w2{grid-column:span 2}.h2r{grid-row:span 2}.h3r{grid-row:span 3}
+.big{font-size:44px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.fade::after{content:"";position:absolute;left:0;right:0;bottom:0;height:90px;background:linear-gradient(transparent,var(--tile));pointer-events:none}
+section{padding:80px 0 0}
+section h2{font-size:clamp(28px,3.6vw,40px);letter-spacing:-.02em;margin:0}
+section .lead{color:var(--mut);margin:8px 0 28px;max-width:640px}
+.play{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;align-items:start}
+@media (max-width:960px){.play{grid-template-columns:minmax(0,1fr)}}
+.bigb{border-radius:22px;border:1px solid var(--line);background:linear-gradient(160deg,#1c2330,#141922);min-height:300px;display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:center;padding:24px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:6px}.lb{font-size:12px;color:#b4b8c2}
+.mstrip{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;width:100%}
+.mstrip button{background:transparent;border:1px solid transparent;border-radius:10px;padding:4px;cursor:pointer;display:grid;place-items:center;min-height:44px}
+.mstrip button[aria-pressed="true"]{border-color:var(--acc);background:rgba(255,176,46,.08)}
+.inst{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:860px){.inst{grid-template-columns:minmax(0,1fr)}}
+.inst > div{background:var(--tile);border:1px solid var(--line);border-radius:22px;padding:20px}
+.inst h3{margin:0 0 8px;font-size:15px}.inst p{margin:0 0 10px;color:var(--mut);font-size:13.5px}
+.inst pre{margin:0 0 10px;background:#08090b;border-radius:10px;padding:12px;overflow-x:auto;font-size:12.5px;font-family:'Cascadia Mono',Consolas,Menlo,monospace}
+.inst button{font-size:12px;font-weight:700;border:0;background:#22252c;color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+footer{margin-top:80px;border-top:1px solid var(--line);padding:28px 0 50px;color:#7a7f8c;font-size:13px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+footer a{color:#9ea3b0}
+.sw{width:36px;height:22px;border-radius:11px;position:relative;flex:none}.sw i{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+</style>
+</head>
+<body>
+<nav><div class="wrap"><a class="brand" href="#top" id="brand"></a><div class="links" id="links"></div><span class="sp"></span><span id="lang"></span></div></nav>
+<main id="top"></main>
+<footer><div class="wrap" id="foot"></div></footer>
+<script src="../assets/wisp-ui.js"></script>
+<script src="../assets/landing-copy.js"></script>
+<script>
+const t = T.dark;
+let SIGI = 0;
+function render() {
+  const c = C(), l = L(), b = c.bento;
+  uid = 0;
+  document.documentElement.lang = LANG;
+  document.getElementById('brand').innerHTML = `${mascot(MASCOT, 28, 'run', t, '')}Wisp`;
+  document.getElementById('links').innerHTML = ['#bento', '#custom', '#install'].map((h, i) => `<a href="${h}">${[c.links[0], c.links[1], c.links[3]][i]}</a>`).join('') + `<a href="${REPO}">GitHub</a>`;
+  document.getElementById('lang').innerHTML = langSwitch('seg');
+  const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
+  const tile = (cls, h, p, body, extra = '') => `<div class="tile ${cls}" ${extra}><div><h3>${h}</h3>${p ? `<p>${p}</p>` : ''}</div><div class="body">${body}</div></div>`;
+  const toast = (k) => { const x = l.toast[k === 'wait' ? 0 : 1]; return `<div style="width:100%;max-width:320px;background:${t.surf};border:1px solid ${t.line};border-radius:12px;padding:11px 13px;display:flex;gap:10px"><span style="color:${t[k]}">${ic(k === 'wait' ? 'bell' : 'done', 17, 2.2)}</span><div style="min-width:0"><div style="font-size:13px;font-weight:700">${x[0]}</div><div class="ell ${k === 'wait' ? 'mono' : ''}" style="font-size:11.5px;color:${t.mut}">${x[1]}</div></div></div>`; };
+  const sv = SIG[SIGI % SIG.length];
+  document.getElementById('top').innerHTML = `
+  <div class="wrap">
+    <div class="hero"><h1>${c.h1}</h1><div><p class="sub">${c.sub}</p>
+      <div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.2)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
+      <div class="cmd"><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div></div></div>
+    <div class="bento" id="bento">
+      ${tile('w2 scene', b.island, c.feats[0][3], `<div style="display:flex;flex-direction:column;gap:8px;align-items:center">${['run', 'wait'].map((v) => island(v, t)).join('')}</div>`)}
+      ${tile('w2 h3r fade', b.panel, c.pL, `<div style="transform:scale(.9);transform-origin:top center;align-self:flex-start;margin-top:8px">${panel(t)}</div>`)}
+      ${tile('scene', b.bubble + ' · ' + sv[LANG], '', `<div id="sigbox">${sigBubble(sv, 'wait', t)}</div>`)}
+      ${tile('scene', b.mascot, '', mascotBubble(MASCOT, 'done', t))}
+      ${tile('w2', b.toast, '', `<div style="display:flex;flex-direction:column;gap:8px;width:100%;align-items:center">${toast('wait')}${toast('done')}</div>`)}
+      ${tile('', b.quota, l.fc, `<div style="width:100%"><div class="big" style="color:${t.warn}">15:10</div><div style="margin-top:12px">${bar(62, t.warn, t.track, 6)}</div></div>`)}
+      ${tile('', b.tokens, l.localNote, `<div style="display:flex;gap:14px;width:100%;justify-content:space-between">${[['4.2M', l.today], ['38.6M', l.week], ['152M', l.month]].map(([n, s]) => `<div><div style="font-size:22px;font-weight:800">${n}</div><div style="font-size:12px;color:${t.mut}">${s}</div></div>`).join('')}</div>`)}
+      ${tile('w2', c.mH, '', `<div class="mstrip">${MASCOTS.slice(0, 16).map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 34, 'run', t, '')}</button>`).join('')}</div>`)}
+      ${tile('', b.langs, '', `<div style="display:flex;flex-direction:column;gap:6px;font-size:14px"><span>${STR.en.st.wait} · ${STR.en.st.run}</span><span style="color:${t.mut}">${STR.vi.st.wait} · ${STR.vi.st.run}</span></div>`)}
+      ${tile('w2', c.prH, c.prL, `<div style="color:${t.ok}">${ic('shield', 56, 1.6)}</div>`)}
+      ${tile('', b.themes, '', `<div style="display:flex;flex-direction:column;gap:8px;align-items:center">${island('done', T.dark)}<div class="light" style="display:inline-block">${island('done', T.light)}</div></div>`)}
+    </div>
+  </div>
+  <section id="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
+    <div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div></div></section>
+  <section id="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
+    <div class="inst"><div><h3>${c.win}</h3><pre>${escH(WIN_CMD)}</pre>${copyBtn(WIN_CMD)}</div><div><h3>${c.mac}</h3><pre>${escH(MAC_CMD)}</pre>${copyBtn(MAC_CMD)}</div>
+    <div><h3>${c.prH}</h3><p>${c.prL}</p></div></div></div></section>`;
+  document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const y = scrollY;
+  if (handleCustomize(b)) { render(); scrollTo(0, y); }
+});
+wireCopy();
+render();
+if (!REDUCED) setInterval(() => { SIGI++; const box = document.getElementById('sigbox'); if (box) { uid = 1000 + SIGI; box.innerHTML = sigBubble(SIG[SIGI % SIG.length], 'wait', t); box.closest('.tile').querySelector('h3').textContent = C().bento.bubble + ' · ' + SIG[SIGI % SIG.length][LANG]; } }, 1800);
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · chọn mẫu landing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0d10;--fg:#eef0f4;--mut:#a3a8b4;--line:#22252c;--acc:#ffb02e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Archivo',system-ui,sans-serif;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding:36px 22px 60px}
+h1{margin:0;font-size:30px}
+.lead{color:var(--mut);margin:8px 0 26px;max-width:760px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:18px}
+article{background:#13151a;border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+article img{display:block;width:100%;aspect-ratio:1366/860;object-fit:cover;object-position:top;border-bottom:1px solid var(--line);background:#000}
+.b{padding:16px 18px 18px;display:flex;flex-direction:column;gap:6px;flex:1}
+.b h2{margin:0;font-size:18px}.b p{margin:0;color:var(--mut);font-size:14px;flex:1}
+.b .tags{display:flex;gap:6px;flex-wrap:wrap}
+.b .tags span{font-size:12px;padding:3px 8px;border-radius:6px;background:#1e2128;color:#c9ccd4}
+.b a{align-self:flex-start;margin-top:8px;font-size:14px;font-weight:700;color:#1a1205;background:var(--acc);text-decoration:none;border-radius:10px;padding:9px 14px}
+.b a:focus-visible{outline:2px solid #fff;outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Chọn mẫu landing</h1>
+  <p class="lead">Cùng nội dung song ngữ, cùng component thật của Wisp, 5 hướng thiết kế khác nhau. Mở từng trang để xem chuyển động và bấm thử (đổi ngôn ngữ, chọn mascot, chọn kiểu bóng).</p>
+  <div class="grid">
+    <article><img src="img/a-aurora.png" alt="Mẫu A Aurora"><div class="b"><h2>A · Aurora</h2><p>Tối, quầng sáng nhẹ, tiêu đề lớn ở giữa. Cảnh desktop chạy demo 4 trạng thái (rảnh, chạy, cần bạn, xong) có thông báo thật, nút dừng.</p><div class="tags"><span>Interactive demo</span><span>Sản phẩm</span></div><a href="a-aurora.html">Xem trang</a></div></article>
+    <article><img src="img/b-terminal.png" alt="Mẫu B Terminal"><div class="b"><h2>B · Terminal</h2><p>Cho dev: chữ mono, lưới mờ, lệnh cài là nhân vật chính. Cửa sổ Claude Code gõ từng dòng, island phản ứng theo.</p><div class="tags"><span>Developer</span><span>Split hero</span></div><a href="b-terminal.html">Xem trang</a></div></article>
+    <article><img src="img/c-bento.png" alt="Mẫu C Bento"><div class="b"><h2>C · Bento</h2><p>Lưới ô, mỗi ô là một component chạy thật: island, panel, bóng tín hiệu đổi kiểu, bóng mascot, thông báo, dự báo, token.</p><div class="tags"><span>Bento grid</span><span>Nhiều thông tin</span></div><a href="c-bento.html">Xem trang</a></div></article>
+    <article><img src="img/d-paper.png" alt="Mẫu D Paper"><div class="b"><h2>D · Paper</h2><p>Sáng, giấy ấm, chữ giãn rộng rất lớn, đường kẻ đen, các phần đánh số. Component dùng theme sáng.</p><div class="tags"><span>Editorial</span><span>Light</span></div><a href="d-paper.html">Xem trang</a></div></article>
+    <article><img src="img/e-parade.png" alt="Mẫu E Parade"><div class="b"><h2>E · Parade</h2><p>Vui: nền tím đêm có sao, đoàn 40 mascot đi ngang đầu trang, mascot lớn đổi biểu cảm, chọn mascot theo nhóm.</p><div class="tags"><span>Playful</span><span>Mascot</span></div><a href="e-parade.html">Xem trang</a></div></article>
+    <article><img src="img/current.png" alt="Bản hiện tại"><div class="b"><h2>0 · Bản hiện tại</h2><p>Landing đang có trong docs/site/index.html, để so sánh.</p><div class="tags"><span>Mốc so sánh</span></div><a href="../index.html">Xem trang</a></div></article>
+  </div>
+</div>
+</body>
+</html>

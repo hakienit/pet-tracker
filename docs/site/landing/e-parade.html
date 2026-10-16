@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · Parade</title>
+<meta name="description" content="Wisp: know the moment your Claude Code agents need you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/wisp-ui.css">
+<style>
+:root{--bg:#160f2a;--bg2:#1f1640;--fg:#fff8ec;--mut:#c4b8e6;--line:#34295e;--card:#211845;--y:#ffd23f;--p:#ff7eb6;--c:#3be8b0;--b:#6cc4ff}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;overflow-x:hidden;
+  background-image:radial-gradient(1.2px 1.2px at 20% 30%,#ffffff55 50%,transparent 51%),radial-gradient(1.4px 1.4px at 70% 12%,#ffffff44 50%,transparent 51%),
+  radial-gradient(1px 1px at 40% 70%,#ffffff33 50%,transparent 51%),radial-gradient(1.2px 1.2px at 85% 55%,#ffffff44 50%,transparent 51%);background-size:420px 420px}
+a{color:var(--y)}
+button{font-family:inherit}
+button:focus-visible,a:focus-visible{outline:3px solid var(--y);outline-offset:3px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+nav .wrap{display:flex;align-items:center;gap:20px;min-height:66px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:900;font-size:20px;color:var(--fg);text-decoration:none}
+.links{display:flex;gap:18px;flex-wrap:wrap}.links a{color:var(--mut);text-decoration:none;font-weight:600;font-size:14px}.links a:hover{color:var(--y)}
+.sp{flex:1}
+.seg{display:flex;background:#2a2052;border-radius:999px;padding:3px}
+.seg button{font-size:12px;font-weight:800;padding:6px 12px;min-height:32px;border:0;border-radius:999px;background:transparent;color:var(--mut);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--y);color:#1a1530}
+.march{position:relative;height:96px;overflow:hidden;margin-top:6px;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.march .belt{position:absolute;left:0;bottom:8px;display:flex;gap:26px;animation:belt 60s linear infinite;width:max-content}
+@keyframes belt{to{transform:translateX(-50%)}}
+.march .belt > div{display:flex;flex-direction:column;align-items:center}
+.march .ground{position:absolute;left:0;right:0;bottom:6px;height:2px;background:linear-gradient(90deg,transparent,#4a3d80,transparent)}
+@media (prefers-reduced-motion: reduce){.march .belt{animation:none}}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:30px;align-items:center;padding:40px 0 20px}
+@media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr)}}
+h1{font-size:clamp(42px,6.4vw,78px);line-height:1;letter-spacing:-.03em;font-weight:900;margin:0}
+h1 .a{color:var(--y)}h1 .b{color:var(--p)}
+.sub{font-size:18px;color:var(--mut);max-width:520px;margin:18px 0 26px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;padding:14px 22px;min-height:50px;border-radius:999px;text-decoration:none}
+.btn.pri{background:var(--y);color:#1a1530;box-shadow:0 6px 0 #b8941b}
+.btn.pri:active{transform:translateY(3px);box-shadow:0 3px 0 #b8941b}
+.btn.sec{background:#2a2052;color:var(--fg)}
+.cmd{margin-top:16px;display:flex;align-items:center;gap:8px;background:#100b20;border-radius:16px;padding:7px 7px 7px 14px;max-width:560px}
+.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;color:#e9e1ff}
+.cmd button{font-size:12px;font-weight:800;border:0;background:var(--p);color:#1a1530;border-radius:12px;padding:8px 12px;cursor:pointer}
+.stagep{position:relative;min-height:380px;border-radius:32px;background:radial-gradient(circle at 50% 40%,#3a2a72,#1f1640 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;border:2px solid var(--line)}
+.stagep .big{transform:scale(1.9);transform-origin:center bottom;margin-top:60px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:70px}
+.chips span{font-size:12.5px;font-weight:800;padding:6px 12px;border-radius:999px;background:#2a2052;color:var(--mut)}
+.chips span.on{color:#1a1530}
+.cap{min-height:24px;text-align:center;font-weight:600}
+section{padding:80px 0 0}
+section h2{font-size:clamp(30px,4vw,46px);letter-spacing:-.02em;margin:0;font-weight:900;text-align:center}
+section .lead{color:var(--mut);text-align:center;max-width:640px;margin:10px auto 34px;font-size:17px}
+.feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.feat{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.feat{grid-template-columns:minmax(0,1fr)}}
+.feat article{background:var(--card);border:2px solid var(--line);border-radius:26px;padding:22px;display:flex;gap:14px;align-items:flex-start}
+.feat h3{margin:0 0 6px;font-size:18px}.feat p{margin:0;color:var(--mut);font-size:14.5px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:18px}
+.tabs button{font-size:14px;font-weight:800;padding:9px 16px;min-height:40px;border-radius:999px;border:0;background:#2a2052;color:var(--mut);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--c);color:#1a1530}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
+.mgrid button{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:14px 4px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--fg);font-size:12.5px;font-weight:700;cursor:pointer;min-height:44px;transition:transform .15s}
+.mgrid button:hover{transform:translateY(-3px)}
+.mgrid button[aria-pressed="true"]{border-color:var(--y);background:#3a2f12}
+@media (prefers-reduced-motion: reduce){.mgrid button{transition:none}}
+.play{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:22px;align-items:start}
+@media (max-width:960px){.play{grid-template-columns:minmax(0,1fr)}}
+.bigb{border-radius:30px;border:2px solid var(--line);background:radial-gradient(circle at 50% 40%,#3a2a72,#1f1640 70%);min-height:320px;display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:center;padding:26px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:6px}.lb{font-size:12px;color:var(--mut);font-weight:700}
+.inst{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:760px){.inst{grid-template-columns:minmax(0,1fr)}}
+.inst article{background:var(--card);border:2px solid var(--line);border-radius:26px;padding:22px}
+.inst h3{margin:0 0 10px}
+.inst pre{margin:0 0 12px;background:#100b20;border-radius:14px;padding:12px;overflow-x:auto;font-size:12.5px;font-family:'Cascadia Mono',Consolas,Menlo,monospace}
+.inst button{font-size:12px;font-weight:800;border:0;background:var(--p);color:#1a1530;border-radius:12px;padding:8px 12px;cursor:pointer}
+.priv{margin:40px auto 0;max-width:760px;text-align:center;color:var(--mut)}
+footer{margin-top:80px;border-top:2px solid var(--line);padding:28px 0 50px;color:var(--mut);font-size:13px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+footer a{color:var(--fg)}
+.sw{width:36px;height:22px;border-radius:11px;position:relative;flex:none}.sw i{position:absolute;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+</style>
+</head>
+<body>
+<nav><div class="wrap"><a class="brand" href="#top" id="brand"></a><div class="links" id="links"></div><span class="sp"></span><span id="lang"></span></div></nav>
+<main id="top"></main>
+<footer><div class="wrap" id="foot"></div></footer>
+<script src="../assets/wisp-ui.js"></script>
+<script src="../assets/landing-copy.js"></script>
+<script>
+const t = T.dark;
+let STAGE = 'run', loop = null, CAT_ = 'all';
+const MOODS = ['idle', 'run', 'wait', 'done', 'quota'];
+const COLS = ['#ffd23f', '#ff7eb6', '#3be8b0', '#6cc4ff', '#ffb02e', '#a78bfa'];
+function hero() {
+  const c = C();
+  const i = MOODS.indexOf(STAGE);
+  document.getElementById('heroStage').innerHTML = `<div class="big">${mascotBubble(MASCOT, STAGE, t)}</div>
+    <div class="chips">${MOODS.map((k, j) => `<span class="${j === i ? 'on' : ''}" style="${j === i ? `background:${t[k === 'quota' ? 'danger' : k]}` : ''}">${L().st[k]}</span>`).join('')}</div>
+    <div class="cap">${STAGE === 'quota' ? L().fc : c.demo[DEMO.indexOf(STAGE)]}</div>`;
+}
+function render() {
+  const c = C(), l = L();
+  uid = 0;
+  document.documentElement.lang = LANG;
+  document.getElementById('brand').innerHTML = `${mascot(MASCOT, 30, 'run', t, '')}Wisp`;
+  document.getElementById('links').innerHTML = ['#features', '#mascots', '#custom', '#install'].map((h, i) => `<a href="${h}">${[c.links[0], c.links[2], c.links[1], c.links[3]][i]}</a>`).join('') + `<a href="${REPO}">GitHub</a>`;
+  document.getElementById('lang').innerHTML = langSwitch('seg');
+  const belt = [...MASCOTS, ...MASCOTS].map((m, i) => `<div>${mascot(m.id, 54, i % 7 === 3 ? 'wait' : i % 5 === 1 ? 'done' : 'run', t, i % 7 === 3 ? 'b-wait' : i % 5 === 1 ? 'b-done' : 'b-run')}</div>`).join('');
+  const words = c.h1.split(' ');
+  const h1 = words.map((w, i) => (i === words.length - 2 ? `<span class="a">${w}</span>` : i === words.length - 1 ? `<span class="b">${w}</span>` : w)).join(' ');
+  const list = CAT_ === 'all' ? MASCOTS : MASCOTS.filter((x) => CAT[CAT_].includes(x.id));
+  const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
+  document.getElementById('top').innerHTML = `
+  <div class="march"><div class="belt">${belt}</div><div class="ground"></div></div>
+  <div class="wrap"><div class="hero"><div><h1>${h1}</h1><p class="sub">${c.sub}</p>
+      <div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.4)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
+      <div class="cmd"><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div></div>
+    <div class="stagep" id="heroStage"></div></div></div>
+  <section id="features"><div class="wrap"><h2>${c.fH}</h2><p class="lead">${c.fL}</p>
+    <div class="feat">${c.feats.map(([icn, col, h, p], i) => `<article><span>${mascot(MASCOTS[(i * 7 + 3) % 40].id, 54, ['wait', 'quota', 'run', 'done', 'idle', 'done'][i], t, '')}</span><span><h3 style="color:${COLS[i]}">${h}</h3><p>${p}</p></span></article>`).join('')}</div></div></section>
+  <section id="mascots"><div class="wrap"><h2>${c.parade}</h2><p class="lead">${c.paradeL}</p>
+    <div class="tabs">${Object.keys(l.cats).map((k) => `<button data-pcat="${k}" aria-pressed="${k === CAT_}">${l.cats[k]}</button>`).join('')}</div>
+    <div class="mgrid">${list.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 64, m.id === MASCOT ? 'done' : 'run', t, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:100px">${m[LANG]}</span></button>`).join('')}</div></div></section>
+  <section id="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
+    <div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div></div></section>
+  <section id="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
+    <div class="inst"><article><h3>${c.win}</h3><pre>${escH(WIN_CMD)}</pre>${copyBtn(WIN_CMD)} <a href="${WIN_ZIP}" style="margin-left:10px">${c.manual}</a></article>
+    <article><h3>${c.mac}</h3><pre>${escH(MAC_CMD)}</pre>${copyBtn(MAC_CMD)} <a href="${MAC_DMG}" style="margin-left:10px">${c.manual}</a></article></div>
+    <p class="priv"><strong style="color:var(--c)">${c.prH}.</strong> ${c.prL}</p></div></section>`;
+  document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+  hero();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const y = scrollY;
+  if (b.dataset.pcat) { CAT_ = b.dataset.pcat; render(); scrollTo(0, y); return; }
+  if (handleCustomize(b)) { render(); scrollTo(0, y); }
+});
+wireCopy();
+render();
+if (!REDUCED) { let i = 1; setInterval(() => { i = (i + 1) % MOODS.length; STAGE = MOODS[i]; hero(); }, 2600); }
+</script>
+</body>
+</html>
