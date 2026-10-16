@@ -6,6 +6,13 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-16
+
+### Fixed
+- Cập nhật một chạm không còn thất bại với lỗi "Cannot rename the item ... because it is in use" khi Wisp
+  được mở từ Explorer: script cập nhật chạy từ `%TEMP%` thay vì kế thừa thư mục cài làm thư mục làm việc.
+  Bản 0.1.1–0.1.5 vẫn mang lỗi này nên cần tải tay bản 0.1.6 một lần.
+
 ## [0.1.5] - 2026-10-16
 
 ### Added
@@ -121,7 +128,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.3

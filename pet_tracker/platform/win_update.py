@@ -64,4 +64,6 @@ def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EX
     # NEW_PROCESS_GROUP | NO_WINDOW. Không dùng DETACHED_PROCESS: PowerShell không có console sẽ
     # thoát ngay (exit 0) mà không chạy script.
     flags = 0x00000200 | 0x08000000
-    return subprocess.Popen(args, creationflags=flags, env=env, close_fds=True)
+    # cwd ở %TEMP%: mặc định PowerShell kế thừa cwd của wisp.exe (thường chính là thư mục cài khi mở từ
+    # Explorer) và giữ handle tới nó, làm Rename-Item báo "in use".
+    return subprocess.Popen(args, creationflags=flags, env=env, close_fds=True, cwd=tempfile.gettempdir())
