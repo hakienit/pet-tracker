@@ -32,6 +32,9 @@ iconutil -c icns "$ICONSET" -o build/wisp.icns
   --osx-bundle-identifier sg.vinova.wisp \
   --target-arch universal2 \
   --icon build/wisp.icns \
+  --add-data "assets/fonts:assets/fonts" \
+  --add-data "assets/sounds:assets/sounds" \
+  --add-data "assets/mascots.json:assets" \
   main.py
 
 APP="dist/Wisp.app"

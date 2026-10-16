@@ -202,12 +202,38 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `quota_api_enabled` | true | `false` để không gọi API, chỉ dùng ước tính local |
 | `context_windows` | `{"default": 1000000}` | giới hạn context theo prefix model id |
 | `warn_percent` / `danger_percent` | 60 / 85 | ngưỡng đổi màu vàng / đỏ |
-| `bubble_size` | 64 | đường kính bóng (px logic, tự nhân theo DPI) |
+| `bubble_size` | 80 | cỡ bóng nổi (px logic, tự nhân theo DPI) |
 | `update_check` | true | tự kiểm tra bản mới khi mở app và mỗi `update_interval_hours` giờ |
-| `update_interval_hours` | 1 | chu kỳ kiểm tra bản mới |
+| `update_interval_hours` | 24 | chu kỳ kiểm tra bản mới |
+| `hook_port` | 47615 | cổng server nhận sự kiện hooks (chỉ 127.0.0.1) |
 | `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
 
+Các tuỳ chọn đổi trong **Cài đặt** (ngôn ngữ, giao diện, kiểu hiển thị, bóng nổi, mascot, thông báo, ngưỡng quota…)
+được lưu ở `%APPDATA%\Wisp\state.json`, khoá `prefs`. `warn_percent`, `danger_percent`, `quota_api_enabled`,
+`update_check` trong `config.json` là giá trị mặc định cho tới khi đổi trong Cài đặt.
+
 Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log`.
+
+## Hooks: biết khi nào session cần bạn
+
+Từ 0.2, Wisp hỏi một lần có thêm hooks vào `~/.claude/settings.json` (theo `CLAUDE_CONFIG_DIR` nếu đặt) không.
+Bật thì mỗi entry có dạng:
+
+```json
+{"hooks": [{"type": "http", "url": "http://127.0.0.1:47615/wisp/<token>", "timeout": 3}]}
+```
+
+cho các event `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `Stop`,
+`StopFailure`.
+
+- Wisp chỉ thêm / gỡ entry có URL chứa `/wisp/`, giữ nguyên mọi hook khác. Lần ghi đầu tiên có backup
+  `settings.json.wisp-bak`. JSON sai thì không ghi gì.
+- Server chỉ nghe trên 127.0.0.1, sai token thì trả 404. Server chỉ đổi hiển thị, không trả quyết định nên không ảnh
+  hưởng việc duyệt quyền.
+- Wisp tắt thì Claude Code bỏ qua lỗi kết nối và chạy tiếp, nhưng có thể in một dòng `hook ... failed: ECONNREFUSED`.
+  Gỡ hooks trong Cài đặt nếu không dùng Wisp nữa.
+- Không bật hooks: trạng thái suy ra từ `sessions/<pid>.json` như bản 0.1 (đang chạy / xong / rảnh, không biết
+  "cần bạn").
 
 ## Lựa chọn tech stack
 

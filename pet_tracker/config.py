@@ -40,12 +40,14 @@ DEFAULTS = {
     # Ngưỡng cảnh báo màu (%)
     "warn_percent": 60,
     "danger_percent": 85,
-    # Kích thước bóng (px logic, sẽ nhân theo DPI)
-    "bubble_size": 64,
+    # Kích thước bóng nổi (px logic, sẽ nhân theo DPI)
+    "bubble_size": 80,
     # Kiểm tra bản mới trên GitHub Releases khi mở app và mỗi update_interval_hours giờ
     "update_check": True,
-    # 1 giờ: bản vừa publish hiện banner trong ngày; API GitHub không xác thực cho 60 request/giờ
-    "update_interval_hours": 1,
+    # Kiểm tra bản mới mỗi 24 giờ (đổi trong Cài đặt → Cập nhật → Kiểm tra ngay khi cần sớm hơn)
+    "update_interval_hours": 24,
+    # Cổng server nhận sự kiện hooks của Claude Code (chỉ 127.0.0.1)
+    "hook_port": 47615,
     # Ghi đè URL API (chỉ dùng để test); None = https://api.github.com/repos/hakienit/pet-tracker/releases/latest
     "update_api_url": None,
 }
@@ -99,3 +101,26 @@ def save_state(state: dict) -> None:
         os.replace(tmp, STATE_FILE)
     except Exception:
         pass
+
+
+# Tuỳ chọn người dùng đổi trong Cài đặt: lưu ở state.json["prefs"]. Giá trị None = lấy từ config.json / DEFAULTS.
+PREF_DEFAULTS = {
+    "lang": "auto", "theme": "system", "display": "island", "bubble_type": "signal", "signal": "s01",
+    "mascot": "m01", "hue": 0, "chip": 0, "custom_image": None, "motion": "system",
+    "sound_wait": True, "sound_done": False, "notify_done": True, "quiet": False, "quiet_from": "22:00",
+    "quiet_to": "07:00", "quota_alerts": True, "lanes_collapsed": ["idle", "closed"], "muted": [],
+    "hooks_asked": False, "warn_percent": None, "danger_percent": None, "quota_api_enabled": None,
+    "update_check": None,
+}
+
+
+def load_prefs(state: dict, cfg: dict) -> dict:
+    """prefs = PREF_DEFAULTS + state["prefs"]; khoá None lấy từ cfg. Chuyển khoá cũ "island" sang "display"."""
+    p = dict(PREF_DEFAULTS)
+    p.update({k: v for k, v in (state.get("prefs") or {}).items() if k in PREF_DEFAULTS})
+    if "prefs" not in state and state.get("island") is False:
+        p["display"] = "bubble"
+    for k in ("warn_percent", "danger_percent", "quota_api_enabled", "update_check"):
+        if p[k] is None:
+            p[k] = cfg.get(k, DEFAULTS.get(k, True))
+    return p

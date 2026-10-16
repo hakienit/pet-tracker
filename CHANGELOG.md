@@ -6,6 +6,40 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế hoạch ở `docs/REDESIGN_PLAN.md`.
+
+### Added
+- **Biết khi nào session cần bạn**: Wisp nhận sự kiện từ hooks kiểu `http` của Claude Code. Server chỉ nghe trên
+  127.0.0.1, có token riêng, và không trả quyết định nào. Session có 4 trạng thái: cần bạn (chờ duyệt / đang hỏi),
+  đang chạy (kèm tool và file / lệnh), xong (kèm câu trả lời cuối), rảnh. Không bật hooks thì Wisp suy ra trạng thái
+  từ poll như trước.
+- Hooks là tuỳ chọn opt-in: lần đầu Wisp hỏi trong panel, sau đó bật / gỡ trong Cài đặt. Wisp chỉ thêm và gỡ đúng
+  entry của mình trong `settings.json`, ghi nguyên tử, giữ bản backup `settings.json.wisp-bak`.
+- Thông báo thả xuống từ island, kèm âm thanh khi có session cần bạn. Có tuỳ chọn âm thanh khi xong, giờ yên lặng,
+  và tắt thông báo cho từng session.
+- Quota có dự báo giờ hết theo tốc độ hiện tại, cảnh báo ở 80% / 95% và khi quota đã hồi.
+- Khối "Token · máy này": hôm nay / tuần / tháng (input + output + cache), chỉ tính trên máy này.
+- Bóng nổi có hai kiểu: tín hiệu (6 kiểu viền) và mascot (40 mẫu, 8 màu hoặc ảnh riêng). Mascot có biểu cảm và
+  chuyển động theo trạng thái, chip dưới chân có 3 kiểu. Cả island lẫn bóng đều có viền động theo trạng thái.
+- Trang Cài đặt trong panel: ngôn ngữ, giao diện, kiểu hiển thị, bóng nổi, mascot, chuyển động, mở cùng máy, thông
+  báo, hooks, ngưỡng quota, cập nhật, nâng cao.
+- Hai ngôn ngữ, tiếng Việt và tiếng Anh, mặc định theo hệ điều hành. Theme sáng / tối theo hệ thống.
+- Menu ⋯ của session có thêm: mở thư mục dự án, sao chép ID, chi tiết, tắt thông báo. Thao tác không hoàn tác được
+  có khối xác nhận liệt kê rõ hậu quả.
+- Font Archivo (OFL) đóng gói kèm app, nạp riêng cho process, nên chữ giống nhau trên Windows và macOS.
+- 42 unit test (`python -m unittest discover -s tests -t .`), chạy trong CI.
+
+### Changed
+- Panel chia làn theo trạng thái (cần bạn, đang chạy, xong, rảnh, đã đóng). Bấm tên làn để thu / mở. Card có nền và
+  viền theo trạng thái, effort hiện cạnh model.
+- Island rộng cố định theo nội dung, đổi rộng có animation, đèn có nhãn số thay cho chấm không nhãn.
+- Cỡ chữ tính bằng pixel, bỏ cách cộng thêm 3pt trên macOS. Icon vẽ bằng vector, giống nhau trên hai hệ điều hành.
+- Kết quả thao tác hiện bằng thông báo, không ghi ở footer nữa.
+- Kiểm tra bản mới mỗi 24 giờ (`update_interval_hours` mặc định 24). Bóng nổi mặc định 80 px.
+
+### Removed
+- Khối "Token đã dùng" 5 giờ / 7 ngày (thay bằng dự báo quota và token theo ngày / tuần / tháng).
+
 ## [0.1.7] - 2026-10-16
 
 ### Added
