@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-16
+
 ### Added
 - Dạng Dynamic Island (mặc định): viên thuốc đen ghim giữa mép trên màn hình, hiện % quota, số agent,
   số session đang chạy và chấm cảnh báo; click để panel nở xuống. Bật/tắt trong menu chuột phải,
@@ -119,7 +121,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/hakienit/pet-tracker/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/hakienit/pet-tracker/compare/v0.1.0...v0.1.1
