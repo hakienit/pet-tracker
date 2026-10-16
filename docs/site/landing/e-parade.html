@@ -43,9 +43,6 @@ h1 .a{color:var(--y)}h1 .b{color:var(--p)}
 .btn.pri{background:var(--y);color:#1a1530;box-shadow:0 6px 0 #b8941b}
 .btn.pri:active{transform:translateY(3px);box-shadow:0 3px 0 #b8941b}
 .btn.sec{background:#2a2052;color:var(--fg)}
-.cmd{margin-top:16px;display:flex;align-items:center;gap:8px;background:#100b20;border-radius:16px;padding:7px 7px 7px 14px;max-width:560px}
-.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;color:#e9e1ff}
-.cmd button{font-size:12px;font-weight:800;border:0;background:var(--p);color:#1a1530;border-radius:12px;padding:8px 12px;cursor:pointer}
 .stagep{position:relative;min-height:380px;border-radius:32px;background:radial-gradient(circle at 50% 40%,#3a2a72,#1f1640 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;border:2px solid var(--line)}
 .stagep .big{transform:scale(1.9);transform-origin:center bottom;margin-top:60px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:70px}
@@ -116,23 +113,24 @@ function render() {
   const list = CAT_ === 'all' ? MASCOTS : MASCOTS.filter((x) => CAT[CAT_].includes(x.id));
   const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
   document.getElementById('top').innerHTML = `
-  <div class="march"><div class="belt">${belt}</div><div class="ground"></div></div>
+  <div data-shot="hero"><div class="march"><div class="belt">${belt}</div><div class="ground"></div></div>
   <div class="wrap"><div class="hero"><div><h1>${h1}</h1><p class="sub">${c.sub}</p>
       <div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.4)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
-      <div class="cmd"><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div></div>
-    <div class="stagep" id="heroStage"></div></div></div>
-  <section id="features"><div class="wrap"><h2>${c.fH}</h2><p class="lead">${c.fL}</p>
+      </div>
+    <div class="stagep" id="heroStage" data-shot="demo"></div><div class="cmdbox wide">${cmdBlock(WIN_CMD)}</div></div></div></div>
+  <section id="features" data-shot="features"><div class="wrap"><h2>${c.fH}</h2><p class="lead">${c.fL}</p>
     <div class="feat">${c.feats.map(([icn, col, h, p], i) => `<article><span>${mascot(MASCOTS[(i * 7 + 3) % 40].id, 54, ['wait', 'quota', 'run', 'done', 'idle', 'done'][i], t, '')}</span><span><h3 style="color:${COLS[i]}">${h}</h3><p>${p}</p></span></article>`).join('')}</div></div></section>
-  <section id="mascots"><div class="wrap"><h2>${c.parade}</h2><p class="lead">${c.paradeL}</p>
+  <section id="mascots" data-shot="mascots"><div class="wrap"><h2>${c.parade}</h2><p class="lead">${c.paradeL}</p>
     <div class="tabs">${Object.keys(l.cats).map((k) => `<button data-pcat="${k}" aria-pressed="${k === CAT_}">${l.cats[k]}</button>`).join('')}</div>
     <div class="mgrid">${list.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 64, m.id === MASCOT ? 'done' : 'run', t, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:100px">${m[LANG]}</span></button>`).join('')}</div></div></section>
-  <section id="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
+  <section id="custom" data-shot="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
     <div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div></div></section>
-  <section id="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
-    <div class="inst"><article><h3>${c.win}</h3><pre>${escH(WIN_CMD)}</pre>${copyBtn(WIN_CMD)} <a href="${WIN_ZIP}" style="margin-left:10px">${c.manual}</a></article>
-    <article><h3>${c.mac}</h3><pre>${escH(MAC_CMD)}</pre>${copyBtn(MAC_CMD)} <a href="${MAC_DMG}" style="margin-left:10px">${c.manual}</a></article></div>
+  <section id="install" data-shot="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
+    <div class="inst"><article><h3>${c.win}</h3>${cmdBlock(WIN_CMD)}<a href="${WIN_ZIP}" style="margin-left:10px">${c.manual}</a></article>
+    <article><h3>${c.mac}</h3>${cmdBlock(MAC_CMD)}<a href="${MAC_DMG}" style="margin-left:10px">${c.manual}</a></article></div>
     <p class="priv"><strong style="color:var(--c)">${c.prH}.</strong> ${c.prL}</p></div></section>`;
   document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+  setTimeout(applyShot, 0);
   hero();
 }
 document.addEventListener('click', (e) => {
@@ -144,7 +142,7 @@ document.addEventListener('click', (e) => {
 });
 wireCopy();
 render();
-if (!REDUCED) { let i = 1; setInterval(() => { i = (i + 1) % MOODS.length; STAGE = MOODS[i]; hero(); }, 2600); }
+if (FIXED_STAGE) { STAGE = FIXED_STAGE; hero(); } else if (!REDUCED) { let i = 1; setInterval(() => { i = (i + 1) % MOODS.length; STAGE = MOODS[i]; hero(); }, 2600); }
 </script>
 </body>
 </html>

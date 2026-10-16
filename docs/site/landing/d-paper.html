@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/wisp-ui.css">
 <style>
-:root{--bg:#f3efe6;--ink:#15130f;--mut:#5c574c;--line:#d9d2c3;--acc:#d9531e;--card:#fbf9f4}
+:root{--cmd-bg:#f6f8fa;--cmd-line:#d1d9e0;--cmd-fg:#1f2328;--cmd-url:#0550ae;--cmd-pipe:#cf222e;--cmd-mut:#59636e;--cmd-hover:#eaeef2;--bg:#f3efe6;--ink:#15130f;--mut:#5c574c;--line:#d9d2c3;--acc:#d9531e;--card:#fbf9f4}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;overflow-x:hidden}
@@ -34,9 +34,6 @@ h1{font-size:clamp(46px,7.6vw,104px);line-height:.92;letter-spacing:-.04em;font-
 .btn{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;padding:13px 20px;min-height:48px;text-decoration:none}
 .btn.pri{background:var(--ink);color:var(--bg)}.btn.sec{color:var(--ink);border:1.5px solid var(--ink)}
 .cta{display:flex;gap:10px;flex-wrap:wrap}
-.cmd{margin-top:16px;border:1.5px solid var(--ink);background:var(--card);display:flex;align-items:center}
-.cmd code{flex:1;min-width:0;padding:10px 12px;overflow-x:auto;white-space:nowrap;font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px}
-.cmd button{align-self:stretch;border:0;border-left:1.5px solid var(--ink);background:transparent;font-weight:800;font-size:12px;padding:0 14px;cursor:pointer;color:var(--ink)}
 .show{margin-top:34px;position:relative;background:linear-gradient(170deg,#e4ddd0,#d8d0c1);border:1.5px solid var(--ink);padding:26px 26px 0;min-height:600px;overflow:hidden}
 .show .isl{display:flex;justify-content:center}
 .show .row{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:28px;margin-top:22px;align-items:start}
@@ -70,7 +67,7 @@ section{padding:72px 0 0}
 .mgrid button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .inst{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0;border:1.5px solid var(--ink)}
 @media (max-width:760px){.inst{grid-template-columns:minmax(0,1fr)}}
-.inst article{padding:22px}.inst article+article{border-left:1.5px solid var(--ink)}
+.inst article{padding:22px}.inst article+article{border-top:1.5px solid var(--ink)}
 .inst h3{margin:0 0 10px;font-size:14px;letter-spacing:.04em}
 .inst pre{margin:0 0 12px;background:var(--card);border:1px solid var(--line);padding:12px;overflow-x:auto;font-size:12.5px;font-family:'Cascadia Mono',Consolas,Menlo,monospace}
 .inst button{font-size:12px;font-weight:800;border:1.5px solid var(--ink);background:transparent;color:var(--ink);padding:7px 12px;cursor:pointer}
@@ -96,12 +93,12 @@ function render() {
   document.getElementById('links').innerHTML = ['#what', '#how', '#custom', '#mascots', '#install'].map((h, i) => `<a href="${h}">${[c.links[0], LANG === 'vi' ? 'Cách dùng' : 'How it works', c.links[1], c.links[2], c.links[3]][i]}</a>`).join('') + `<a href="${REPO}">GitHub</a>`;
   document.getElementById('lang').innerHTML = langSwitch('seg');
   const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
-  const sec = (id, no, h, p, body) => `<section id="${id}"><div class="wrap"><div class="sh"><span class="no">${no}</span><div><h2>${h}</h2>${p ? `<p>${p}</p>` : ''}</div></div>${body}</div></section>`;
+  const sec = (id, no, h, p, body) => `<section id="${id}" data-shot="${id === 'what' ? 'features' : id}"><div class="wrap"><div class="sh"><span class="no">${no}</span><div><h2>${h}</h2>${p ? `<p>${p}</p>` : ''}</div></div>${body}</div></section>`;
   document.getElementById('top').innerHTML = `
-  <div class="wrap">
+  <div class="wrap" data-shot="hero">
     <div class="hero"><div><div class="kicker">${c.eyebrow.toUpperCase()}</div><h1>${c.h1}</h1></div>
       <div><p class="sub">${c.sub}</p><div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.4)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
-      <div class="cmd"><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div></div></div>
+      </div><div class="cmdbox wide">${cmdBlock(WIN_CMD)}</div></div>
     <div class="show"><div class="isl">${island('wait', t)}</div>
       <div class="row"><div class="notes">${c.feats.slice(0, 3).map(([, , h, p], i) => `<div><b>0${i + 1}</b><p><strong>${h}.</strong> ${p}</p></div>`).join('')}
         <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;border-top:1.5px solid var(--ink);padding-top:18px">${sigBubble(SIG[0], 'wait', t)}${mascotBubble(MASCOT, 'done', t)}
@@ -112,9 +109,10 @@ function render() {
   ${sec('how', '02', c.steps.map((s) => s[1]).join(' · '), '', `<div class="steps">${c.steps.map(([n, h, p]) => `<div><b>${n}</b><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>`)}
   ${sec('custom', '03', c.cH, c.cL, `<div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div>`)}
   ${sec('mascots', '04', c.mH, c.mL, `<div class="mgrid">${MASCOTS.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 54, m.id === MASCOT ? 'done' : 'run', t, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:88px">${m[LANG]}</span></button>`).join('')}</div>`)}
-  ${sec('install', '05', c.inH, c.inL, `<div class="inst"><article><h3>${c.win.toUpperCase()}</h3><pre>${escH(WIN_CMD)}</pre>${copyBtn(WIN_CMD)} <a href="${WIN_ZIP}" style="margin-left:10px">${c.manual}</a></article>
-    <article><h3>${c.mac.toUpperCase()}</h3><pre>${escH(MAC_CMD)}</pre>${copyBtn(MAC_CMD)} <a href="${MAC_DMG}" style="margin-left:10px">${c.manual}</a></article></div><p class="priv"><strong>${c.prH}.</strong> ${c.prL}</p>`)}`;
+  ${sec('install', '05', c.inH, c.inL, `<div class="inst"><article><h3>${c.win.toUpperCase()}</h3>${cmdBlock(WIN_CMD)}<a href="${WIN_ZIP}" style="margin-left:10px">${c.manual}</a></article>
+    <article><h3>${c.mac.toUpperCase()}</h3>${cmdBlock(MAC_CMD)}<a href="${MAC_DMG}" style="margin-left:10px">${c.manual}</a></article></div><p class="priv"><strong>${c.prH}.</strong> ${c.prL}</p>`)}`;
   document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+  setTimeout(applyShot, 0);
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button');

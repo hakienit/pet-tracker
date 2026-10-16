@@ -84,15 +84,31 @@ const C = () => LC[LANG];
   if (!ls('wisp-lang') && !q.get('lang')) LANG = (navigator.language || 'en').toLowerCase().startsWith('vi') ? 'vi' : 'en';
 }
 const escH = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// lệnh cài: chỉ cho xuống dòng ngay sau "/" hoặc khoảng trắng, không cắt giữa chữ
+// tô màu lệnh giống code block trên GitHub: PowerShell tô "//host/" và từng "/" màu lam, "|" màu đỏ; bash chỉ tô "|"
+function cmdHL(cmd) {
+  const e = escH(cmd).replace(/ \| /g, ' <span class="p">|</span> ');
+  if (!cmd.startsWith('irm ')) return e;
+  return e.replace(/https:(\/\/[^/\s]+\/)([^\s<]+)/, (m, host, path) => 'https:<span class="u">' + host + '</span>' + path.replace(/\//g, '<span class="u">/</span>'));
+}
+const cmdHTML = cmdHL;
+// một dòng, không xuống dòng, không thanh cuộn (vẫn cuộn ngang được khi màn hình hẹp), icon copy bên phải
+const cmdBlock = (cmd) => `<div class="ghcmd"><code>${cmdHL(cmd)}</code>${copyBtn(cmd)}</div>`;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// chu trình demo: rảnh -> chạy -> cần bạn -> xong (dùng ST của wisp-ui.js; "done" mượn đèn của "wait")
+// ?shot=<khối>: chỉ hiện một khối [data-shot] trên nền trong suốt, góc bo (tools/shoot_landing.py chụp làm ảnh README).
+// ?stage=<trạng thái>: dừng demo ở một trạng thái (chụp từng khung cho ảnh động).
+const QS = new URLSearchParams(location.search);
+const SHOT = QS.get('shot');
+const FIXED_STAGE = QS.get('stage');
+
+// chu trình demo: rảnh -> chạy -> cần bạn -> xong
 const DEMO = ['idle', 'run', 'wait', 'done'];
 function demoLoop(onStep, ms = 2800) {
-  let i = REDUCED ? 2 : 0, timer = null;
+  let i = FIXED_STAGE ? Math.max(0, DEMO.indexOf(FIXED_STAGE)) : REDUCED ? 2 : 0, timer = null;
   const go = () => { onStep(DEMO[i], i); i = (i + 1) % DEMO.length; };
   const api = {
-    playing: !REDUCED,
+    playing: !REDUCED && !FIXED_STAGE,
     toggle() { this.playing = !this.playing; if (this.playing) start(); else clearInterval(timer); return this.playing; },
   };
   function start() { clearInterval(timer); timer = setInterval(go, ms); }
@@ -101,19 +117,67 @@ function demoLoop(onStep, ms = 2800) {
   return api;
 }
 
+// nút sao chép dạng icon (giống nút copy của GitHub): chép xong đổi thành dấu ✓ 1,5 giây
+const ICON_COPY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
+const ICON_OK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function copyBtn(cmd, cls = '') {
-  return `<button class="${cls}" data-copy="${cmd === WIN_CMD ? 'win' : 'mac'}">${C().copy}</button>`;
+  return `<button class="cp ${cls}" data-copy="${cmd === WIN_CMD ? 'win' : 'mac'}" aria-label="${C().copy}" title="${C().copy}">${ICON_COPY}</button>`;
 }
 function wireCopy(root = document) {
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-copy]');
     if (!b) return;
+    e.stopPropagation();
     const txt = b.dataset.copy === 'win' ? WIN_CMD : MAC_CMD;
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => {
-      b.textContent = C().copied;
-      setTimeout(() => { b.textContent = C().copy; }, 1500);
+      b.innerHTML = ICON_OK;
+      b.classList.add('ok');
+      b.setAttribute('aria-label', C().copied);
+      setTimeout(() => { b.innerHTML = ICON_COPY; b.classList.remove('ok'); b.setAttribute('aria-label', C().copy); }, 1500);
     }, () => {});
-  });
+  }, true);
+}
+
+// CSS chung cho mọi mẫu: lệnh cài xuống dòng thay vì cuộn ngang, nút copy dạng icon, chế độ chụp
+document.head.insertAdjacentHTML('beforeend', `<style>
+.cmdtxt{white-space:pre-wrap!important;word-break:normal!important;overflow-wrap:anywhere;overflow:visible!important;text-overflow:clip!important;text-align:left!important}
+button.cp{display:inline-grid;place-items:center;width:34px;height:34px;min-height:34px;flex:none;cursor:pointer;line-height:0}
+button.cp.ok{color:#3fb950!important}
+.ghcmd{display:flex;align-items:center;gap:12px;box-sizing:border-box;max-width:100%;min-width:0;margin:0;padding:12px 10px 12px 16px;border-radius:6px;
+  background:var(--cmd-bg,#151b23);border:1px solid var(--cmd-line,#3d444d66);color:var(--cmd-fg,#f0f6fc);text-align:left;
+  font:13.6px/1.45 ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace}
+.ghcmd code{all:unset;flex:1;min-width:0;white-space:pre;overflow-x:auto;scrollbar-width:none;font:inherit;color:inherit}
+.ghcmd code::-webkit-scrollbar{display:none}
+.ghcmd .u{color:var(--cmd-url,#79c0ff)}.ghcmd .p{color:var(--cmd-pipe,#ff7b72)}
+.ghcmd .cp{all:unset;box-sizing:border-box;display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:6px;border:1px solid transparent;
+  color:var(--cmd-mut,#9198a1);cursor:pointer;line-height:0}
+.ghcmd .cp:hover{border-color:var(--cmd-line,#3d444d);background:var(--cmd-hover,#262c36);color:var(--cmd-fg,#f0f6fc)}
+.ghcmd .cp:focus-visible{outline:2px solid #4493f8;outline-offset:0}
+.ghcmd .cp.ok{color:#3fb950}
+.cmdbox{margin-top:16px;max-width:640px}.cmdlbl{margin-top:16px;font-size:13px;color:var(--mut)}.cmdlbl+.cmdbox{margin-top:8px}
+.cmdbox.wide,.hero>.wide{grid-column:1/-1;max-width:none;margin-top:0}.wide .term-cmd{max-width:none}
+.inst .ghcmd{margin:0 0 12px}
+.inst{grid-template-columns:minmax(0,1fr)!important}
+.term-cmd pre{white-space:pre!important;scrollbar-width:none}.term-cmd pre::-webkit-scrollbar{display:none}
+.term-cmd .u{color:#79c0ff}.term-cmd .p{color:#ff7b72}
+body.shot{margin:0;padding:0;background:transparent!important;background-image:none!important}
+body.shot::before{display:none!important}
+.shot-on{width:1180px!important;max-width:none!important;margin:0!important;border-radius:28px;overflow:hidden;background-color:var(--bg);padding:40px 44px!important;border:0!important}
+</style>`);
+let SHOT_DONE = false;
+function applyShot() {
+  if (!SHOT || SHOT_DONE) return;
+  const target = document.querySelector(`[data-shot="${SHOT}"]`);
+  if (!target) return;
+  SHOT_DONE = true;
+  document.body.classList.add('shot');
+  target.classList.add('shot-on');
+  document.body.replaceChildren(target);  // chỉ giữ khối cần chụp
+  // tools/shoot_landing.py đọc chiều cao qua title để đặt cỡ cửa sổ chụp
+  const measure = () => { document.title = 'H=' + Math.ceil(target.getBoundingClientRect().height); };
+  measure();
+  requestAnimationFrame(() => requestAnimationFrame(measure));
+  if (document.fonts) document.fonts.ready.then(measure);
 }
 const langSwitch = (cls = '') => `<div class="${cls}" role="group" aria-label="Language">${['en', 'vi'].map((l) => `<button data-l="${l}" aria-pressed="${LANG === l}">${l.toUpperCase()}</button>`).join('')}</div>`;
 const footLinks = () => `<a href="${REPO}/blob/main/docs/GUIDE.md">${C().guide}</a> · <a href="${REPO}/blob/main/CHANGELOG.md">${C().changelog}</a> · <a href="../design.html">${C().spec}</a> · <a href="${REPO}">GitHub</a>`;

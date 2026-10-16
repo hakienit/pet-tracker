@@ -32,9 +32,6 @@ h1{font-size:clamp(40px,6vw,72px);line-height:.98;letter-spacing:-.035em;margin:
 .cta{display:flex;gap:10px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;padding:12px 18px;min-height:46px;border-radius:12px;text-decoration:none}
 .btn.pri{background:var(--fg);color:#0a0b0e}.btn.sec{background:#1a1c22;color:var(--fg)}
-.cmd{margin-top:14px;display:flex;gap:8px;align-items:center;background:#111318;border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 12px}
-.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-family:'Cascadia Mono',Consolas,Menlo,monospace;font-size:12.5px;color:#cfd3dc}
-.cmd button{font-size:12px;font-weight:700;border:0;background:#22252c;color:var(--fg);border-radius:8px;padding:8px 12px;cursor:pointer}
 .bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:190px;grid-auto-flow:dense;gap:12px;margin-top:20px}
 @media (max-width:980px){.bento{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:560px){.bento{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}.bento > *{grid-column:auto!important;grid-row:auto!important;min-height:190px}}
@@ -89,10 +86,10 @@ function render() {
   const sv = SIG[SIGI % SIG.length];
   document.getElementById('top').innerHTML = `
   <div class="wrap">
-    <div class="hero"><h1>${c.h1}</h1><div><p class="sub">${c.sub}</p>
+    <div class="hero" data-shot="hero"><h1>${c.h1}</h1><div><p class="sub">${c.sub}</p>
       <div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.2)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
-      <div class="cmd"><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div></div></div>
-    <div class="bento" id="bento">
+      </div><div class="cmdbox wide">${cmdBlock(WIN_CMD)}</div></div>
+    <div class="bento" id="bento" data-shot="features">
       ${tile('w2 scene', b.island, c.feats[0][3], `<div style="display:flex;flex-direction:column;gap:8px;align-items:center">${['run', 'wait'].map((v) => island(v, t)).join('')}</div>`)}
       ${tile('w2 h3r fade', b.panel, c.pL, `<div style="transform:scale(.9);transform-origin:top center;align-self:flex-start;margin-top:8px">${panel(t)}</div>`)}
       ${tile('scene', b.bubble + ' · ' + sv[LANG], '', `<div id="sigbox">${sigBubble(sv, 'wait', t)}</div>`)}
@@ -106,12 +103,13 @@ function render() {
       ${tile('', b.themes, '', `<div style="display:flex;flex-direction:column;gap:8px;align-items:center">${island('done', T.dark)}<div class="light" style="display:inline-block">${island('done', T.light)}</div></div>`)}
     </div>
   </div>
-  <section id="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
+  <section id="custom" data-shot="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
     <div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div></div></section>
-  <section id="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
-    <div class="inst"><div><h3>${c.win}</h3><pre>${escH(WIN_CMD)}</pre>${copyBtn(WIN_CMD)}</div><div><h3>${c.mac}</h3><pre>${escH(MAC_CMD)}</pre>${copyBtn(MAC_CMD)}</div>
+  <section id="install" data-shot="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
+    <div class="inst"><div><h3>${c.win}</h3>${cmdBlock(WIN_CMD)}</div><div><h3>${c.mac}</h3>${cmdBlock(MAC_CMD)}</div>
     <div><h3>${c.prH}</h3><p>${c.prL}</p></div></div></div></section>`;
   document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+  setTimeout(applyShot, 0);
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -121,7 +119,7 @@ document.addEventListener('click', (e) => {
 });
 wireCopy();
 render();
-if (!REDUCED) setInterval(() => { SIGI++; const box = document.getElementById('sigbox'); if (box) { uid = 1000 + SIGI; box.innerHTML = sigBubble(SIG[SIGI % SIG.length], 'wait', t); box.closest('.tile').querySelector('h3').textContent = C().bento.bubble + ' · ' + SIG[SIGI % SIG.length][LANG]; } }, 1800);
+if (!REDUCED && !SHOT) setInterval(() => { SIGI++; const box = document.getElementById('sigbox'); if (box) { uid = 1000 + SIGI; box.innerHTML = sigBubble(SIG[SIGI % SIG.length], 'wait', t); box.closest('.tile').querySelector('h3').textContent = C().bento.bubble + ' · ' + SIG[SIGI % SIG.length][LANG]; } }, 1800);
 </script>
 </body>
 </html>

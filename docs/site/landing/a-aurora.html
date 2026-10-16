@@ -42,9 +42,7 @@ h1 em{font-style:normal;background:linear-gradient(92deg,#ffd36b,#ff8a4c 45%,#ff
 .btn{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;padding:13px 20px;min-height:48px;border-radius:12px;text-decoration:none}
 .btn.pri{background:linear-gradient(180deg,#ffbe4d,#ff9a2e);color:#1a1205;box-shadow:0 10px 30px rgba(255,150,40,.25)}
 .btn.sec{border:1px solid #2f323c;color:var(--fg);background:rgba(255,255,255,.02)}
-.cmd{display:inline-flex;align-items:center;gap:10px;margin-top:16px;font-size:13px;color:var(--mut);max-width:100%}
-.cmd code{font-family:'Cascadia Mono',Consolas,Menlo,monospace;background:#0f1117;border:1px solid var(--line);border-radius:9px;padding:8px 12px;color:#e6e8ee;overflow-x:auto;white-space:nowrap;max-width:min(560px,70vw)}
-.cmd button{font-size:12px;font-weight:700;border:1px solid #2f323c;background:transparent;color:var(--mut);border-radius:8px;padding:7px 10px;cursor:pointer}
+.hero .cmdbox{margin:8px auto 0;max-width:760px}
 .free{font-size:13px;color:#6f7482;margin-top:12px}
 .stage{position:relative;text-align:left;margin:54px auto 0;max-width:1060px;border-radius:26px;padding:18px 18px 0;border:1px solid rgba(255,255,255,.08);
   background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.01));box-shadow:0 40px 120px rgba(0,0,0,.6)}
@@ -118,7 +116,7 @@ function stageHTML() {
   return `<div class="screen"><div class="win">${TERM.map((x, i) => `<div class="l ${i < TERM_ON[STAGE] ? 'on' : ''} ${i === 5 && STAGE === 'wait' ? 'hl' : ''}">${escH(x)}</div>`).join('')}</div>
     <div class="isl">${island(STAGE, t)}</div>
     <div class="tst ${STAGE === 'wait' || STAGE === 'done' ? '' : 'off'}">${toastHTML(STAGE)}</div>
-    <div class="pnl">${panel(t)}</div></div>`;
+    <div class="pnl" style="transition:opacity .35s;opacity:${STAGE === 'wait' ? 1 : 0}">${STAGE === 'wait' ? panel(t) : ''}</div></div>`;
 }
 function setStage(s) {
   STAGE = s;
@@ -138,27 +136,28 @@ function render() {
   document.getElementById('lang').innerHTML = langSwitch('seg');
   const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
   document.getElementById('top').innerHTML = `
-  <div class="wrap hero">
+  <div class="wrap hero" data-shot="hero">
     <span class="eyebrow">${ic('bell', 14, 2.2)}${c.eyebrow}</span>
     <h1>${c.h1.replace(/(agents need you|agent cần bạn)/, '<em>$1</em>')}</h1>
     <p class="sub">${c.sub}</p>
     <div class="cta"><a class="btn pri" href="${WIN_ZIP}">${ic('dl', 18, 2.2)}${c.dlWin}</a><a class="btn sec" href="${MAC_DMG}">${c.dlMac}</a></div>
-    <div class="cmd"><span>${c.orCmd}</span><code>${escH(WIN_CMD)}</code>${copyBtn(WIN_CMD)}</div>
+    <div class="cmdlbl">${c.orCmd}</div><div class="cmdbox">${cmdBlock(WIN_CMD)}</div>
     <div class="free">${c.free}</div>
-    <div class="stage"><div id="stage"></div><div class="caption" id="cap"></div></div>
+    <div class="stage" data-shot="demo"><div id="stage"></div><div class="caption" id="cap"></div></div>
     <div class="stats">${c.stats.map(([n, s]) => `<div><b>${n}</b><span>${s}</span></div>`).join('')}</div>
   </div>
-  <section id="features"><div class="wrap"><h2>${c.fH}</h2><p class="lead">${c.fL}</p>
+  <section id="features" data-shot="features"><div class="wrap"><h2>${c.fH}</h2><p class="lead">${c.fL}</p>
     <div class="feat">${c.feats.map(([icn, col, h, p]) => `<article style="--glow:${t[col]}"><span class="ic" style="background:${t[col]}1f;color:${t[col]}">${ic(icn, 21, 2.2)}</span><h3>${h}</h3><p>${p}</p></article>`).join('')}</div></div></section>
-  <section id="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
+  <section id="custom" data-shot="custom"><div class="wrap"><h2>${c.cH}</h2><p class="lead">${c.cL}</p>
     <div class="play"><div class="bigb">${st.map((v) => `<div class="cell">${bubble(v, t)}<span class="lb" style="margin-top:${BUBTYPE === 'mascot' ? 8 : 0}px">${l.st[v]}</span></div>`).join('')}</div><div>${bubbleSettings(t)}</div></div></div></section>
-  <section id="mascots"><div class="wrap"><h2>${c.mH}</h2><p class="lead">${c.mL}</p>
+  <section id="mascots" data-shot="mascots"><div class="wrap"><h2>${c.mH}</h2><p class="lead">${c.mL}</p>
     <div class="mgrid">${MASCOTS.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 56, m.id === MASCOT ? 'done' : 'run', t, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:88px">${m[LANG]}</span></button>`).join('')}</div></div></section>
-  <section id="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
-    <div class="inst"><article><h3>${c.win}</h3><pre>${escH(WIN_CMD)}</pre><div class="row">${copyBtn(WIN_CMD)}<a href="${WIN_ZIP}">${c.manual}: wisp-win-x64.zip</a></div></article>
-    <article><h3>${c.mac}</h3><pre>${escH(MAC_CMD)}</pre><div class="row">${copyBtn(MAC_CMD)}<a href="${MAC_DMG}">${c.manual}: .dmg</a></div></article></div>
+  <section id="install" data-shot="install"><div class="wrap"><h2>${c.inH}</h2><p class="lead">${c.inL}</p>
+    <div class="inst"><article><h3>${c.win}</h3>${cmdBlock(WIN_CMD)}<div class="row"><a href="${WIN_ZIP}">${c.manual}: wisp-win-x64.zip</a></div></article>
+    <article><h3>${c.mac}</h3>${cmdBlock(MAC_CMD)}<div class="row"><a href="${MAC_DMG}">${c.manual}: .dmg</a></div></article></div>
     <div class="priv"><h2>${c.prH}</h2><p>${c.prL}</p></div></div></section>`;
   document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
+  setTimeout(applyShot, 0);
   setStage(STAGE);
 }
 document.addEventListener('click', (e) => {
