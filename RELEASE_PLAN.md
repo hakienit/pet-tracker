@@ -82,7 +82,7 @@ ví dụ `sg.vinova.wisp`.
 > Cập nhật một chạm vẫn chỉ có trên Windows. (Popup thao tác session — gõ lệnh, handoff — đã bỏ khỏi app
 > trên cả hai nền tảng.) Workflow có
 > job `macos-14` build `.dmg` universal2 (ad-hoc sign, chưa notarize). Danh sách việc cần test trên Mac
-> nằm trong README, mục macOS.
+> nằm trong docs/GUIDE.md, mục macOS.
 
 Bảng dưới liệt kê từng chỗ code đang phụ thuộc Windows, đếm theo số lần gọi Win32 API trong mỗi
 module.
@@ -156,7 +156,7 @@ trong quy trình.
 - **Đã làm (2026-10-15, bản Windows):** cả thông báo lẫn cập nhật một chạm, dùng GitHub Releases
   của repo public `hakienit/pet-tracker`. Kiểm tra khi mở app và mỗi 24 giờ; tải zip, kiểm SHA256 với
   `SHA256SUMS.txt`, script PowerShell thay thư mục cài (có khôi phục khi lỗi), mở lại app. Đã test
-  bằng release giả lập cục bộ, chưa test với exe build thật và release thật. Chi tiết trong README.
+  bằng release giả lập cục bộ, chưa test với exe build thật và release thật. Chi tiết trong docs/GUIDE.md.
 - **Giai đoạn 1 (kế hoạch ban đầu):** chỉ thông báo, không tự cài. Khi khởi động và mỗi 24 giờ, widget gọi
   GitHub Releases API (`/repos/<org>/pet-tracker/releases/latest`) và so với `__version__`. Có bản
   mới thì hiện chấm trên bóng và dòng "Có bản mới x.y.z" trong panel, bấm vào mở trang release.

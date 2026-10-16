@@ -6,6 +6,15 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-16
+
+### Added
+- Cài bằng một lệnh: `install.ps1` (Windows, `irm … | iex`) và `install.sh` (macOS, `curl … | bash`).
+  Script tải bản mới nhất, kiểm SHA256, cài rồi mở app; chạy lại để cập nhật.
+
+### Changed
+- README thành trang giới thiệu ngắn; tài liệu chi tiết chuyển sang `docs/GUIDE.md`.
+
 ## [0.1.6] - 2026-10-16
 
 ### Fixed
@@ -128,7 +137,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/hakienit/pet-tracker/compare/v0.1.3...v0.1.4

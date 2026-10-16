@@ -280,4 +280,4 @@ def focus_session(sess: dict) -> tuple:
         return (ok or bool(host)), " · ".join(msgs)
     if msgs:
         return True, " · ".join(msgs)
-    return False, "không tìm thấy cửa sổ host session (xem README)"
+    return False, "không tìm thấy cửa sổ host session (xem docs/GUIDE.md)"

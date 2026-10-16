@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="56" viewBox="0 0 360 56" role="img" aria-label="Wisp dạng Dynamic Island: 65% quota, 4 agent, 2 session đang chạy">
+  <!-- Minh hoạ island của Wisp (vẽ tay theo _draw_island trong pet_tracker/ui.py, không phải ảnh chụp). -->
+  <rect x="80" y="8" width="200" height="40" rx="20" fill="#0b0b0e"/>
+  <text x="180" y="33" text-anchor="middle" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="15">
+    <tspan fill="#e3b341" font-weight="600">65%</tspan>
+    <tspan fill="#8d8e9b" dx="6">4 agent</tspan>
+    <tspan fill="#d97757" font-weight="600" dx="6">● 2</tspan>
+  </text>
+</svg>
