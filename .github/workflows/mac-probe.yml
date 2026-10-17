@@ -1,0 +1,36 @@
+name: mac-probe
+
+# Thử cách vẽ của Tk trên macOS thật (runner có màn hình), không cần máy Mac: tools/mac_probe.py mở 8 ô, chụp màn
+# hình và chấm từng ô. Kết quả ở trang Summary của run; ảnh chụp ở artifact mac-probe.
+# Ô 3 (polygon) và ô 7 (cửa sổ đặc) là đối chứng: không PASS thì ảnh chụp hỏng, kết quả không dùng được.
+
+on:
+  push:
+    branches: ["probe/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: macos-14
+    env:
+      PY_VERSION: "3.13.1"  # giống job macOS của release.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - name: Cài Python universal2 từ python.org (có Tk)
+        run: |
+          curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          echo "PYTHON=/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13" >> "$GITHUB_ENV"
+      - name: Probe
+        run: |
+          "$PYTHON" -m pip install --quiet pillow
+          "$PYTHON" tools/mac_probe.py --shot probe.png | tee probe.txt
+          { echo "## mac_probe"; sed -n '/^Tk /,$p' probe.txt; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: mac-probe
+          path: probe.png
