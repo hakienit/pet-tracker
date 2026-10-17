@@ -6,6 +6,17 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-17
+
+### Fixed
+- Lệnh cài Windows (`install.ps1`) chạy được trên máy khoá PowerShell ở Constrained Language Mode: không gọi .NET
+  trực tiếp, dùng `curl.exe` / `certutil` / `tar.exe` khi `Invoke-WebRequest` / `Get-FileHash` / `Expand-Archive`
+  bị chặn, không tạo được shortcut Start Menu thì chỉ cảnh báo.
+
+### Added
+- README và `docs/GUIDE.md`: lệnh cài từ cmd / Git Bash (`powershell -NoProfile -c "irm … | iex"`) và lệnh `curl` + `tar`
+  cho máy chặn hẳn PowerShell.
+
 ## [0.2.2] - 2026-10-17
 
 ### Fixed
@@ -221,7 +232,8 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/hakienit/pet-tracker/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/hakienit/pet-tracker/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...v0.2.0
