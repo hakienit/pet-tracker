@@ -19,18 +19,19 @@ Thao tác:
 
 | Thao tác | Kết quả |
 |---|---|
-| Click trái vào bóng | mở / đóng panel |
+| Click trái vào island / bóng | mở / đóng panel |
 | Click ra ngoài panel | đóng panel |
-| Kéo bóng | di chuyển, vị trí lưu ở `%APPDATA%\Wisp\state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất |
-| Click phải vào bóng hoặc header của panel (macOS: cả Control-click) | popup: Làm mới, Mở thư mục ~/.claude, Kiểm tra cập nhật, Chạy cùng Windows, Dạng Dynamic Island, Thoát |
-| Click phải → "Dạng Dynamic Island" | đổi giữa viên thuốc ghim giữa mép trên màn hình chính (mặc định, panel nở xuống ngay dưới, không kéo được) và bóng tròn kéo thả kiểu cũ; lựa chọn lưu trong `state.json` |
+| Kéo bóng (kiểu bóng nổi) | di chuyển, vị trí lưu ở `state.json`. Bóng được giữ trong vùng dùng được của màn hình đang chứa nó; nếu màn hình đó đã rút ra, lần mở sau bóng về màn hình gần nhất. Island ghim giữa mép trên, không kéo được |
+| Click phải vào island, bóng hoặc header của panel (macOS: cả Control-click) | menu: Làm mới ngay, Cài đặt, Chuyển sang bóng nổi / island, Tắt âm thanh 1 giờ, Kiểm tra cập nhật, Thoát Wisp |
 | Click vào một session trong panel | đưa cửa sổ đang host session đó lên foreground (xem mục "Focus cửa sổ session") |
-| Kéo tay nắm ở góc trên-trái panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
+| Nút ⋯ hoặc click phải vào một session | menu của session: mở, mở thư mục dự án, sao chép ID, chi tiết, tắt thông báo, bàn giao / đóng / xoá (thao tác không hoàn tác được có khối xác nhận) |
+| Bấm tên làn (cần bạn, đang chạy, xong, rảnh, đã đóng) | thu / mở làn |
+| Kéo tay nắm ở góc panel | đổi rộng và cao panel; kích thước lưu trong `state.json`, nhấp đúp tay nắm để về mặc định. Khi nội dung dài hơn, cuộn bằng con lăn chuột hoặc kéo thanh cuộn mảnh bên phải |
 
 Chỉ chạy một bản: mở Wisp lần nữa khi nó đang chạy sẽ không tạo bóng thứ hai, mà bản đang
 chạy mở panel lên (dùng named mutex và event của Windows, theo từng user).
 
-Tự khởi động cùng Windows: click phải vào bóng → "Chạy cùng Windows" để bật hoặc tắt. Widget ghi giá trị
+Tự khởi động cùng Windows: Cài đặt → "Mở cùng máy" để bật hoặc tắt. Widget ghi giá trị
 `Wisp` vào `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (không cần quyền admin; mục tên cũ
 `ClaudePET` của bản trước tự được đổi sang `Wisp`). Khi
 chạy từ source, lệnh là `pythonw main.py`. Khi chạy từ exe, lệnh là đường dẫn exe. Nếu bạn dời thư mục
@@ -78,23 +79,28 @@ Cài tay:
    ghi vào thư mục cài) và không chạy thẳng từ trong file zip.
 3. Chạy `wisp.exe`. Bản chưa ký số nên lần đầu Windows SmartScreen cảnh báo: bấm "More info" →
    "Run anyway".
-4. Click phải vào bóng → "Chạy cùng Windows" nếu muốn tự mở khi đăng nhập.
+4. Cài đặt → "Mở cùng máy" nếu muốn tự mở khi đăng nhập.
 
 Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.claude` của máy đó).
 
 ## Cập nhật
 
-- Khi mở app và mỗi giờ, widget hỏi GitHub Releases
+- Khi mở app và mỗi `update_interval_hours` giờ (mặc định 24), widget hỏi GitHub Releases
   (`https://api.github.com/repos/hakienit/pet-tracker/releases/latest`; API này đã bỏ qua draft và
-  pre-release). Có bản mới hơn `__version__` thì bóng hiện chấm xanh ở góc trên-trái và đầu panel có
-  dòng "Có bản mới x.y.z", kèm nút "Cập nhật" và link "Xem thay đổi". Click phải vào bóng →
-  "Kiểm tra cập nhật" để hỏi ngay.
-- Nút "Cập nhật" (bản exe): tải `wisp-<ver>-win-x64.zip`, `SHA256SUMS.txt` và `SHA256SUMS.txt.sig` của
-  release, kiểm chữ ký Ed25519 của `SHA256SUMS.txt` bằng khoá công khai trong `pet_tracker/updater.py`, so
-  SHA256 (sai hoặc thiếu chữ ký thì huỷ), giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên
-  thư mục cài thành `<thư mục>.old`, chép bản mới vào, giữ lại `config.json` cũ, mở lại app và xoá bản
-  cũ. Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Log: `%APPDATA%\Wisp\update.log`.
-  Vị trí bóng, kích thước panel, auto-start nằm ngoài thư mục cài nên không mất.
+  pre-release). Có bản mới hơn `__version__` thì island / bóng hiện mũi tên xanh và đầu panel có banner
+  "Có bản mới x.y.z" kèm nút "Cập nhật". Menu chuột phải → "Kiểm tra cập nhật" để hỏi ngay.
+- Nút "Cập nhật" (bản build): tải asset của release (`wisp-<ver>-win-x64.zip` hoặc
+  `wisp-<ver>-macos-universal2.dmg`), `SHA256SUMS.txt` và `SHA256SUMS.txt.sig`, kiểm chữ ký Ed25519 của
+  `SHA256SUMS.txt` bằng khoá công khai trong `pet_tracker/updater.py`, so SHA256 (sai hoặc thiếu chữ ký thì huỷ).
+  - Windows: giải nén vào thư mục tạm, rồi một script PowerShell ẩn chờ app thoát, đổi tên thư mục cài thành
+    `<thư mục>.old`, chép bản mới vào, giữ lại `config.json` cũ, mở lại app và xoá bản cũ. Log:
+    `%APPDATA%\Wisp\update.log`.
+  - macOS (từ 0.2.0): mở dmg chỉ đọc (`hdiutil`, không hiện trong Finder), chép `Wisp.app` ra thư mục tạm, rồi
+    một script bash chạy nền chờ app thoát, đổi `Wisp.app` thành `Wisp.old.app`, chép bản mới vào (`ditto`), mở
+    lại app. Cần quyền ghi vào thư mục chứa `Wisp.app` (thường `/Applications`). Log:
+    `~/Library/Application Support/Wisp/update.log`.
+  - Nếu chép lỗi, script khôi phục bản cũ và mở lại nó. Vị trí bóng, kích thước panel, Cài đặt, auto-start nằm
+    ngoài thư mục cài nên không mất.
 - Chạy từ source: nút đổi thành "Tải về" và chỉ mở trang release (không tự thay code; dùng `git pull`).
 - Tắt kiểm tra tự động: `"update_check": false` trong `config.json` (vẫn kiểm tra được bằng tay).
 - File app tự tải về không bị Windows gắn "Mark of the Web", nên bản cập nhật không gặp lại cảnh báo
@@ -108,15 +114,16 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
 3. Tạo tag và push:
 
    ```bash
-   git tag v0.1.0
+   git tag -a v0.2.0 -m "Wisp 0.2.0"
    ```
 
    ```bash
-   git push origin main v0.1.0
+   git push origin main v0.2.0
    ```
 
-4. Workflow `.github/workflows/release.yml` (GitHub Actions, `windows-latest`, Python 3.13) kiểm tra
-   tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy `build.ps1`, tạo `SHA256SUMS.txt`, ký nó
+4. Workflow `.github/workflows/release.yml` (GitHub Actions: `windows-latest` Python 3.13 và `macos-14` Python
+   3.13 universal2 của python.org) kiểm tra tag khớp `__version__` và CHANGELOG có mục tương ứng, chạy unit test,
+   `build.ps1` và `build_macos.sh`, tạo `SHA256SUMS.txt`, ký nó
    thành `SHA256SUMS.txt.sig` bằng secret `WISP_SIGNING_KEY`, rồi tạo và **publish** GitHub Release kèm
    zip, checksum và chữ ký, release notes lấy từ CHANGELOG. Thiếu secret thì job release lỗi.
    - Khoá ký: tạo một lần bằng `python tools/release_sign.py keygen <file ngoài repo>`. Đặt khoá công
@@ -126,26 +133,27 @@ Yêu cầu: máy đã cài và đăng nhập Claude Code (widget đọc `~/.clau
    - Action trong workflow được pin theo commit SHA; khi nâng version, lấy SHA mới bằng
      `git ls-remote https://github.com/actions/<tên> refs/tags/<tag>`.
 5. Release được publish ngay (không qua draft): app của mọi người thấy bản mới ở lần kiểm tra kế tiếp
-   (tối đa một giờ). Bản lỗi thì sửa và ra version mới; đừng xoá release đang có người cài.
+   (mặc định tối đa 24 giờ). Bản lỗi thì sửa và ra version mới; đừng xoá release đang có người cài.
 
 Chạy tay workflow (Actions → release → Run workflow) chỉ build và upload artifact, không tạo release.
 
-## macOS (giai đoạn 1, thử nghiệm)
+## macOS (thử nghiệm)
 
-Bản macOS là "bản xem": theo dõi được, nhưng chưa điều khiển session. Code đã tách lớp nền tảng
-(`pet_tracker/platform/`) và workflow build sẵn `.dmg` universal2 (Apple Silicon + Intel), nhưng **chưa
-chạy trên máy Mac thật**: mọi thứ dưới đây mới kiểm tra bằng giả lập import trên Windows.
+Bản macOS dùng chung code với Windows; mọi chỗ khác nhau nằm trong `pet_tracker/platform/mac.py`. So sánh từng
+thành phần và công nghệ build: [docs/site/platform-compare.html](site/platform-compare.html). Bản 0.2.0 đã chạy
+trên runner GitHub `macos-14` (Tk 8.6.15, xem "Kiểm tra trên macOS không cần máy Mac" bên dưới), **chưa chạy trên
+máy Mac thật**.
 
-| Tính năng | macOS giai đoạn 1 |
+| Tính năng | macOS |
 |---|---|
-| Bóng nổi, kéo thả, panel, resize, cuộn | có (bóng dùng PNG alpha thật thay cho color key) |
+| Island, bóng nổi, panel, menu, thông báo | có. Tk 8.6 không vẽ ảnh trên nền trong suốt, nên island và bóng tín hiệu là cửa sổ nền đặc cắt theo hình bằng CALayer; bóng mascot, chip và huy hiệu vẽ bằng hình vector của Canvas |
 | Quota | có, token đọc từ Keychain (`security find-generic-password -s "Claude Code-credentials"`); lần đầu macOS hỏi quyền |
-| Danh sách session, context, model, effort | có (đọc `~/.claude` giống Windows) |
+| Danh sách session, context, model, effort, hooks | có (đọc `~/.claude` giống Windows) |
 | Click session để mở | Claude desktop: deep link; CLI trong Terminal.app / iTerm2: chọn đúng tab theo tty qua AppleScript (cần quyền Automation); app khác: `open -a` |
-| Đóng panel khi click ra ngoài | đóng khi app mất focus (macOS không cho đọc chuột toàn cục nếu không có quyền) |
+| Đóng panel khi click ra ngoài, chuột phải lần đầu khi Wisp không active | có, đọc nút chuột toàn cục bằng `CGEventSourceButtonState` (không cần quyền) |
 | Mở khi đăng nhập | có, LaunchAgent `~/Library/LaunchAgents/sg.vinova.wisp.plist` |
 | Chỉ chạy một bản | có (file lock + Unix socket) |
-| Cập nhật | báo có bản mới, nút "Tải về" mở trang release (chưa cập nhật một chạm) |
+| Cập nhật | một chạm (từ 0.2.0), xem mục "Cập nhật" |
 
 Cài nhanh (cũng là cách cập nhật):
 
@@ -174,21 +182,24 @@ Chạy từ source trên Mac:
 python3 main.py
 ```
 
-Cần test trên Mac thật (đánh dấu `TODO(mac)` trong `pet_tracker/platform/mac.py`):
+Kiểm tra trên macOS không cần máy Mac: nhánh `probe/mac-render` có workflow `mac-probe` chạy trên runner
+`macos-14`. Merge code cần kiểm vào nhánh đó rồi push; workflow chạy unit test (gồm `tests/test_mac_update.py`,
+cập nhật một chạm với app giả), `tools/mac_probe.py` (cách vẽ nào Tk hiện được) và `tools/ui_shot.py` (island và
+các kiểu bóng thật với dữ liệu mẫu), rồi đẩy ảnh chụp về `probe-out/` của nhánh đó. `tools/ui_shot.py` chạy được
+cả trên Windows để so.
 
-1. Bóng trong suốt thật (`-transparent` + `systemTransparent`), không viền lạ; nổi trên app full-screen
-   và khi đổi Space.
+Còn cần test trên Mac thật (một phần đánh dấu `TODO(mac)` trong `pet_tracker/platform/mac.py`):
+
+1. Màn hình Retina: ảnh có mờ không (runner chỉ có màn hình 1x); island nổi trên app full-screen và khi đổi Space.
 2. Tên service Keychain của Claude Code (`security dump-keychain | grep -i claude`) và định dạng JSON
    lưu trong đó; quota hiện đúng.
 3. Định dạng `sessions/<pid>.json` trên macOS (`pid`, `procStart`, `entrypoint`, `hostSessionId`).
-4. Panel đóng khi click ra ngoài (FocusOut) mà không tự đóng khi đang thao tác trong panel.
-5. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
+4. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
    nhận deep link `claude://code/continue?session=local_…`.
-6. Chuột phải (và Control-click) vào bóng mở được popup.
-7. Font, cỡ chữ và icon dự phòng (Unicode) dễ đọc; ảnh có bị mờ trên Retina không.
-8. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
-9. Mở app lần hai chỉ hiện panel của bản đang chạy.
-10. `.dmg` từ GitHub Actions mở được trên cả Apple Silicon và Intel.
+5. Cập nhật một chạm với `Wisp.app` cài thật trong `/Applications`.
+6. Font Archivo nạp được, vùng dưới thanh menu đúng (`MENU_BAR_PT`).
+7. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
+8. `.dmg` từ GitHub Actions mở được trên cả Apple Silicon và Intel.
 
 ## Cấu hình
 
@@ -212,7 +223,7 @@ Các tuỳ chọn đổi trong **Cài đặt** (ngôn ngữ, giao diện, kiểu
 được lưu ở `%APPDATA%\Wisp\state.json`, khoá `prefs`. `warn_percent`, `danger_percent`, `quota_api_enabled`,
 `update_check` trong `config.json` là giá trị mặc định cho tới khi đổi trong Cài đặt.
 
-Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log`.
+Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log` (macOS: `~/Library/Application Support/Wisp/`).
 
 ## Hooks: biết khi nào session cần bạn
 
@@ -240,7 +251,8 @@ cho các event `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFail
 Python + tkinter (thư viện chuẩn). Lý do: máy đã có Python và tkinter, không cần tải Electron
 (~100 MB) hay toolchain Rust cho Tauri; tkinter trên Windows làm được đủ ba thứ cần thiết:
 `overrideredirect` (bỏ khung cửa sổ), `-topmost` (always on top) và `-transparentcolor` (bóng
-tròn thật sự, phần ngoài hình tròn trong suốt và click xuyên qua). Toàn bộ app ~2000 dòng Python,
+tròn thật sự, phần ngoài hình tròn trong suốt và click xuyên qua). Trên macOS phần tương ứng là cửa sổ
+`-transparent` của Tk aqua cộng vài lời gọi AppKit qua ctypes (mức nổi, bo góc). Toàn bộ app ~8500 dòng Python,
 chiếm ~50 MB RAM, khởi động dưới 1 giây. Việc đọc dữ liệu chạy ở thread riêng, UI không bị
 khựng. Hạn chế của tkinter: không có blur/acrylic, không có animation mượt; nếu sau này cần
 giao diện đẹp hơn thì chuyển phần UI sang Tauri/WebView2, phần collector (`pet_tracker/`) giữ
@@ -336,8 +348,8 @@ Cách map session → cửa sổ, đã khảo sát và test trên máy này (Cla
 
 Kỹ thuật đưa lên foreground: `ShowWindow(SW_RESTORE)` nếu đang minimize, `AttachThreadInput` với
 thread của cửa sổ foreground hiện tại + nhấn/thả ALT để vượt khoá `SetForegroundWindow`, rồi
-`SetForegroundWindow` + `BringWindowToTop`. Sau khi focus thành công panel tự thu lại; kết quả
-(hoặc lý do lỗi) hiện ở footer panel 6 giây và ghi vào log.
+`SetForegroundWindow` + `BringWindowToTop`. Sau khi focus thành công panel tự thu lại; lỗi hiện bằng thông
+báo và ghi vào log.
 
 Các trường hợp **không focus được / giới hạn**:
 
@@ -360,30 +372,42 @@ Các trường hợp **không focus được / giới hạn**:
 ```
 pet-tracker/
   main.py                  entry point
-  wisp.cmd          launcher ẩn console (pythonw, Windows)
+  wisp.cmd                 launcher ẩn console (pythonw, Windows)
   run.ps1 / build.ps1      Windows: chạy có console / build exe + zip portable
+  build_macos.sh           macOS: build .app universal2 + .dmg
   install.ps1 / install.sh  cài bản mới nhất bằng một lệnh (Windows / macOS)
   docs/GUIDE.md            tài liệu đầy đủ (README là trang giới thiệu)
-  build_macos.sh           macOS: build .app universal2 + .dmg
-  tools/make_icon.py       vẽ icon (assets/wisp.ico, .png; --png-size cho .icns) bằng stdlib
-  tools/changelog_section.py  trích release notes từ CHANGELOG.md
+  docs/site/               landing (index.html), spec UI (design.html), so sánh Windows / macOS, nguồn README
+  assets/                  icon, font Archivo, âm thanh, mascots.json
+  tools/                   make_icon, make_sounds, changelog_section, release_sign, shoot_landing (README từ
+                           landing), ui_shot (chụp island / bóng thật), dev.py (tự khởi động lại khi sửa code)
+  tests/                   unit test (python -m unittest discover -s tests -t .)
   CHANGELOG.md             lịch sử thay đổi (Keep a Changelog)
   .github/workflows/release.yml  build Windows + macOS, tạo và publish GitHub Release khi push tag v*
   config.example.json
   pet_tracker/
-    config.py              defaults, config.json, state.json (vị trí bóng), thư mục state theo OS
+    config.py              defaults, config.json, state.json, prefs, thư mục state theo OS
     claude_data.py         sessions/*.json, parser transcript .jsonl, context, ước tính local
+    states.py              trạng thái session (cần bạn / đang chạy / xong / rảnh), làn, headline
+    hooks.py               server hooks http (127.0.0.1 + token), thêm / gỡ entry trong settings.json
     quota.py               gọi endpoint usage OAuth, chuẩn hoá cửa sổ limit
-    ui.py                  bubble + panel (tkinter), thread collector, popup, updater UI
+    quota_history.py       lịch sử quota, dự báo giờ hết
+    usage_local.py         token theo ngày / tuần / tháng trên máy này
+    session_ops.py         mở, đóng, xoá, bàn giao session
+    i18n.py, theme.py      chuỗi Việt / Anh; màu, cỡ chữ (lấy từ spec)
+    vector.py, render.py   vẽ SVG khử răng cưa bằng Python thuần; ảnh cho Tk
+    mascots.py, sounds.py  40 mascot (biểu cảm, dáng); âm thanh thông báo
+    tls.py                 chứng chỉ certifi khi có (Python python.org trên macOS)
     procenv.py             env sạch (bỏ biến CLAUDE_*) cho tiến trình con
-    render.py              vẽ khử răng cưa (bóng, thanh progress, pill); PNG alpha cho macOS
-    updater.py             kiểm tra GitHub Releases, tải + kiểm SHA256, gọi platform để thay bản cài
+    updater.py             kiểm tra GitHub Releases, tải + kiểm chữ ký và SHA256, gọi platform để thay bản cài
+    ui/                    giao diện tkinter: app (vòng lặp, collector), island, bubble, panel, settings, menus,
+                           toast, kit (font, ảnh, widget), gfx (icon, viền động, bóng tín hiệu, vẽ vector lên Canvas)
     platform/
       __init__.py          chọn win.py hoặc mac.py, mô tả interface chung
-      win.py               Windows: DPI, vùng dùng được theo từng màn hình, chuột, DWM, credentials file, autostart, cập nhật
+      win.py               Windows: DPI, vùng dùng được theo từng màn hình, chuột, DWM, credentials file, autostart
       win_focus.py         map session → cửa sổ (AttachConsole, parent chain, deep link) + SetForegroundWindow
       win_single.py        chỉ chạy một bản (named mutex + event)
       win_autostart.py     chạy cùng Windows (HKCU Run)
       win_update.py        script PowerShell thay thư mục cài
-      mac.py               macOS giai đoạn 1: Keychain, AppleScript, LaunchAgent, file lock
+      mac.py               macOS: Keychain, AppleScript, LaunchAgent, file lock, AppKit qua ctypes, cập nhật dmg
 ```

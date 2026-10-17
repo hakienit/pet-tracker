@@ -36,7 +36,7 @@ jobs:
       - name: Test (cập nhật một chạm macOS và toàn bộ unit test)
         run: |
           "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
-          echo "::notice title=tests::$(tail -3 tests.txt | paste -sd' ' -)"
+          echo "::notice title=tests::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*' tests.txt | paste -sd' ' -)"
       - name: UI thật (tools/ui_shot.py)
         run: |
           "$PYTHON" tools/ui_shot.py --shot ui_mac.png | tee ui.txt
@@ -52,3 +52,21 @@ jobs:
         with:
           name: mac-probe
           path: probe.png
+
+  intel:
+    # Máy Mac Intel: hàm trả struct lớn (NSRect) phải gọi objc_msgSend_stret, Apple Silicon thì không
+    runs-on: macos-15-intel
+    env:
+      PY_VERSION: "3.13.1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - name: Cài Python universal2 từ python.org (có Tk)
+        run: |
+          curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          echo "PYTHON=/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13" >> "$GITHUB_ENV"
+      - name: Test
+        run: |
+          "$PYTHON" -c "import platform; print(platform.machine())"
+          "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
+          echo "::notice title=tests-intel::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*' tests.txt | paste -sd' ' -)"

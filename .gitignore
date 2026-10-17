@@ -5,3 +5,6 @@ dist/
 config.json
 *.log
 .env
+
+# README của các mẫu landing (tools/shoot_landing.py <mẫu>), chạy lại khi cần
+docs/site/landing/readme/

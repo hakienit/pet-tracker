@@ -80,3 +80,22 @@ class LocalUsage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuotaWait(unittest.TestCase):
+    def test_429_keeps_slow_interval_after_success(self):
+        from pet_tracker.quota import next_wait
+        now = 1000.0
+        wait, calm = next_wait(60, 1, {"ok": False, "status": 429}, now, 0.0)
+        self.assertEqual(wait, 300)  # chu kỳ chậm, lỗi lần đầu chưa nhân đôi
+        wait, calm2 = next_wait(60, 0, {"ok": True}, now + 300, calm)
+        self.assertEqual((wait, calm2), (300, calm))  # thành công vẫn giữ chu kỳ chậm
+        wait, _ = next_wait(60, 0, {"ok": True}, calm + 1, calm)
+        self.assertEqual(wait, 60)  # hết 30 phút thì về chu kỳ thường
+
+    def test_backoff_and_retry_after(self):
+        from pet_tracker.quota import next_wait
+        self.assertEqual(next_wait(60, 3, {"ok": False, "status": 500}, 0, 0)[0], 240)
+        self.assertEqual(next_wait(60, 9, {"ok": False, "status": 500}, 0, 0)[0], 900)
+        self.assertEqual(next_wait(60, 1, {"ok": False, "status": 503, "retry_after": 1200}, 0, 0)[0], 1200)
+        self.assertEqual(next_wait(60, 2, {"ok": False, "error": "timed out"}, 0, 0)[0], 60)  # lỗi mạng: không lùi

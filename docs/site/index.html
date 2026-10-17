@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wisp · Terminal</title>
+<link rel="icon" href="img/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="img/favicon.png">
+<meta property="og:title" content="Wisp: know the moment your agents need you">
+<meta property="og:description" content="A floating desktop panel: quota with a forecast, every running session, and a nudge when one is waiting for you.">
+<meta property="og:url" content="https://hakienit.github.io/pet-tracker/site/">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://hakienit.github.io/pet-tracker/site/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="description" content="Wisp: know the moment your Claude Code agents need you.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,6 +36,7 @@ nav .wrap{display:flex;align-items:center;gap:20px;min-height:64px;flex-wrap:wra
 .links a{color:var(--mut);text-decoration:none}.links a:hover{color:var(--acc)}
 .links a::before{content:"./";color:#4b5366}
 .sp{flex:1}
+.back{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--mut);text-decoration:none}.back:hover{color:var(--acc)}
 .seg{display:flex;border:1px solid #2a3140;border-radius:6px;overflow:hidden}
 .seg button{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:7px 11px;min-height:34px;border:0;background:transparent;color:var(--mut);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--acc);color:#14100a}
@@ -99,7 +108,7 @@ footer a{color:var(--mut)}
 </style>
 </head>
 <body>
-<nav><div class="wrap"><a class="brand" href="#top" id="brand"></a><div class="links" id="links"></div><span class="sp"></span><span id="lang"></span></div></nav>
+<nav><div class="wrap"><a class="back" href="https://hakienit.github.io/">← hakienit</a><a class="brand" href="#top" id="brand"></a><div class="links" id="links"></div><span class="sp"></span><span id="lang"></span></div></nav>
 <main id="top"></main>
 <footer><div class="wrap" id="foot"></div></footer>
 <script src="assets/wisp-ui.js"></script>
