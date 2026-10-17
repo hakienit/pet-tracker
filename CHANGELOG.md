@@ -6,9 +6,7 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
-### Added
-- Workflow `mac-probe` và `tools/mac_probe.py`: kiểm cách vẽ, unit test và ảnh chụp UI trên runner macOS
-  (push lên nhánh `probe/**`), không cần máy Mac.
+## [0.2.1] - 2026-10-17
 
 ### Fixed
 - Lấy quota không còn bị `HTTP 429` lặp lại: sau một lần 429, Wisp gọi API ít nhất 5 phút một lần trong 30 phút,
@@ -16,6 +14,10 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ### Changed
 - `docs/GUIDE.md` cập nhật cho 0.2: menu chuột phải mới, Cài đặt, cập nhật một chạm trên macOS, cấu trúc code.
+
+### Added
+- Workflow `mac-probe` và `tools/mac_probe.py`: kiểm cách vẽ, unit test và ảnh chụp UI trên runner macOS
+  (push lên nhánh `probe/**`), không cần máy Mac.
 
 ## [0.2.0] - 2026-10-17
 
@@ -209,7 +211,8 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...v0.1.7
