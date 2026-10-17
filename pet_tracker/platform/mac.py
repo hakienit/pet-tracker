@@ -15,8 +15,10 @@ import os
 import plistlib
 import shlex
 import socket
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -26,7 +28,7 @@ __all__ = [
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
     "focus_session", "open_terminal", "set_level", "clip_round", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
-    "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
+    "install_dir", "stage_update", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
 ]
 
 NAME = "macOS"
@@ -36,7 +38,7 @@ GLOBAL_MOUSE = True             # đọc trạng thái nút chuột toàn cục 
 RIGHT_CLICK_EVENTS = ("<Button-2>", "<Button-3>", "<Control-Button-1>")
 # Tk 8.6 aqua: <MouseWheel> delta tính theo dòng (con lăn 1-3, touchpad ~ pixel/10, tối thiểu 1), không phải bội của 120
 WHEEL_PX_PER_DELTA = 12
-CAN_SELF_UPDATE = False         # giai đoạn 1: chỉ mở trang release
+CAN_SELF_UPDATE = True          # mở dmg, script bash thay Wisp.app khi app thoát (launch_swap)
 
 BUNDLE_ID = "sg.vinova.wisp"
 LEGACY_BUNDLE_ID = "sg.vinova.pet-tracker"  # tên cũ (Claude PET): LaunchAgent cũ được đổi sang tên mới
@@ -542,5 +544,65 @@ def install_dir() -> Path:
     return exe.parent
 
 
+def stage_update(asset: Path, dest: Path) -> Path:
+    """Mở dmg của bản mới (chỉ đọc, không hiện trong Finder), chép .app ra dest. Trả đường dẫn .app mới."""
+    mnt = Path(tempfile.mkdtemp(prefix="wisp-dmg-"))
+    r = _run(["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", str(mnt), str(asset)],
+             timeout=120)
+    if r.returncode != 0:
+        shutil.rmtree(mnt, ignore_errors=True)
+        raise ValueError(f"không mở được {Path(asset).name}: {r.stderr.strip()[:200]}")
+    try:
+        apps = [p for p in mnt.iterdir() if p.suffix == ".app" and not p.is_symlink()]
+        if len(apps) != 1 or not (apps[0] / "Contents" / "MacOS").is_dir():
+            raise ValueError(f"{Path(asset).name} không chứa đúng một .app")
+        Path(dest).mkdir(parents=True, exist_ok=True)
+        out = Path(dest) / apps[0].name
+        r = _run(["ditto", str(apps[0]), str(out)], timeout=300)
+        if r.returncode != 0:
+            raise ValueError(f"không chép được {apps[0].name}: {r.stderr.strip()[:200]}")
+        return out
+    finally:
+        _run(["hdiutil", "detach", str(mnt), "-force"], timeout=60)
+        shutil.rmtree(mnt, ignore_errors=True)
+
+
+# Đối số: pid đang chạy, .app mới (stage), .app đang cài (target), file log. Lỗi thì trả lại bản cũ và mở nó.
+SWAP_SH = r"""
+pid="$1"; stage="$2"; target="$3"; log="$4"
+L() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$log"; }
+L "update: waiting for pid $pid"
+for _ in $(seq 1 120); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+sleep 0.5
+backup="${target%.app}.old.app"
+rm -rf "$backup"
+if ! mv "$target" "$backup"; then L "update: FAILED: cannot move $target"; open "$target"; exit 1; fi
+L "update: moved $target -> $backup"
+if ditto "$stage" "$target"; then
+  xattr -dr com.apple.quarantine "$target" 2>/dev/null
+  L "update: copied new version into $target"
+  open "$target" && L "update: started new version"
+  sleep 3
+  rm -rf "$backup"
+  work="$(dirname "$(dirname "$stage")")"
+  case "$(basename "$work")" in pet-update-*) rm -rf "$work" ;; esac
+  L "update: done"
+else
+  L "update: copy failed; restoring backup"
+  rm -rf "$target"
+  mv "$backup" "$target" && open "$target" && L "update: restarted previous version"
+  exit 1
+fi
+"""
+
+
 def launch_swap(stage, target_dir, wait_pid, exe_name=None, log_file=None, env=None):
-    raise RuntimeError("cập nhật một chạm chưa hỗ trợ macOS")
+    """Chạy script bash nền (phiên riêng, sống sau khi app thoát) thay target_dir (.app) bằng stage."""
+    script = Path(tempfile.gettempdir()) / f"wisp-update-{os.getpid()}.sh"
+    script.write_text(SWAP_SH, encoding="utf-8")
+    if log_file is None:
+        log_file = state_dir() / "update.log"
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    return subprocess.Popen(["/bin/bash", str(script), str(int(wait_pid)), str(stage), str(target_dir), str(log_file)],
+                            env=env, cwd=tempfile.gettempdir(), start_new_session=True, close_fds=True,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
