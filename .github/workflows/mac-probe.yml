@@ -1,0 +1,54 @@
+name: mac-probe
+
+# Thử cách vẽ của Tk trên macOS thật (runner có màn hình), không cần máy Mac: tools/mac_probe.py mở 8 ô, chụp màn
+# hình và chấm từng ô. Kết quả ở trang Summary của run; ảnh chụp ở artifact mac-probe.
+# Ô 3 (polygon) và ô 7 (cửa sổ đặc) là đối chứng: không PASS thì ảnh chụp hỏng, kết quả không dùng được.
+
+on:
+  push:
+    branches: ["probe/**"]
+  workflow_dispatch:
+
+# Ghi: đẩy ảnh chụp về chính nhánh probe để đọc qua raw.githubusercontent.com (tải artifact cần token).
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: macos-14
+    env:
+      PY_VERSION: "3.13.1"  # giống job macOS của release.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - name: Cài Python universal2 từ python.org (có Tk)
+        run: |
+          curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          echo "PYTHON=/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13" >> "$GITHUB_ENV"
+      - name: Probe
+        run: |
+          "$PYTHON" -m pip install --quiet pillow
+          "$PYTHON" tools/mac_probe.py --shot probe.png | tee probe.txt
+          { echo "## mac_probe"; sed -n '/^Tk /,$p' probe.txt; } >> "$GITHUB_STEP_SUMMARY"
+          # annotation đọc được qua API công khai (check-runs/<job>/annotations), log thì cần token;
+          # tối đa 10 notice mỗi step nên gộp thành một, xuống dòng mã hoá %0A
+          echo "::notice title=mac_probe::$(grep -E '^(Tk |  ô |\| [0-9])' probe.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+      - name: Test (cập nhật một chạm macOS và toàn bộ unit test)
+        run: |
+          "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
+          echo "::notice title=tests::$(tail -3 tests.txt | paste -sd' ' -)"
+      - name: UI thật (tools/ui_shot.py)
+        run: |
+          "$PYTHON" tools/ui_shot.py --shot ui_mac.png | tee ui.txt
+          echo "::notice title=ui_shot::$(tail -1 ui.txt)"
+      - name: Đẩy ảnh về nhánh probe
+        run: |
+          mkdir -p probe-out && cp probe.png ui_mac.png probe-out/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add probe-out && git commit -m "probe: ảnh chụp từ ${GITHUB_SHA::7}" && git push origin "HEAD:${GITHUB_REF_NAME}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: mac-probe
+          path: probe.png

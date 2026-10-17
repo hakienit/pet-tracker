@@ -6,6 +6,13 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+### Added
+- Workflow `mac-probe` và `tools/mac_probe.py`: kiểm cách vẽ, unit test và ảnh chụp UI trên runner macOS
+  (push lên nhánh `probe/**`), không cần máy Mac.
+
+### Changed
+- `docs/GUIDE.md` cập nhật cho 0.2: menu chuột phải mới, Cài đặt, cập nhật một chạm trên macOS, cấu trúc code.
+
 ## [0.2.0] - 2026-10-17
 
 Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế hoạch ở `docs/REDESIGN_PLAN.md`.
