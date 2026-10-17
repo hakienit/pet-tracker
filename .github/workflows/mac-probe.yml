@@ -9,8 +9,9 @@ on:
     branches: ["probe/**"]
   workflow_dispatch:
 
+# Ghi: đẩy ảnh chụp về chính nhánh probe để đọc qua raw.githubusercontent.com (tải artifact cần token).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   probe:
@@ -32,6 +33,16 @@ jobs:
           # annotation đọc được qua API công khai (check-runs/<job>/annotations), log thì cần token;
           # tối đa 10 notice mỗi step nên gộp thành một, xuống dòng mã hoá %0A
           echo "::notice title=mac_probe::$(grep -E '^(Tk |  ô |\| [0-9])' probe.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+      - name: UI thật (tools/ui_shot.py)
+        run: |
+          "$PYTHON" tools/ui_shot.py --shot ui_mac.png | tee ui.txt
+          echo "::notice title=ui_shot::$(tail -1 ui.txt)"
+      - name: Đẩy ảnh về nhánh probe
+        run: |
+          mkdir -p probe-out && cp probe.png ui_mac.png probe-out/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add probe-out && git commit -m "probe: ảnh chụp từ ${GITHUB_SHA::7}" && git push origin "HEAD:${GITHUB_REF_NAME}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()
         with:
