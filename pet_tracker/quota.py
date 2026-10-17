@@ -92,6 +92,24 @@ def fetch_api_usage(claude_dir: str, timeout: float = 15.0) -> dict:
     return {"ok": True, "source": "api", "fetched_at": time.time(), "windows": _normalize(data)}
 
 
+CALM_SEC = 1800.0     # sau HTTP 429: giữ chu kỳ chậm trong 30 phút
+CALM_INTERVAL = 300.0  # chu kỳ tối thiểu trong lúc đó
+
+
+def next_wait(interval: float, fails: int, res: dict, now: float, calm_until: float) -> tuple:
+    """(giây chờ tới lần gọi sau, calm_until mới). fails: số lần lỗi liên tiếp, tính cả lần này.
+
+    Lỗi HTTP: lùi gấp đôi mỗi lần (tối đa 15 phút), tôn trọng Retry-After. Sau 429, chu kỳ ít nhất CALM_INTERVAL
+    trong CALM_SEC kể cả khi các lần sau thành công: về ngay 60 giây thì lại bị 429 (log 2026-10-16: 93 lần)."""
+    if res.get("status") == 429:
+        calm_until = now + CALM_SEC
+    base = max(interval, CALM_INTERVAL) if now < calm_until else interval
+    if res.get("ok") or not res.get("status"):
+        return base, calm_until
+    wait = min(900.0, base * 2 ** min(fails - 1, 4))
+    return max(wait, min(3600.0, float(res.get("retry_after") or 0))), calm_until
+
+
 def _normalize(data: dict) -> list[dict]:
     wins: list[dict] = []
     limits = data.get("limits") or []

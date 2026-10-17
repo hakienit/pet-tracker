@@ -10,6 +10,10 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Workflow `mac-probe` và `tools/mac_probe.py`: kiểm cách vẽ, unit test và ảnh chụp UI trên runner macOS
   (push lên nhánh `probe/**`), không cần máy Mac.
 
+### Fixed
+- Lấy quota không còn bị `HTTP 429` lặp lại: sau một lần 429, Wisp gọi API ít nhất 5 phút một lần trong 30 phút,
+  kể cả khi các lần sau thành công (trước đó về ngay 60 giây rồi lại bị chặn).
+
 ### Changed
 - `docs/GUIDE.md` cập nhật cho 0.2: menu chuột phải mới, Cài đặt, cập nhật một chạm trên macOS, cấu trúc code.
 

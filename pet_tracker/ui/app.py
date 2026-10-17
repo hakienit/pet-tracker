@@ -17,7 +17,7 @@ from .. import states as S
 from ..claude_data import ClaudeDataStore, account_info
 from ..config import CONFIG_FILE, STATE_DIR, load_config, load_prefs, load_state, save_state
 from ..i18n import t
-from ..quota import fetch_api_usage, is_session_window
+from ..quota import fetch_api_usage, is_session_window, next_wait
 from ..quota_history import QuotaHistory
 from ..usage_local import LocalUsage
 from . import fmt, gfx
@@ -84,7 +84,7 @@ class Collector(threading.Thread):
             self.stop.wait(600)
 
     def _quota_loop(self):
-        fails = 0
+        fails, calm_until = 0, 0.0
         while not self.stop.is_set():
             interval = max(15.0, float(self.cfg["refresh_quota_sec"]))
             if not self.app.prefs.get("quota_api_enabled", True):
@@ -93,17 +93,13 @@ class Collector(threading.Thread):
                 self.quota_kick.clear()
                 continue
             res = fetch_api_usage(self.cfg["claude_dir"])
-            wait = interval
+            now = time.time()
+            fails = 0 if res.get("ok") else fails + 1
+            wait, calm_until = next_wait(interval, fails, res, now, calm_until)
             if res.get("ok"):
-                fails = 0
-                now = time.time()
                 self.history.add(res.get("windows"), now)
                 self.history.annotate(res.get("windows"), now)
             else:
-                fails += 1
-                if res.get("status"):
-                    wait = min(900.0, interval * 2 ** min(fails - 1, 4))
-                    wait = max(wait, min(3600.0, float(res.get("retry_after") or 0)))
                 log(f"quota: {res.get('error')} (lần {fails}, thử lại sau {wait:.0f}s)")
                 prev = self._quota or {}
                 if prev.get("windows") and time.time() - (prev.get("fetched_at") or 0) < 1800:
