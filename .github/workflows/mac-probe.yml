@@ -33,6 +33,11 @@ jobs:
           # annotation đọc được qua API công khai (check-runs/<job>/annotations), log thì cần token;
           # tối đa 10 notice mỗi step nên gộp thành một, xuống dòng mã hoá %0A
           echo "::notice title=mac_probe::$(grep -E '^(Tk |  ô |\| [0-9])' probe.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+      - name: Test (cập nhật một chạm macOS và toàn bộ unit test)
+        run: |
+          "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
+          echo "::notice title=tests::$(tail -3 tests.txt | tr '
+' ' ')"
       - name: UI thật (tools/ui_shot.py)
         run: |
           "$PYTHON" tools/ui_shot.py --shot ui_mac.png | tee ui.txt
