@@ -28,6 +28,8 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
   có khối xác nhận liệt kê rõ hậu quả.
 - Font Archivo (OFL) đóng gói kèm app, nạp riêng cho process, nên chữ giống nhau trên Windows và macOS.
 - 42 unit test (`python -m unittest discover -s tests -t .`), chạy trong CI.
+- macOS: cập nhật một chạm như Windows: tải dmg, kiểm SHA256 và chữ ký, thay Wisp.app khi app thoát, lỗi thì
+  giữ bản cũ. Log ở `~/Library/Application Support/Wisp/update.log`.
 
 ### Changed
 - Panel chia làn theo trạng thái (cần bạn, đang chạy, xong, rảnh, đã đóng). Bấm tên làn để thu / mở. Card có nền và
@@ -36,6 +38,11 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Cỡ chữ tính bằng pixel, bỏ cách cộng thêm 3pt trên macOS. Icon vẽ bằng vector, giống nhau trên hai hệ điều hành.
 - Kết quả thao tác hiện bằng thông báo, không ghi ở footer nữa.
 - Kiểm tra bản mới mỗi 24 giờ (`update_interval_hours` mặc định 24). Bóng nổi mặc định 80 px.
+
+### Fixed
+- macOS: island và bóng nổi hiện được trên Tk 8.6 (ảnh trên nền trong suốt không được vẽ). Island và bóng tín hiệu
+  là cửa sổ nền đặc cắt theo hình, có bóng đổ; bóng mascot, chip và huy hiệu vẽ bằng hình vector. Huy hiệu bản mới
+  của bóng tín hiệu nằm trong vòng.
 
 ### Removed
 - Khối "Token đã dùng" 5 giờ / 7 ngày (thay bằng dự báo quota và token theo ngày / tuần / tháng).

@@ -3,13 +3,14 @@
 - Kiểm tra: GET https://api.github.com/repos/hakienit/pet-tracker/releases/latest. Endpoint này của
   GitHub đã bỏ qua release draft và pre-release; widget vẫn kiểm tra lại hai cờ đó cho chắc.
   So tag (vd. "v0.2.0") với __version__.
-- Cài (chỉ khi chạy từ exe đã build bằng PyInstaller, hiện chỉ Windows; macOS mở trang release):
-  1. tải asset `wisp-<ver>-win-x64.zip` và `SHA256SUMS.txt` của release vào thư mục tạm;
-  2. so SHA256 của zip với dòng tương ứng trong SHA256SUMS.txt, sai thì dừng;
-  3. giải nén vào thư mục tạm, kiểm tra có `wisp.exe`;
-  4. chạy script PowerShell (ẩn) chờ process hiện tại thoát, đổi tên thư mục cài thành bản dự phòng,
-     chép bản mới vào, giữ lại `config.json` cũ, mở lại exe; lỗi thì khôi phục bản dự phòng.
-  Widget thoát ngay sau khi chạy script. Log của script: %APPDATA%\\Wisp\\update.log.
+- Cài (chỉ khi chạy từ bản đã build bằng PyInstaller):
+  1. tải asset (`wisp-<ver>-win-x64.zip` / `wisp-<ver>-macos-universal2.dmg`) và `SHA256SUMS.txt` (+ chữ ký);
+  2. so SHA256 của asset với dòng tương ứng trong SHA256SUMS.txt, sai thì dừng;
+  3. Windows: giải nén, kiểm tra có `wisp.exe`. macOS: mở dmg chỉ đọc, chép Wisp.app (plat.stage_update);
+  4. chạy script nền chờ process hiện tại thoát, đổi bản cài thành bản dự phòng, chép bản mới vào (Windows giữ
+     `config.json` cũ; macOS để config trong Application Support), mở lại app; lỗi thì khôi phục bản dự phòng.
+  Widget thoát ngay sau khi chạy script. Log: %APPDATA%\\Wisp\\update.log hoặc
+  ~/Library/Application Support/Wisp/update.log.
 - Chạy từ source: chỉ mở trang release (không tự thay code).
 """
 from __future__ import annotations
@@ -92,7 +93,11 @@ _INSTALL_ENTRIES = {EXE_NAME.lower(), "_internal", "config.json", "config.exampl
 
 
 def install_dir_problem(target: Path):
-    """None nếu thư mục cài chỉ có file của Wisp, ngược lại là thông báo lỗi."""
+    """None nếu thư mục cài chỉ có file của Wisp, ngược lại là thông báo lỗi. macOS: target là Wisp.app, chỉ cần
+    ghi được thư mục chứa nó (thường /Applications)."""
+    target = Path(target)
+    if target.suffix == ".app":
+        return None if os.access(target.parent, os.W_OK) else f"không ghi được vào {target.parent}"
     try:
         extra = sorted(p.name for p in Path(target).iterdir() if p.name.lower() not in _INSTALL_ENTRIES)
     except OSError as e:
@@ -169,7 +174,7 @@ def sha256_file(path: Path) -> str:
 
 
 def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
-    """Tải + kiểm tra + giải nén. Trả thư mục chứa bản mới (có wisp.exe). Lỗi -> ValueError/OSError."""
+    """Tải + kiểm tra + giải nén. Trả bản mới (Windows: thư mục có wisp.exe, macOS: Wisp.app). Lỗi -> ValueError/OSError."""
     if not info.get("zip_url") or not info.get("sums_url") or not info.get("sig_url"):
         raise ValueError(f"release {info.get('tag')} thiếu {asset_name(info.get('tag', ''))}, {SUMS_NAME} "
                          f"hoặc {SIG_NAME}")
@@ -196,6 +201,8 @@ def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
     stage = work / "new"
     if stage.exists():
         shutil.rmtree(stage)
+    if plat.IS_MAC:
+        return plat.stage_update(zpath, stage)
     with zipfile.ZipFile(zpath) as z:
         for m in z.namelist():  # chặn path traversal
             if m.startswith(("/", "\\")) or ".." in Path(m).parts or ":" in m:
@@ -212,7 +219,7 @@ def download_and_stage(info: dict, progress=None, workdir=None) -> Path:
 
 # ---------------------------------------------------------------- swap
 def launch_swap(stage: Path, target_dir: Path, wait_pid: int, exe_name: str = EXE_NAME, log_file=None, env=None):
-    """Thay thư mục cài sau khi wait_pid thoát (Windows: script PowerShell, xem platform/win_update.py)."""
+    """Thay bản cài sau khi wait_pid thoát (Windows: script PowerShell, platform/win_update.py; macOS: bash, mac.py)."""
     if not plat.CAN_SELF_UPDATE:
         raise RuntimeError("nền tảng này chưa hỗ trợ cập nhật một chạm")
     problem = install_dir_problem(target_dir)
