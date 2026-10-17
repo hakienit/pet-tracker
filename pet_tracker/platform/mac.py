@@ -24,7 +24,7 @@ __all__ = [
     "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS", "WHEEL_PX_PER_DELTA",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "open_terminal", "set_level", "autostart_command", "autostart_is_enabled",
+    "focus_session", "open_terminal", "set_level", "clip_round", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
 ]
@@ -221,60 +221,70 @@ def make_transparent(toplevel) -> None:
         pass
 
 
-def set_level(win, level: int) -> None:
-    """Đặt mức nổi NSWindow của cửa sổ Tk `win` (tìm theo tiêu đề tạm). Lỗi thì bỏ qua."""
+def _with_ns_window(win, fn) -> bool:
+    """Gọi fn(send, nswindow) với NSWindow của cửa sổ Tk `win` (tìm theo tiêu đề tạm). Lỗi hoặc chưa có NSWindow
+    (cửa sổ chưa từng hiện) -> False."""
     import ctypes
-    try:
-        old = win.title()
-        win.title(tag := f"wisp-lvl-{id(win)}")
-        for send, w in _ns_windows():
-            t = send(w, "title")
-            if t and ctypes.string_at(send(t, "UTF8String")).decode() == tag:
-                send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))
-                break
-        win.title(old)
-    except Exception:
-        pass
-
-
-def round_corners(win, border_hex: str) -> bool:
-    """Bo góc + viền 1px + bóng đổ cho cửa sổ overrideredirect: layer của contentView bo và cắt nội dung,
-    cửa sổ để trong suốt để bóng đổ theo hình bo (cửa sổ đặc thì bóng vẫn hình chữ nhật)."""
-    import ctypes
-    import ctypes.util
     try:
         win.update_idletasks()
         old = win.title()
         win.title(tag := f"wisp-{id(win)}")
-        h = border_hex.lstrip("#")
-        for send, w in _ns_windows():
-            t = send(w, "title")
-            if not t or ctypes.string_at(send(t, "UTF8String")).decode() != tag:
-                continue
-            level = send(w, "level", res=ctypes.c_long)
-            send(w, "setOpaque:", False, res=None, argt=(ctypes.c_bool,))
-            send(w, "setBackgroundColor:", send(_objc()[1]("NSColor"), "clearColor"), res=None,
-                 argt=(ctypes.c_void_p,))
-            send(w, "setHasShadow:", True, res=None, argt=(ctypes.c_bool,))
-            cv = send(w, "contentView")
-            send(cv, "setWantsLayer:", True, res=None, argt=(ctypes.c_bool,))
-            layer = send(cv, "layer")
-            send(layer, "setCornerRadius:", CORNER_RADIUS, res=None, argt=(ctypes.c_double,))
-            send(layer, "setMasksToBounds:", True, res=None, argt=(ctypes.c_bool,))
-            send(layer, "setBorderWidth:", 1.0, res=None, argt=(ctypes.c_double,))
+        try:
+            for send, w in _ns_windows():
+                t = send(w, "title")
+                if t and ctypes.string_at(send(t, "UTF8String")).decode() == tag:
+                    fn(send, w)
+                    return True
+        finally:
+            win.title(old)
+    except Exception:
+        pass
+    return False
+
+
+def set_level(win, level: int) -> None:
+    """Đặt mức nổi NSWindow của cửa sổ Tk `win`. Lỗi thì bỏ qua."""
+    import ctypes
+    _with_ns_window(win, lambda send, w: send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,)))
+
+
+def clip_round(win, radius, border_hex=None) -> bool:
+    """Cắt cửa sổ theo hình chữ nhật bo góc `radius` (pt) bằng layer của contentView, viền 1px nếu có border_hex,
+    bóng đổ theo hình cắt. radius None: bỏ cắt và bóng (bóng mascot vẽ trên nền trong suốt).
+
+    Tk 8.6 aqua không vẽ ảnh lên Canvas nền systemTransparent (tools/mac_probe.py), nên island và bóng tín hiệu
+    là Canvas nền đặc trong cửa sổ được cắt thành viên thuốc / đĩa."""
+    import ctypes
+    import ctypes.util
+
+    def apply(send, w):
+        level = send(w, "level", res=ctypes.c_long)
+        send(w, "setOpaque:", False, res=None, argt=(ctypes.c_bool,))
+        send(w, "setBackgroundColor:", send(_objc()[1]("NSColor"), "clearColor"), res=None, argt=(ctypes.c_void_p,))
+        send(w, "setHasShadow:", radius is not None, res=None, argt=(ctypes.c_bool,))
+        cv = send(w, "contentView")
+        send(cv, "setWantsLayer:", True, res=None, argt=(ctypes.c_bool,))
+        layer = send(cv, "layer")
+        send(layer, "setCornerRadius:", float(radius or 0), res=None, argt=(ctypes.c_double,))
+        send(layer, "setMasksToBounds:", radius is not None, res=None, argt=(ctypes.c_bool,))
+        send(layer, "setBorderWidth:", 1.0 if border_hex else 0.0, res=None, argt=(ctypes.c_double,))
+        if border_hex:
+            h = border_hex.lstrip("#")
             cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
             cg.CGColorCreateGenericRGB.restype = ctypes.c_void_p
             cg.CGColorCreateGenericRGB.argtypes = [ctypes.c_double] * 4
             col = cg.CGColorCreateGenericRGB(*(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)), 1.0)
             send(layer, "setBorderColor:", col, res=None, argt=(ctypes.c_void_p,))
-            send(w, "invalidateShadow", res=None)
-            send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))  # đổi opaque làm mất mức nổi (-topmost)
-            win.title(old)
-            return True
-        win.title(old)
-    except Exception:
-        pass
-    return False
+        send(w, "invalidateShadow", res=None)
+        send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))  # đổi opaque làm mất mức nổi (-topmost)
+
+    return _with_ns_window(win, apply)
+
+
+def round_corners(win, border_hex: str) -> bool:
+    """Bo góc + viền 1px + bóng đổ cho cửa sổ overrideredirect (panel, menu, thông báo). Cửa sổ để trong suốt để
+    bóng đổ theo hình bo (cửa sổ đặc thì bóng vẫn hình chữ nhật)."""
+    return clip_round(win, CORNER_RADIUS, border_hex)
 
 
 # ---------------------------------------------------------------- hệ thống

@@ -2,7 +2,8 @@
 
 Mọi hình vẽ bằng pet_tracker.vector (khử răng cưa, Python thuần) thành hàng pixel RGBA, rồi:
   - Windows: trộn sẵn lên màu nền (panel) hoặc màu key trong suốt (cửa sổ island / bóng) -> PhotoImage.put
-  - macOS: PNG có alpha thật
+  - macOS: trộn sẵn lên màu nền đặc (panel; island và bóng tín hiệu là cửa sổ nền đặc cắt bằng CALayer). Ảnh trên
+    Canvas nền systemTransparent không hiện (Tk 8.6), nên bóng mascot vẽ bằng polygon / line của Canvas (draw_items).
 Nguồn hình: docs/site/assets/wisp-ui.js. Ảnh được cache theo khoá; hàm ở đây không giữ tham chiếu Tk.
 """
 from __future__ import annotations
@@ -97,7 +98,7 @@ def to_photo(master, rows, bg=None, fringe="#0d0d11"):
 
 
 # ---------------------------------------------------------------- icon
-def icon_rows(name: str, px: int, color: str, sw: float = 1.9) -> list:
+def _icon_svg(name: str, color: str, sw: float) -> str:
     import re
 
     def style(m):
@@ -106,8 +107,59 @@ def icon_rows(name: str, px: int, color: str, sw: float = 1.9) -> list:
             return tag.replace('fill="C"', f'fill="{color}"')
         return tag[:-2] + f' fill="none" stroke="{color}" stroke-width="{sw}" stroke-linecap="round"/>'
 
-    body = re.sub(r"<(?:path|circle|rect)\b[^>]*/>", style, ICONS.get(name, ""))
-    return vector.rasterize(vector.parse(body), px, px, vector.affine(scale=px / 24.0))
+    return re.sub(r"<(?:path|circle|rect)\b[^>]*/>", style, ICONS.get(name, ""))
+
+
+def icon_rows(name: str, px: int, color: str, sw: float = 1.9) -> list:
+    return vector.rasterize(vector.parse(_icon_svg(name, color, sw)), px, px, vector.affine(scale=px / 24.0))
+
+
+def icon_items(name: str, color: str, sw: float = 1.9) -> list:
+    """Icon dạng vector.items (khung 24x24) để vẽ bằng draw_items."""
+    return vector.items(_icon_svg(name, color, sw))
+
+
+# ---------------------------------------------------------------- vẽ vector thẳng lên Canvas (macOS)
+def _flat(pts) -> list:
+    return [v for xy in pts for v in xy]
+
+
+def draw_items(c, its, m, tag) -> list:
+    """Vẽ its (vector.items) lên Canvas c theo ma trận m: vùng tô = polygon, nét = line đầu tròn. Trả [(item, điểm
+    gốc)] để move_items đổi dáng mà không tạo lại item. Bỏ qua opacity (Canvas không có alpha)."""
+    k = math.sqrt(abs(m[0] * m[3] - m[1] * m[2]))
+    out = []
+    for it in its:
+        col = "#%02x%02x%02x" % it[2]
+        if it[0] == "fill":
+            for p in it[1]:
+                out.append((c.create_polygon(*_flat(vector.transform(m, p)), fill=col, outline="", tags=tag), p))
+            continue
+        for p, closed in it[1]:
+            pts = p + p[:1] if closed else p
+            if len(pts) < 2:
+                continue
+            i = c.create_line(*_flat(vector.transform(m, pts)), fill=col, width=max(1.0, it[4] * k),
+                              capstyle="round" if it[5] == "round" else "butt", joinstyle="round", tags=tag)
+            out.append((i, pts))
+    return out
+
+
+def move_items(c, handle, m) -> None:
+    for i, p in handle:
+        c.coords(i, *_flat(vector.transform(m, p)))
+
+
+def pill(c, x0, y0, x1, y1, fill, border=None, tag=None) -> None:
+    """Viên thuốc bằng oval + rectangle (không dùng ảnh), viền 1px nếu có border."""
+    for inset, col in ((0, border), (1 if border else 0, fill)):
+        if col is None:
+            continue
+        a, b, cc, d = x0 + inset, y0 + inset, x1 - inset, y1 - inset
+        r = (d - b) / 2
+        c.create_oval(a, b, a + 2 * r, d, fill=col, outline="", tags=tag)
+        c.create_oval(cc - 2 * r, b, cc, d, fill=col, outline="", tags=tag)
+        c.create_rectangle(a + r, b, cc - r, d, fill=col, outline="", tags=tag)
 
 
 # ---------------------------------------------------------------- hình cơ bản (SDF)
@@ -216,7 +268,8 @@ class Animated:
         self.band = _band(self.w, self.h, r, bw) if state else []
         self.frames: dict = {}
         self.fringe = fringe
-        if not ALPHA:
+        self.alpha = ALPHA and not bg  # nền đặc (macOS: island, bóng tín hiệu): trộn sẵn rồi put() như Windows
+        if not self.alpha:
             self.base_hex = _flatten(base, bg) if bg else _keyed(base, plat.transparent_key(), fringe)
         self.static = None
 
@@ -250,7 +303,7 @@ class Animated:
             else:
                 px = (int(br + (col[0] - br) * k), int(bgc + (col[1] - bgc) * k), int(bb + (col[2] - bb) * k), ba)
             changes.append((x, y, px))
-        if ALPHA:
+        if self.alpha:
             rows = [list(r) for r in self.base]
             for x, y, px in changes:
                 rows[y][x] = px

@@ -167,7 +167,7 @@ class Kit:
         it = c.create_image(0, 0, anchor="nw", image=norm)
         x = self.px(12)
         if icon:
-            c.create_image(x, h / 2, anchor="w", image=self.icon(icon, 14, fg, None if gfx.ALPHA else fill))
+            c.create_image(x, h / 2, anchor="w", image=self.icon(icon, 14, fg, fill))
             x += ipx + gap
         c.create_text(x, h / 2, text=text, anchor="w", fill=fg, font=font)
         c._imgs = (norm, hov)

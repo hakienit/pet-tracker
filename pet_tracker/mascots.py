@@ -100,14 +100,27 @@ def canvas_size(size: int) -> int:
     return int(round(size * (1 + 2 * PAD)))
 
 
+def pose(size: int, sx: float = 1.0, sy: float = 1.0, rot: float = 0.0, tx: float = 0.0, ty: float = 0.0):
+    """Ma trận vẽ mascot cỡ size vào ô canvas_size(size) dời (tx, ty): co giãn / xoay quanh đáy giữa hình."""
+    pad = (canvas_size(size) - size) / 2
+    return vector.affine(scale=size / BOX, sx=sx, sy=sy, rot=rot, origin=(32.0, 60.0), tx=pad + tx, ty=pad + ty)
+
+
 def rows(mid: str, mood: str, size: int, theme: str = "dark", hue: float = 0.0, sx: float = 1.0, sy: float = 1.0,
          rot: float = 0.0) -> list:
     """Ảnh RGBA (list hàng) cạnh canvas_size(size). sx / sy / rot: dáng (co giãn, xoay) quanh đáy giữa hình."""
     n = canvas_size(size)
-    k = size / BOX
-    pad = (n - size) / 2
-    m = vector.affine(scale=k, sx=sx, sy=sy, rot=rot, origin=(32.0, 60.0), tx=pad, ty=pad)
-    return vector.rasterize(_shapes(mid, mood, theme, hue), n, n, m)
+    return vector.rasterize(_shapes(mid, mood, theme, hue), n, n, pose(size, sx, sy, rot))
+
+
+@lru_cache(maxsize=64)
+def items(mid: str, mood: str, theme: str = "dark", hue: float = 0.0) -> list:
+    """Hình mascot dạng vector.items: macOS vẽ thẳng bằng Canvas (ảnh không hiện trong cửa sổ trong suốt)."""
+    from .theme import palette
+    m = get(mid)
+    if m is None:
+        return []
+    return vector.items(m["body"], hue) + vector.items(face_svg(m, mood, palette(theme)))
 
 
 def png(mid: str, mood: str, size: int, theme: str, hue: float, cache_dir: Path | None = None, **pose) -> bytes:

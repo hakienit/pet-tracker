@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wisp 0.2 Windows vs macOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/wisp-ui.css">
+<style>
+/* Bố cục: cột đọc hẹp cho chữ, mỗi thành phần là một cặp màn hình Windows | macOS đặt cạnh nhau, ghi chú công nghệ ngay dưới từng màn hình. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --ink: #16171b; --mut: #5b5f6a; --line: #e2e4e9;
+  --accent: #a85600; --win: #1f5fd6; --mac: #6b4fd8; --ok: #0b7a5a; --bad: #c62828; --chip: #eceef2;
+  --f-body: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1013; --surface: #17181d; --ink: #ebecf0; --mut: #a2a6b1; --line: #2a2c33;
+  --accent: #ffb02e; --win: #58a6ff; --mac: #b39cff; --ok: #3fd0a4; --bad: #ff6166; --chip: #22242a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1013; --surface: #17181d; --ink: #ebecf0; --mut: #a2a6b1; --line: #2a2c33;
+  --accent: #ffb02e; --win: #58a6ff; --mac: #b39cff; --ok: #3fd0a4; --bad: #ff6166; --chip: #22242a; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55 }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 44px }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 800; text-wrap: balance; letter-spacing: -.01em }
+h2 { font-size: 22px; margin: 0; font-weight: 800; text-wrap: balance }
+h3 { font-size: 15px; margin: 0; font-weight: 700 }
+p { margin: 0 }
+.lead { color: var(--mut); max-width: 68ch }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--mut) }
+.head { display: flex; flex-direction: column; gap: 12px }
+.meta { display: flex; flex-wrap: wrap; gap: 8px }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--mut) }
+.pill.w { color: var(--win) } .pill.m { color: var(--mac) }
+.mono { font-family: var(--f-mono); font-size: .92em }
+
+/* quyết định */
+.decide { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px }
+.decide div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.decide b { font-size: 14px }
+.decide span { color: var(--mut); font-size: 14px }
+
+/* điều khiển mẫu */
+.ctl { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding-block: 10px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center }
+.seg .t { font-size: 13px; color: var(--mut); margin-right: 4px }
+.seg button { font: inherit; font-size: 13px; font-weight: 600; padding: 5px 11px; min-height: 32px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--mut); cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+.seg button:focus-visible, .tog:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+/* một thành phần */
+.comp { display: flex; flex-direction: column; gap: 14px }
+.comp > p.lead { max-width: 80ch }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr) } }
+.side { display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.side .lab { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700 }
+.side .lab i { width: 10px; height: 10px; border-radius: 3px; display: block }
+.side.win .lab i { background: var(--win) } .side.mac .lab i { background: var(--mac); border-radius: 50% }
+.how { margin: 0; padding-left: 18px; color: var(--mut); font-size: 14px; display: flex; flex-direction: column; gap: 4px }
+.how b { color: var(--ink); font-weight: 600 }
+.diff { font-size: 14px; border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; max-width: 90ch }
+
+/* màn hình giả lập: nền cố định theo hệ điều hành, không theo theme của trang */
+.screen { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); display: flex; flex-direction: column; min-height: 220px }
+.screen.win { background: radial-gradient(120% 90% at 70% 110%, #1d4fa8 0%, #10306b 38%, #0b1a3a 70%), #0b1a3a }
+.screen.mac { background: linear-gradient(160deg, #3b2a5c 0%, #7a3f62 48%, #d7835a 100%) }
+.screen.light.win { background: radial-gradient(120% 90% at 70% 110%, #a9c8f5 0%, #d6e4f8 45%, #eef3fb 80%), #eef3fb }
+.screen.light.mac { background: linear-gradient(160deg, #cfd8ef 0%, #e8d7e6 50%, #f6dfcf 100%) }
+.desk { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 12px 16px; gap: 10px; min-height: 180px }
+.menubar { height: 24px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 12px; font: 600 12px/1 -apple-system, 'Helvetica Neue', var(--f-body);
+  background: rgba(20, 16, 28, .45); color: #f4f2f7; backdrop-filter: blur(12px) }
+.screen.light .menubar { background: rgba(255, 255, 255, .55); color: #1c1c22 }
+.menubar .r { margin-left: auto; font-weight: 500 }
+.menubar .dot { width: 11px; height: 11px; border-radius: 50%; background: currentColor; opacity: .85 }
+.taskbar { height: 40px; flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; position: relative;
+  background: rgba(22, 26, 36, .82); border-top: 1px solid rgba(255, 255, 255, .08) }
+.screen.light .taskbar { background: rgba(243, 245, 249, .9); border-top-color: rgba(0, 0, 0, .08) }
+.taskbar i { width: 22px; height: 22px; border-radius: 5px; background: rgba(255, 255, 255, .18); display: block }
+.screen.light .taskbar i { background: rgba(0, 0, 0, .12) }
+.taskbar .clock { position: absolute; right: 12px; font: 500 11px/1.25 'Segoe UI', var(--f-body); color: #e9edf5; text-align: right }
+.screen.light .taskbar .clock { color: #1c1f26 }
+.corner { position: absolute; right: 18px; bottom: 14px }
+.desk.tall { min-height: 260px }
+
+/* chỗ khác nhau giữa hai nền tảng, áp lên component của spec */
+.win .isl-host > div { box-shadow: 0 0 0 1px #0d0d11 !important }             /* mép color key trộn với màu fringe, không có bóng mềm */
+.mac .isl-host > div { box-shadow: 0 6px 16px rgba(0, 0, 0, .38) !important }  /* bóng đổ NSWindow theo hình cắt của CALayer */
+.screen.light.mac .isl-host > div { box-shadow: 0 0 0 1px #d5d8de, 0 6px 16px rgba(20, 30, 50, .25) !important }
+.win .sig-host > div > div:first-child { box-shadow: 0 0 0 1px #0d0d11 !important }
+.mac .sig-host { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)) }
+.mac .sig-host > div { overflow: hidden; border-radius: 50% }
+.mac .sig-host.sq > div { border-radius: 26px }
+.mac .sig-host > div > span { right: 9px !important; top: 9px !important; box-shadow: none !important; width: 20px !important; height: 20px !important }
+.mac .sig-host.sq > div > span { right: 7px !important; top: 7px !important }
+.win .panel-host > div { border-radius: 8px !important; box-shadow: 0 10px 30px rgba(0, 0, 0, .45) !important }
+.mac .panel-host > div { border-radius: 10px !important }
+.win .menu-host > div > div > div:last-child { border-radius: 8px !important }
+.mac .menu-host > div > div > div:last-child { border-radius: 10px !important }
+.win .toast-host > div { border-radius: 8px !important }
+.mac .toast-host > div { border-radius: 10px !important }
+.menu-host .lb { display: none }
+.scale { transform-origin: top center }
+@media (max-width: 520px) { .scale { transform: scale(.8); margin-bottom: -18% } }
+
+/* bảng */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface) }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line) }
+tr:last-child td { border-bottom: 0 }
+th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); font-weight: 700 }
+th.w { color: var(--win) } th.m { color: var(--mac) }
+td:first-child { font-weight: 600; white-space: nowrap }
+td .same { color: var(--mut) }
+.res { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap }
+.res.ok { color: var(--ok) } .res.no { color: var(--bad) }
+.hl td { background: color-mix(in srgb, var(--accent) 9%, transparent) }
+
+ol.steps, ul.risks { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 90ch }
+ol.steps li::marker { font-weight: 700; color: var(--mut) }
+footer { color: var(--mut); font-size: 13px; max-width: 90ch }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="head">
+    <span class="eyebrow">Bản nháp · 17/10/2026 · nhánh hakienit/redesign-0.2</span>
+    <h1>Wisp 0.2 trên Windows và macOS</h1>
+    <p class="lead">Mục tiêu: một UI v2 (spec <span class="mono">docs/site/design.html</span>) chạy giống nhau trên hai hệ điều hành, cùng một codebase Python + Tk. Trang này đặt từng thành phần cạnh nhau, ghi cách dựng trên mỗi nền tảng và chỗ nhìn thấy được khác nhau. Hình mẫu là component thật của spec, chỉnh theo những gì mỗi nền tảng làm được.</p>
+    <div class="meta"><span class="pill w">Windows 10 / 11 · Tk 8.6</span><span class="pill m">macOS 11+ · Tk 8.6.15 aqua</span><span class="pill">Probe: GitHub Actions macos-14, run 39008417974</span></div>
+  </header>
+
+  <section class="comp" aria-labelledby="h-decide">
+    <h2 id="h-decide">Đề xuất</h2>
+    <div class="decide">
+      <div><b>Giữ Tk trên cả hai</b><span>Không đổi công nghệ. Chỉ lớp vẽ của cửa sổ nổi trên macOS là khác.</span></div>
+      <div><b>Windows: giữ nguyên</b><span>Island, bóng, panel đã chạy. Không đổi gì ngoài các fix gộp từ 0.1.8.</span></div>
+      <div><b>macOS: island + bóng tín hiệu</b><span>Cửa sổ đặc, CALayer cắt thành viên thuốc / đĩa. Dùng lại đúng ảnh và viền động của Windows.</span></div>
+      <div><b>macOS: bóng mascot</b><span>Vẽ bằng polygon của Canvas từ <span class="mono">vector.parse</span>, vì cần trong suốt thật quanh hình.</span></div>
+    </div>
+  </section>
+
+  <div class="ctl" role="toolbar" aria-label="Tuỳ chọn hình mẫu">
+    <div class="seg" id="c-theme"><span class="t">Giao diện Wisp</span></div>
+    <div class="seg" id="c-state"><span class="t">Trạng thái</span></div>
+    <div class="seg" id="c-upd"><span class="t">Có bản mới</span></div>
+  </div>
+
+  <section class="comp" aria-labelledby="h-isl">
+    <h2 id="h-isl">Island</h2>
+    <p class="lead">Viên thuốc giữa mép trên. Viền động theo trạng thái dựng sẵn thành khung ảnh, giống nhau trên hai nền tảng.</p>
+    <div class="pair">
+      <div class="side win"><span class="lab"><i></i>Windows</span><div class="screen win" data-k="isl"></div>
+        <ul class="how">
+          <li><b>Cửa sổ:</b> Toplevel <span class="mono">overrideredirect</span> + <span class="mono">-transparentcolor</span> (màu key).</li>
+          <li><b>Hình:</b> <span class="mono">vector.py</span> rasterize RGBA, <span class="mono">gfx._keyed</span> trộn mép với màu fringe <span class="mono">#0d0d11</span>, <span class="mono">PhotoImage.put</span>.</li>
+          <li><b>Vị trí:</b> giữa mép trên vùng làm việc, cách 6px. Không có bóng đổ.</li>
+        </ul></div>
+      <div class="side mac"><span class="lab"><i></i>macOS</span><div class="screen mac" data-k="isl"></div>
+        <ul class="how">
+          <li><b>Cửa sổ:</b> đặc, nền Canvas là màu island; <span class="mono">round_corners</span> đặt CALayer <span class="mono">cornerRadius = h/2</span> (probe ô 8).</li>
+          <li><b>Hình:</b> cùng khung ảnh như Windows, trộn lên nền đặc rồi <span class="mono">put()</span>.</li>
+          <li><b>Vị trí:</b> ngay dưới thanh menu. NSWindow level 25, trên panel; bóng đổ hệ thống theo hình cắt.</li>
+        </ul></div>
+    </div>
+    <p class="diff">Khác nhau: macOS có bóng đổ mềm và mép khử răng cưa thật; Windows mép là màu key nên có viền tối 1px khi đặt trên nền sáng.</p>
+  </section>
+
+  <section class="comp" aria-labelledby="h-sig">
+    <h2 id="h-sig">Bóng nổi · tín hiệu</h2>
+    <p class="lead">Đĩa kéo thả, góc phải dưới. 6 kiểu viền; chọn kiểu để xem.</p>
+    <div class="seg" id="c-sig"><span class="t">Kiểu</span></div>
+    <div class="pair">
+      <div class="side win"><span class="lab"><i></i>Windows</span><div class="screen win" data-k="sig"></div>
+        <ul class="how">
+          <li><b>Cửa sổ:</b> màu key như island; đĩa, viền và đèn là một ảnh <span class="mono">gfx.signal_rows</span>.</li>
+          <li><b>Huy hiệu bản mới:</b> nằm ngoài đĩa ở góc phải trên, đúng spec.</li>
+        </ul></div>
+      <div class="side mac"><span class="lab"><i></i>macOS</span><div class="screen mac" data-k="sig"></div>
+        <ul class="how">
+          <li><b>Cửa sổ:</b> đặc, CALayer cắt tròn (hoặc bo 26px cho kiểu Bo vuông). Ảnh như Windows trên nền đặc.</li>
+          <li><b>Huy hiệu bản mới:</b> mọi thứ ngoài hình cắt bị cắt mất, nên huy hiệu dời vào trong vòng, nhỏ hơn (20px).</li>
+        </ul></div>
+    </div>
+    <p class="diff">Khác nhau: vị trí huy hiệu bản mới. Kiểu Bo vuông dùng góc tròn 26px như spec, không phải squircle thật, nên hai bên giống nhau.</p>
+  </section>
+
+  <section class="comp" aria-labelledby="h-mb">
+    <h2 id="h-mb">Bóng nổi · mascot</h2>
+    <p class="lead">Mascot đứng trên chip, có biểu cảm và chuyển động theo trạng thái. Chọn mascot để xem.</p>
+    <div class="seg" id="c-mascot"><span class="t">Mascot</span></div>
+    <div class="pair">
+      <div class="side win"><span class="lab"><i></i>Windows</span><div class="screen win" data-k="mb"></div>
+        <ul class="how">
+          <li><b>Hình:</b> SVG trong <span class="mono">assets/mascots.json</span> rasterize thành ảnh; mỗi khung chuyển động (co giãn, xoay) là một ảnh trong cache.</li>
+          <li><b>Hiệu ứng:</b> zZ, bụi, sóng, pháo giấy là item của Canvas.</li>
+        </ul></div>
+      <div class="side mac"><span class="lab"><i></i>macOS</span><div class="screen mac" data-k="mb"></div>
+        <ul class="how">
+          <li><b>Hình:</b> cùng SVG, <span class="mono">vector.parse</span> ra polygon rồi <span class="mono">create_polygon</span> (probe ô 3). Chuyển động = đổi toạ độ bằng ma trận, không dựng ảnh.</li>
+          <li><b>Chip, icon đèn:</b> viên thuốc từ oval + rectangle, icon nét từ cùng đường SVG.</li>
+        </ul></div>
+    </div>
+    <p class="diff">Không khác về hình. Canvas aqua tự khử răng cưa. Cần đo CPU khi hoạt hình chạy liên tục.</p>
+  </section>
+
+  <section class="comp" aria-labelledby="h-panel">
+    <h2 id="h-panel">Panel</h2>
+    <p class="lead">Panel mở dưới island. Cửa sổ đặc nên ảnh trong panel hiện trên cả hai nền tảng (probe ô 5, 6).</p>
+    <div class="pair">
+      <div class="side win"><span class="lab"><i></i>Windows</span><div class="screen win" data-k="panel"></div>
+        <ul class="how">
+          <li><b>Bo góc:</b> Windows 11 qua DWM (<span class="mono">DWMWA_WINDOW_CORNER_PREFERENCE</span>), 8px, viền và bóng của DWM. Windows 10: góc vuông, viền 1px tự vẽ.</li>
+          <li><b>Cuộn:</b> <span class="mono">&lt;MouseWheel&gt;</span>, 120 = 72px.</li>
+        </ul></div>
+      <div class="side mac"><span class="lab"><i></i>macOS</span><div class="screen mac" data-k="panel"></div>
+        <ul class="how">
+          <li><b>Bo góc:</b> CALayer <span class="mono">cornerRadius 10</span>, viền 1px, bóng đổ (gọi Objective-C qua ctypes, không cần PyObjC).</li>
+          <li><b>Cuộn:</b> delta theo dòng, 1 = 12px (<span class="mono">WHEEL_PX_PER_DELTA</span>).</li>
+        </ul></div>
+    </div>
+    <p class="diff">Khác nhau: bán kính góc 8px và 10px theo chuẩn mỗi hệ điều hành; spec vẽ 18px. Nếu muốn đúng 18px ở cả hai thì Windows phải tự vẽ góc (mất bóng DWM).</p>
+  </section>
+
+  <section class="comp" aria-labelledby="h-menu">
+    <h2 id="h-menu">Menu và thông báo</h2>
+    <div class="pair">
+      <div class="side win"><span class="lab"><i></i>Windows</span><div class="screen win" data-k="menu"></div>
+        <ul class="how">
+          <li><b>Mở menu:</b> <span class="mono">&lt;Button-3&gt;</span>. Đóng khi bấm ra ngoài: đọc chuột toàn cục bằng <span class="mono">GetAsyncKeyState</span>.</li>
+          <li><b>Nổi trên cùng:</b> <span class="mono">-topmost</span>.</li>
+        </ul></div>
+      <div class="side mac"><span class="lab"><i></i>macOS</span><div class="screen mac" data-k="menu"></div>
+        <ul class="how">
+          <li><b>Mở menu:</b> <span class="mono">&lt;Button-2&gt;</span>, <span class="mono">&lt;Button-3&gt;</span>, Control-click; lần bấm đầu khi Wisp không active bắt bằng poll <span class="mono">CGEventSourceButtonState</span>.</li>
+          <li><b>Nổi trên cùng:</b> <span class="mono">app.float_top</span> đặt NSWindow level 26, trên island.</li>
+        </ul></div>
+    </div>
+    <p class="diff">Khác nhau: bán kính góc như panel. Glyph nhánh git là ⑂ trên macOS (⎇ của font hệ thống bị nghiêng).</p>
+  </section>
+
+  <section class="comp" aria-labelledby="h-probe">
+    <h2 id="h-probe">Bằng chứng từ probe</h2>
+    <p class="lead"><span class="mono">tools/mac_probe.py --shot</span> trên runner macos-14, Python 3.13.1 python.org, Tk 8.6.15. Desktop của runner màu đen, nên "không hiện" nghĩa là không có pixel nào được vẽ.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Ô</th><th>Cửa sổ</th><th>Cách vẽ</th><th>Kết quả</th><th>Dùng cho</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td>1</td><td>-transparent, Canvas nền systemTransparent</td><td>PhotoImage PNG alpha</td><td class="res no">Không hiện</td><td>Cách 0.2 đang vẽ island và bóng</td></tr>
+        <tr><td>2</td><td>như trên</td><td>PhotoImage put()</td><td class="res no">Không hiện</td><td></td></tr>
+        <tr><td>4</td><td>như trên</td><td>Label có ảnh</td><td class="res no">Không hiện</td><td></td></tr>
+        <tr><td>3</td><td>như trên</td><td>oval / polygon của Canvas</td><td class="res ok">Hiện</td><td>Bóng mascot macOS</td></tr>
+        <tr><td>9</td><td>-transparent, Canvas nền đặc</td><td>PNG alpha</td><td class="res ok">Hiện</td><td>Chứng minh lỗi nằm ở nền systemTransparent</td></tr>
+        <tr><td>5</td><td>đặc + round_corners</td><td>PNG alpha</td><td class="res ok">Hiện</td><td></td></tr>
+        <tr><td>6</td><td>đặc + round_corners</td><td>put()</td><td class="res ok">Hiện</td><td>Panel, menu, thông báo</td></tr>
+        <tr><td>7</td><td>đặc thường</td><td>PNG alpha</td><td class="res ok">Hiện</td><td>Đối chứng</td></tr>
+        <tr class="hl"><td>8</td><td>đặc + CALayer bo thành đĩa</td><td>PNG alpha</td><td class="res ok">Hiện, ngoài đĩa trong suốt</td><td>Island, bóng tín hiệu macOS</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="comp" aria-labelledby="h-tech">
+    <h2 id="h-tech">Công nghệ build</h2>
+    <p class="lead">Một codebase. Mọi chỗ gọi API riêng của hệ điều hành nằm trong <span class="mono">pet_tracker/platform/</span> (<span class="mono">win.py</span> / <span class="mono">mac.py</span>, cùng interface).</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Hạng mục</th><th class="w">Windows</th><th class="m">macOS</th></tr></thead>
+      <tbody>
+        <tr><td>Runtime</td><td>Python 3.13 (setup-python), Tk 8.6</td><td>Python 3.13.1 universal2 từ python.org, Tk 8.6.15 aqua</td></tr>
+        <tr><td>UI</td><td colspan="2"><span class="same">Chung: tkinter, hình vẽ bằng <span class="mono">vector.py</span> (Python thuần), font Archivo đóng gói kèm</span></td></tr>
+        <tr class="hl"><td>Cửa sổ nổi trong suốt</td><td><span class="mono">-transparentcolor</span> + ảnh keyed</td><td>Cửa sổ đặc + CALayer mask (island, bóng tín hiệu); polygon Canvas trên <span class="mono">-transparent</span> (mascot)</td></tr>
+        <tr><td>Bo góc panel / menu</td><td>DWM (Windows 11), 8px</td><td>CALayer qua Objective-C runtime + ctypes, 10pt</td></tr>
+        <tr><td>Mức nổi</td><td><span class="mono">-topmost</span></td><td>NSWindow <span class="mono">setLevel:</span> 25 (island, bóng), 26 (menu, thông báo)</td></tr>
+        <tr><td>Chuột toàn cục</td><td><span class="mono">GetAsyncKeyState</span>, <span class="mono">GetCursorPos</span></td><td><span class="mono">CGEventSourceButtonState</span>, <span class="mono">CGEventGetLocation</span> (không cần quyền)</td></tr>
+        <tr><td>Font</td><td><span class="mono">AddFontResourceEx</span> FR_PRIVATE</td><td><span class="mono">CTFontManagerRegisterFontsForURL</span>, scope process</td></tr>
+        <tr><td>Theme, ngôn ngữ, giảm chuyển động</td><td>Registry, <span class="mono">SystemParametersInfo</span></td><td><span class="mono">defaults read</span> (AppleInterfaceStyle, AppleLanguages, reduceMotion)</td></tr>
+        <tr><td>Đăng nhập Claude</td><td><span class="mono">~/.claude/.credentials.json</span></td><td>Keychain <span class="mono">Claude Code-credentials</span> qua <span class="mono">security</span>, dự phòng file</td></tr>
+        <tr><td>HTTPS</td><td>Kho chứng chỉ hệ thống</td><td>Bộ chứng chỉ <span class="mono">certifi</span> đóng gói kèm</td></tr>
+        <tr><td>Mở session</td><td>Tìm cửa sổ console theo cây process, đưa lên trước</td><td>Terminal.app / iTerm2 theo tty qua <span class="mono">osascript</span>; Claude desktop qua deep link</td></tr>
+        <tr><td>Chạy cùng máy</td><td>Registry <span class="mono">HKCU\…\CurrentVersion\Run</span></td><td>LaunchAgent <span class="mono">sg.vinova.wisp</span></td></tr>
+        <tr><td>Một bản duy nhất</td><td>Named mutex</td><td>File lock + Unix socket</td></tr>
+        <tr><td>Đóng gói</td><td>PyInstaller 6.22.3 <span class="mono">--onedir --noconsole</span>, zip <span class="mono">win-x64</span></td><td>PyInstaller <span class="mono">--windowed --target-arch universal2</span>, <span class="mono">Wisp.app</span> trong dmg</td></tr>
+        <tr><td>Ký số</td><td>Không ký code; SHA256SUMS ký ed25519</td><td>Ký ad-hoc, chưa notarize (Gatekeeper cảnh báo lần đầu); SHA256SUMS ký ed25519</td></tr>
+        <tr><td>Cài đặt</td><td><span class="mono">install.ps1</span> (irm | iex)</td><td><span class="mono">install.sh</span> (curl | bash)</td></tr>
+        <tr><td>Cập nhật</td><td>Một chạm: tải, kiểm SHA256, script PowerShell thay thư mục</td><td>Mở trang release (chưa tự cập nhật)</td></tr>
+        <tr><td>CI</td><td>windows-latest</td><td>macos-14 (build), workflow <span class="mono">mac-probe</span> để kiểm cách vẽ</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="comp" aria-labelledby="h-risk">
+    <h2 id="h-risk">Rủi ro chưa kiểm</h2>
+    <ul class="risks">
+      <li>Probe chạy ở màn hình 1x. Retina (2x) chưa kiểm: ảnh có thể mờ vì Tk aqua tính theo point.</li>
+      <li>Máy dev hiện chạy Tk 9.0.4, bản release dùng Tk 8.6. Lỗi chỉ có trên một bản Tk sẽ không thấy khi chạy local.</li>
+      <li>Bóng mascot bằng polygon: chưa đo CPU; mascot có nét (stroke) phải tách thành polygon, có thể lệch nhẹ so với ảnh Windows.</li>
+      <li>Thông báo và menu được nâng level bằng cách tìm cửa sổ theo tiêu đề tạm; chưa thử khi nhiều thông báo mở cùng lúc.</li>
+      <li>Bản macOS chưa notarize: người dùng phải mở bằng chuột phải → Open lần đầu.</li>
+    </ul>
+  </section>
+
+  <section class="comp" aria-labelledby="h-next">
+    <h2 id="h-next">Các bước nếu duyệt</h2>
+    <ol class="steps">
+      <li>macOS: island và bóng tín hiệu chuyển sang cửa sổ đặc + <span class="mono">round_corners</span> với bán kính theo hình; dời huy hiệu bản mới vào trong.</li>
+      <li>macOS: bộ vẽ polygon cho bóng mascot, chip và icon đèn, dùng <span class="mono">vector.parse</span>.</li>
+      <li>Mở rộng workflow probe: chạy chính Wisp với dữ liệu mẫu trên macos-14 và windows-latest, chụp island, bóng, panel để so pixel.</li>
+      <li>Push <span class="mono">hakienit/redesign-0.2</span>, mở PR vào main, xoá nhánh <span class="mono">probe/mac-render</span>.</li>
+    </ol>
+  </section>
+
+  <footer>Hình mẫu dựng từ <span class="mono">docs/site/assets/wisp-ui.js</span> (spec 0.2) bằng CSS, chỉnh theo từng nền tảng; bản app vẽ bằng tkinter nên gần giống, không giống hệt. Nền màn hình chỉ để minh hoạ.</footer>
+</div>
+
+<script src="assets/wisp-ui.js"></script>
+<script>
+const SAMPLE = { theme: 'dark', state: 'wait', upd: false, sig: 's01', mascot: 'm01' };
+const STATES = [['idle', 'Rảnh'], ['run', 'Đang chạy'], ['wait', 'Cần bạn'], ['done', 'Xong'], ['quota', 'Gần hết quota']];
+const PICK_MASCOTS = MASCOTS.slice(0, 6);
+
+function segButtons(id, items, key) {
+  const box = document.getElementById(id);
+  box.querySelectorAll('button').forEach((b) => b.remove());
+  for (const [v, lab] of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = lab;
+    b.setAttribute('aria-pressed', String(SAMPLE[key] === v));
+    b.addEventListener('click', () => { SAMPLE[key] = v; draw(); });
+    box.appendChild(b);
+  }
+}
+
+function screen(os, inner, opts = {}) {
+  const top = os === 'mac' ? '<div class="menubar"><span class="dot"></span><span>Terminal</span><span>Shell</span><span>Edit</span><span class="r">Th 7 17 thg 10 · 14:32</span></div>' : '';
+  const bottom = os === 'win' ? '<div class="taskbar"><i></i><i></i><i></i><i></i><i></i><span class="clock">14:32<br>17/10/2026</span></div>' : '';
+  return top + `<div class="desk ${opts.tall ? 'tall' : ''}">${inner}</div>` + bottom;
+}
+
+function draw() {
+  const t = T[SAMPLE.theme], v = SAMPLE.state, upd = SAMPLE.upd;
+  segButtons('c-theme', [['dark', 'Tối'], ['light', 'Sáng']], 'theme');
+  segButtons('c-state', STATES, 'state');
+  segButtons('c-upd', [[false, 'Không'], [true, 'Có']], 'upd');
+  segButtons('c-sig', SIG.map((s) => [s.id, s.vi]), 'sig');
+  segButtons('c-mascot', PICK_MASCOTS.map((m) => [m.id, m.vi]), 'mascot');
+  MASCOT = SAMPLE.mascot;
+  BUBTYPE = 'mascot';
+  const sv = SIG.find((x) => x.id === SAMPLE.sig) || SIG[0];
+  const parts = {
+    isl: () => `<div class="isl-host">${island(v, t, upd)}</div>`,
+    sig: () => `<div class="corner sig-host ${sv.sq ? 'sq' : ''}">${sigBubble(sv, v, t, upd)}</div>`,
+    mb: () => `<div class="corner">${mascotBubble(SAMPLE.mascot, v, t)}</div>`,
+    panel: () => `<div class="isl-host">${island(v, t, upd)}</div><div class="panel-host scale">${panel(t)}</div>`,
+    menu: () => `<div class="isl-host">${island(v, t, upd)}</div><div class="toast-host scale">${toasts(t)}</div><div class="menu-host scale">${menus(t)}</div>`,
+  };
+  document.querySelectorAll('.screen').forEach((el) => {
+    const os = el.classList.contains('mac') ? 'mac' : 'win';
+    const k = el.dataset.k;
+    el.classList.toggle('light', SAMPLE.theme === 'light');
+    el.innerHTML = screen(os, parts[k](), { tall: k === 'sig' || k === 'mb' });
+  });
+  // menu: chỉ giữ menu chuột phải island (cột cuối) và một thông báo, cho gọn
+  document.querySelectorAll('.menu-host > div').forEach((row) => {
+    [...row.children].forEach((c, i, all) => { if (i < all.length - 1) c.remove(); });
+  });
+  document.querySelectorAll('.toast-host').forEach((h) => {
+    [...h.children].forEach((c, i) => { if (i > 0) c.remove(); });
+  });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lane]');
+  if (b && handleCustomize(b)) draw();
+});
+draw();
+</script>
+</body>
+</html>

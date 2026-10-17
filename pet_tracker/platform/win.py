@@ -17,7 +17,7 @@ from .win_update import launch_swap
 __all__ = [
     "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS", "WHEEL_PX_PER_DELTA",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
-    "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
+    "make_transparent", "round_corners", "clip_round", "state_dir", "open_path", "process_alive", "read_credentials",
     "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
@@ -104,6 +104,11 @@ def transparent_key():
 def make_transparent(toplevel) -> None:
     toplevel.attributes("-transparentcolor", _TRANSPARENT_KEY)
     toplevel.configure(bg=_TRANSPARENT_KEY)
+
+
+def clip_round(win, radius, border_hex=None) -> bool:
+    """Chỉ macOS cần (xem mac.clip_round): Windows vẽ island / bóng bằng màu key."""
+    return False
 
 
 def round_corners(win, border_hex: str) -> bool:
