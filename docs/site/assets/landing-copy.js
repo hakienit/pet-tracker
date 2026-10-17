@@ -5,6 +5,8 @@ const WIN_ZIP = REPO + '/releases/latest/download/wisp-win-x64.zip';
 const MAC_DMG = REPO + '/releases/latest/download/wisp-macos-universal2.dmg';
 const WIN_CMD = 'irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex';
 const MAC_CMD = 'curl -fsSL https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.sh | bash';
+const WIN_CMD2 = `powershell -NoProfile -c "${WIN_CMD}"`;  // cùng lệnh, gõ được từ cmd và Git Bash
+const CMDS = { win: WIN_CMD, cmd: WIN_CMD2, mac: MAC_CMD };
 
 const LC = {
   en: {
@@ -31,7 +33,7 @@ const LC = {
     mH: '40 mascots, five moods', mL: 'Idle, running, needs you, done and quota low. Click one to try it.',
     pH: 'The panel', pL: 'Grouped by what each session needs from you. Context, model and effort on every card.',
     inH: 'Install in one line', inL: 'Downloads the latest release, checks its SHA256 and starts Wisp. Run it again to update. Requires Claude Code, signed in.',
-    win: 'Windows 10/11 · PowerShell', mac: 'macOS · Terminal (beta)', manual: 'Manual download',
+    win: 'Windows 10/11 · PowerShell', win2: 'Windows · cmd / Git Bash', mac: 'macOS · Terminal (beta)', manual: 'Manual download',
     prH: 'Private by design', prL: 'Wisp reads Claude Code data on your machine only. Your login token goes only to api.anthropic.com for quota. Hooks post to 127.0.0.1.',
     stats: [['40', 'mascots'], ['6', 'signal styles'], ['2', 'languages'], ['0', 'accounts needed']],
     bento: { island: 'Island', panel: 'Panel', bubble: 'Bubble', mascot: 'Mascot bubble', toast: 'Notifications', quota: 'Forecast',
@@ -66,7 +68,7 @@ const LC = {
     mH: '40 mascot, năm biểu cảm', mL: 'Rảnh, đang chạy, cần bạn, xong và gần hết quota. Bấm một mascot để thử.',
     pH: 'Panel', pL: 'Xếp theo việc mỗi session cần từ bạn. Card nào cũng có context, model và effort.',
     inH: 'Cài bằng một dòng', inL: 'Tải bản mới nhất, kiểm SHA256 rồi mở Wisp. Chạy lại để cập nhật. Cần Claude Code đã đăng nhập.',
-    win: 'Windows 10/11 · PowerShell', mac: 'macOS · Terminal (thử nghiệm)', manual: 'Tải tay',
+    win: 'Windows 10/11 · PowerShell', win2: 'Windows · cmd / Git Bash', mac: 'macOS · Terminal (thử nghiệm)', manual: 'Tải tay',
     prH: 'Riêng tư từ đầu', prL: 'Wisp chỉ đọc dữ liệu Claude Code trên máy bạn. Token chỉ gửi tới api.anthropic.com để lấy quota. Hooks chỉ gửi tới 127.0.0.1.',
     stats: [['40', 'mascot'], ['6', 'kiểu tín hiệu'], ['2', 'ngôn ngữ'], ['0', 'tài khoản cần tạo']],
     bento: { island: 'Island', panel: 'Panel', bubble: 'Bóng nổi', mascot: 'Bóng mascot', toast: 'Thông báo', quota: 'Dự báo',
@@ -119,14 +121,14 @@ function demoLoop(onStep, ms = 2800) {
 const ICON_COPY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>';
 const ICON_OK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function copyBtn(cmd, cls = '') {
-  return `<button class="cp ${cls}" data-copy="${cmd === WIN_CMD ? 'win' : 'mac'}" aria-label="${C().copy}" title="${C().copy}">${ICON_COPY}</button>`;
+  return `<button class="cp ${cls}" data-copy="${Object.keys(CMDS).find((k) => CMDS[k] === cmd)}" aria-label="${C().copy}" title="${C().copy}">${ICON_COPY}</button>`;
 }
 function wireCopy(root = document) {
   root.addEventListener('click', (e) => {
     const b = e.target.closest('[data-copy]');
     if (!b) return;
     e.stopPropagation();
-    const txt = b.dataset.copy === 'win' ? WIN_CMD : MAC_CMD;
+    const txt = CMDS[b.dataset.copy];
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => {
       b.innerHTML = ICON_OK;
       b.classList.add('ok');

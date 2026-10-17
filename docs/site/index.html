@@ -145,7 +145,7 @@ function render() {
   document.getElementById('brand').innerHTML = `${mascot(MASCOT, 26, 'run', t, '')}wisp<small>@0.2</small>`;
   document.getElementById('links').innerHTML = ['#features', '#custom', '#mascots', '#install'].map((h, i) => `<a href="${h}">${c.links[i].toLowerCase()}</a>`).join('') + `<a href="${REPO}">github</a>`;
   document.getElementById('lang').innerHTML = langSwitch('seg');
-  const cmd = OS === 'win' ? WIN_CMD : MAC_CMD;
+  const cmd = CMDS[OS];
   const st = BUBTYPE === 'mascot' ? ['idle', 'run', 'wait', 'done', 'quota'] : ['idle', 'run', 'wait', 'quota'];
   document.getElementById('top').innerHTML = `
   <div class="wrap hero" data-shot="hero"><div>
@@ -159,7 +159,7 @@ function render() {
       <div class="steps" id="steps"></div>
       <div class="free m" id="cap"></div>
   </div><div class="wide">
-      <div class="term-cmd"><div class="tabs">${[['win', 'PowerShell'], ['mac', 'zsh · macOS']].map(([k, n]) => `<button data-os="${k}" aria-pressed="${OS === k}">${n}</button>`).join('')}${copyBtn(cmd)}</div><pre class="m">${cmdHL(cmd)}</pre></div>
+      <div class="term-cmd"><div class="tabs">${[['win', 'PowerShell'], ['cmd', 'cmd · Git Bash'], ['mac', 'zsh · macOS']].map(([k, n]) => `<button data-os="${k}" aria-pressed="${OS === k}">${n}</button>`).join('')}${copyBtn(cmd)}</div><pre class="m">${cmdHL(cmd)}</pre></div>
   </div></div>
   <section id="features" data-shot="features"><div class="wrap"><div class="h2"><span class="n">01</span><h2>${c.fH}</h2><p>${c.fL}</p></div>
     <div class="man">${c.feats.map(([icn, col, h, p]) => `<div><span class="ic" style="background:${t[col]}1c;color:${t[col]}">${ic(icn, 18, 2.2)}</span><span><b>${h}</b><p>${p}</p></span></div>`).join('')}</div></div></section>
@@ -168,7 +168,7 @@ function render() {
   <section id="mascots" data-shot="mascots"><div class="wrap"><div class="h2"><span class="n">03</span><h2>${c.mH}</h2><p>${c.mL}</p></div>
     <div class="mgrid">${MASCOTS.map((m) => `<button data-m="${m.id}" aria-pressed="${m.id === MASCOT}" title="${m[LANG]}">${mascot(m.id, 52, m.id === MASCOT ? 'done' : 'run', t, m.id === MASCOT ? 'm-done' : '')}<span class="ell" style="max-width:84px">${m.id}</span></button>`).join('')}</div></div></section>
   <section id="install" data-shot="install"><div class="wrap"><div class="h2"><span class="n">04</span><h2>${c.inH}</h2><p>${c.inL}</p></div>
-    <div class="inst"><article><h3># ${c.win}</h3>${cmdBlock(WIN_CMD)}<div class="row"><a href="${WIN_ZIP}">${c.manual}</a></div></article>
+    <div class="inst"><article><h3># ${c.win}</h3>${cmdBlock(WIN_CMD)}<h3># ${c.win2}</h3>${cmdBlock(WIN_CMD2)}<div class="row"><a href="${WIN_ZIP}">${c.manual}</a></div></article>
     <article><h3># ${c.mac}</h3>${cmdBlock(MAC_CMD)}<div class="row"><a href="${MAC_DMG}">${c.manual}</a></div></article></div>
     <div class="priv"><b>// ${c.prH}</b><br>${c.prL}</div></div></section>`;
   document.getElementById('foot').innerHTML = `<span>${c.foot}</span><span>${footLinks()}</span>`;
