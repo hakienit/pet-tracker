@@ -188,18 +188,18 @@ cập nhật một chạm với app giả), `tools/mac_probe.py` (cách vẽ nà
 các kiểu bóng thật với dữ liệu mẫu), rồi đẩy ảnh chụp về `probe-out/` của nhánh đó. `tools/ui_shot.py` chạy được
 cả trên Windows để so.
 
-Còn cần test trên Mac thật (một phần đánh dấu `TODO(mac)` trong `pet_tracker/platform/mac.py`):
+Đã kiểm trên runner (Apple Silicon và Intel): vùng dùng được theo `NSScreen.visibleFrame`, nạp font Archivo, đọc
+Keychain đúng cách Claude Code lưu (account `claude-code-user`, secret chia mảnh), so `procStart` với
+`ps -o lstart=`, cập nhật một chạm với app giả.
+
+Còn cần test trên Mac thật:
 
 1. Màn hình Retina: ảnh có mờ không (runner chỉ có màn hình 1x); island nổi trên app full-screen và khi đổi Space.
-2. Tên service Keychain của Claude Code (`security dump-keychain | grep -i claude`) và định dạng JSON
-   lưu trong đó; quota hiện đúng.
-3. Định dạng `sessions/<pid>.json` trên macOS (`pid`, `procStart`, `entrypoint`, `hostSessionId`).
-4. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
-   nhận deep link `claude://code/continue?session=local_…`.
-5. Cập nhật một chạm với `Wisp.app` cài thật trong `/Applications`.
-6. Font Archivo nạp được, vùng dưới thanh menu đúng (`MENU_BAR_PT`).
-7. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
-8. `.dmg` từ GitHub Actions mở được trên cả Apple Silicon và Intel.
+2. Quota với tài khoản thật: lần đầu macOS hỏi quyền Keychain, sau đó quota hiện đúng.
+3. Click session: Terminal.app, iTerm2 chọn đúng tab; VS Code / Cursor được đưa lên; Claude desktop
+   nhận deep link `claude://code/continue?session=local_…` (thử bằng `open "claude://code/continue?session=local_…"`).
+4. Cập nhật một chạm với `Wisp.app` cài thật trong `/Applications`.
+5. LaunchAgent: bật, đăng xuất/đăng nhập lại, app tự mở; tắt thì không mở.
 
 ## Cấu hình
 
