@@ -391,11 +391,14 @@ def _keychain_services() -> list:
 def keychain_json(service: str):
     """JSON Claude Code lưu trong Keychain, hoặc None. Secret dài được chia mảnh: account "<acc>#m" giữ {"n": số
     mảnh}, "<acc>#0".."#n-1" là base64 ghép lại. Thử thêm không có account (bản Claude Code cũ)."""
-    for raw in (_keychain(service, KEYCHAIN_ACCOUNT), _keychain(service)):
+    for raw, need_key in ((_keychain(service, KEYCHAIN_ACCOUNT), False), (_keychain(service), True)):
         try:
-            return json.loads(raw)
+            d = json.loads(raw)
         except ValueError:
-            pass
+            continue
+        # không có account thì security trả mục đầu tiên của service, có thể là mục "#m" của bản chia mảnh
+        if isinstance(d, dict) and (not need_key or "claudeAiOauth" in d):
+            return d
     meta = _keychain(service, KEYCHAIN_ACCOUNT + "#m")
     if not meta:
         return None
