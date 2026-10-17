@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-17
+
 ### Fixed
 - macOS: vùng đặt island, bóng, panel và thông báo lấy từ `NSScreen.visibleFrame` (trừ đúng thanh menu và Dock, theo
   từng màn hình) thay cho thanh menu cố định 25pt và bỏ qua Dock.
@@ -219,7 +221,8 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/hakienit/pet-tracker/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...v0.1.8
