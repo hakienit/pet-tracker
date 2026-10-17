@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 __all__ = [
@@ -43,14 +44,16 @@ CAN_SELF_UPDATE = True          # mở dmg, script bash thay Wisp.app khi app th
 
 BUNDLE_ID = "sg.vinova.wisp"
 LEGACY_BUNDLE_ID = "sg.vinova.pet-tracker"  # tên cũ (Claude PET): LaunchAgent cũ được đổi sang tên mới
-# TODO(mac): xác minh tên service Keychain mà Claude Code dùng (`security dump-keychain | grep -i claude`).
-KEYCHAIN_SERVICES = ("Claude Code-credentials",)
+# Keychain của Claude Code (đọc từ code của Claude Code 2.1.302): service "Claude Code-credentials", thêm
+# "-<8 hex đầu sha256 của thư mục config>" khi đặt CLAUDE_CONFIG_DIR; account cố định "claude-code-user".
+KEYCHAIN_SERVICE = "Claude Code-credentials"
+KEYCHAIN_ACCOUNT = "claude-code-user"
 CORNER_RADIUS = 10.0            # bo góc panel (macOS 11+ dùng 10pt cho cửa sổ thường)
 MENU_BAR_PT = 25                # dự phòng khi không đọc được NSScreen.visibleFrame
 
 
-def _run(args, timeout=5.0) -> subprocess.CompletedProcess:
-    return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+def _run(args, timeout=5.0, env=None) -> subprocess.CompletedProcess:
+    return subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=env)
 
 
 # ---------------------------------------------------------------- giao diện hệ thống
@@ -333,30 +336,84 @@ def open_path(target) -> None:
     subprocess.Popen(["open", str(target)])
 
 
+_lstart_cache: dict = {}  # pid -> (lúc đọc, chuỗi lstart): không gọi ps cho mỗi session mỗi 3 giây
+
+
+def _lstart(pid: int) -> str:
+    """Giờ bắt đầu của process đúng như Claude Code ghi vào procStart: `ps -o lstart=` với LC_ALL=C TZ=UTC."""
+    now = time.time()
+    hit = _lstart_cache.get(pid)
+    if hit and now - hit[0] < 60:
+        return hit[1]
+    r = _run(["ps", "-o", "lstart=", "-p", str(pid)], env=dict(os.environ, LC_ALL="C", TZ="UTC"))
+    out = r.stdout.strip() if r.returncode == 0 else ""
+    _lstart_cache[pid] = (now, out)
+    return out
+
+
 def process_alive(pid: int, proc_start=None) -> bool:
-    # TODO(mac): procStart trong sessions/<pid>.json trên macOS có định dạng gì? Chưa so để loại pid tái sử dụng.
+    """pid còn chạy và (nếu có procStart) đúng là process đã ghi file session, không phải pid bị dùng lại."""
     try:
-        os.kill(int(pid), 0)
-        return True
+        pid = int(pid)
+        os.kill(pid, 0)
     except PermissionError:
-        return True
+        pass
     except (ProcessLookupError, OSError, ValueError):
+        _lstart_cache.pop(pid, None)
         return False
+    if not isinstance(proc_start, str) or not proc_start.strip():
+        return True
+    try:
+        return _lstart(pid) == proc_start.strip()
+    except Exception:
+        return True  # không chạy được ps: coi như còn sống như trước
+
+
+def _keychain(service: str, account=None) -> str:
+    args = ["security", "find-generic-password", "-s", service, "-w"] + (["-a", account] if account else [])
+    try:
+        r = _run(args, timeout=10)
+    except Exception:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _keychain_services() -> list:
+    import hashlib
+    import unicodedata
+    d = os.environ.get("CLAUDE_SECURESTORAGE_CONFIG_DIR") or os.environ.get("CLAUDE_CONFIG_DIR")
+    out = [KEYCHAIN_SERVICE]
+    if d:  # shortcut: băm đúng chuỗi trong biến môi trường; nếu Claude Code chuẩn hoá đường dẫn khác thì rơi về tên gốc
+        out.insert(0, f"{KEYCHAIN_SERVICE}-{hashlib.sha256(unicodedata.normalize('NFC', d).encode()).hexdigest()[:8]}")
+    return out
+
+
+def keychain_json(service: str):
+    """JSON Claude Code lưu trong Keychain, hoặc None. Secret dài được chia mảnh: account "<acc>#m" giữ {"n": số
+    mảnh}, "<acc>#0".."#n-1" là base64 ghép lại. Thử thêm không có account (bản Claude Code cũ)."""
+    for raw in (_keychain(service, KEYCHAIN_ACCOUNT), _keychain(service)):
+        try:
+            return json.loads(raw)
+        except ValueError:
+            pass
+    meta = _keychain(service, KEYCHAIN_ACCOUNT + "#m")
+    if not meta:
+        return None
+    try:
+        import base64
+        n = int(json.loads(meta)["n"])
+        parts = [_keychain(service, f"{KEYCHAIN_ACCOUNT}#{i}") for i in range(n)]
+        return json.loads(base64.b64decode("".join(parts)))
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def read_credentials(claude_dir: str) -> dict:
     """Object claudeAiOauth: macOS lưu trong Keychain (lần đầu hệ thống hỏi quyền), dự phòng file."""
-    for svc in KEYCHAIN_SERVICES:
-        try:
-            r = _run(["security", "find-generic-password", "-s", svc, "-w"], timeout=10)
-        except Exception:
-            continue
-        if r.returncode == 0 and r.stdout.strip():
-            try:
-                d = json.loads(r.stdout.strip())
-                return d.get("claudeAiOauth") or d
-            except ValueError:
-                pass
+    for svc in _keychain_services():
+        d = keychain_json(svc)
+        if isinstance(d, dict) and d:
+            return d.get("claudeAiOauth") or d
     p = Path(claude_dir) / ".credentials.json"
     try:
         d = json.loads(p.read_text(encoding="utf-8"))

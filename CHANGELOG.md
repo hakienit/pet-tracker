@@ -9,6 +9,9 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 ### Fixed
 - macOS: vùng đặt island, bóng, panel và thông báo lấy từ `NSScreen.visibleFrame` (trừ đúng thanh menu và Dock, theo
   từng màn hình) thay cho thanh menu cố định 25pt và bỏ qua Dock.
+- macOS: đọc token Claude Code trong Keychain đúng như Claude Code lưu: account `claude-code-user`, service có hậu tố
+  khi đặt `CLAUDE_CONFIG_DIR`, và secret dài bị chia mảnh (trước đó có thể đọc nhầm mảnh rồi báo chưa đăng nhập).
+- macOS: session có pid bị tiến trình khác dùng lại không còn hiện là đang chạy (so `procStart` với `ps -o lstart=`).
 - Windows: vòng sóng phía sau mascot (trạng thái cần bạn) hiện đủ; trước đó vùng trong suốt của ảnh mascot che mất.
 
 ## [0.2.1] - 2026-10-17
