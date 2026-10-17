@@ -1,5 +1,6 @@
 """Island: viên thuốc ghim giữa mép trên màn hình. Trái: % quota. Phải: đèn cần bạn · đang chạy · xong, mũi tên
-xanh khi có bản mới. Viền chạy theo trạng thái chung (states.headline). Đổi độ rộng có animation."""
+xanh khi có bản mới. Viền chạy theo trạng thái chung (states.headline). Đổi độ rộng có animation.
+Windows: cửa sổ màu key. macOS: Canvas nền đặc màu island, cửa sổ cắt thành viên thuốc (plat.clip_round)."""
 from __future__ import annotations
 
 import math
@@ -19,7 +20,7 @@ class Island:
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
         plat.make_transparent(self.win)
-        self.canvas = tk.Canvas(self.win, bg="systemTransparent" if gfx.ALPHA else plat.transparent_key(),
+        self.canvas = tk.Canvas(self.win, bg=k.P["isl"] if gfx.ALPHA else plat.transparent_key(),
                                 highlightthickness=0, bd=0, cursor="hand2")
         self.canvas.pack()
         self.bg_item = self.canvas.create_image(0, 0, anchor="nw")
@@ -28,6 +29,7 @@ class Island:
         self.anim = None
         self.view = None
         self._tween = None
+        self._clipped = False
         self.canvas.bind("<ButtonRelease-1>", lambda e: app.toggle_panel())
         for ev in plat.RIGHT_CLICK_EVENTS:
             self.canvas.bind(ev, lambda e: app.menus.island_menu(e.x_root, e.y_root))
@@ -41,6 +43,8 @@ class Island:
             return
         self.view = key
         k, P = self.app.kit, self.app.kit.P
+        if gfx.ALPHA:
+            self.canvas.configure(bg=P["isl"])  # đổi theme
         f_num, f_lamp = k.f["title"], k.f["lamp"]
         pad, gap = k.px(15), k.px(12)
         pct_txt = "–" if v["pct"] is None else f"{v['pct']:.0f}%"
@@ -75,7 +79,8 @@ class Island:
         P = self.app.kit.P
         self.canvas.itemconfigure(self.bg_item, image=self.app.kit.image(
             ("isl-plain", cur, self.h, P["isl"]), lambda: gfx.shape_rows(cur, self.h, self.h / 2, P["isl"],
-                                                                         P["discBd"] if P["name"] == "light" else None)))
+                                                                         P["discBd"] if P["name"] == "light" else None),
+            P["isl"] if gfx.ALPHA else None))
         self.canvas.delete("fg")
         return True
 
@@ -88,7 +93,8 @@ class Island:
         a = k.cache.get(akey)
         if a is None:
             base = gfx.shape_rows(w, self.h, self.h / 2, P["isl"], P["discBd"] if P["name"] == "light" else None)
-            a = k.cache[akey] = gfx.Animated(self.app.root, base, self.h / 2, k.px(2.5), state, P, bg=None,
+            a = k.cache[akey] = gfx.Animated(self.app.root, base, self.h / 2, k.px(2.5), state, P,
+                                             bg=P["isl"] if gfx.ALPHA else None,
                                              fringe=P["fringe"])
         self.anim = a
         period = P["ab"][state][3]
@@ -122,13 +128,13 @@ class Island:
         x += k.px(1) + gap
         for (name, col, n), lw in zip(lamps, lamp_w):
             color = col if n else P["dim"]
-            c.create_image(x, mid, anchor="w", image=k.icon(name, 14, color, None if gfx.ALPHA else P["isl"], 2.2),
+            c.create_image(x, mid, anchor="w", image=k.icon(name, 14, color, P["isl"], 2.2),
                            tags="fg")
             c.create_text(x + ic + k.px(4), mid, text=str(n), anchor="w", fill=color, font=k.f["lamp"],
                           tags=("fg", "lamp-run") if name == "run" and n else "fg")
             x += lw + gap
         if v["update"]:
-            c.create_image(x, mid, anchor="w", image=k.icon("dl", 14, P["upd"], None if gfx.ALPHA else P["isl"], 2.4),
+            c.create_image(x, mid, anchor="w", image=k.icon("dl", 14, P["upd"], P["isl"], 2.4),
                            tags="fg")
 
     def _place(self, w: int) -> None:
@@ -137,11 +143,19 @@ class Island:
         y = t + self.app.kit.px(6)
         self.canvas.configure(width=w, height=self.h)
         self.win.geometry(f"{w}x{self.h}+{x}+{y}")
+        self._clip()
+
+    def _clip(self) -> None:
+        """macOS: cắt cửa sổ thành viên thuốc. Chỉ làm được khi NSWindow đã có (cửa sổ từng hiện), nên thử lại tới khi
+        được; bán kính không đổi khi island đổi rộng."""
+        if gfx.ALPHA and not self._clipped:
+            self._clipped = plat.clip_round(self.win, self.h / 2)
 
     # ---------------------------------------------------------------- hiển thị
     def show(self) -> None:
         self.win.deiconify()
         self.win.attributes("-topmost", True)
+        self._clip()
 
     def hide(self) -> None:
         self.win.withdraw()

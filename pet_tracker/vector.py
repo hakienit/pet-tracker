@@ -278,9 +278,10 @@ def _stroke_polys(sub, closed, width, cap):
 
 
 # ---------------------------------------------------------------- phân tích SVG
-def parse(svg: str, hue: float = 0.0) -> list:
-    """SVG (chuỗi các thẻ) -> [(đa giác[], (r, g, b), opacity)] theo thứ tự vẽ. hue: xoay màu (độ)."""
-    shapes = []
+def items(svg: str, hue: float = 0.0) -> list:
+    """SVG -> hình theo thứ tự vẽ, nét chưa đổi thành đa giác (Canvas của Tk vẽ nét bằng create_line):
+    ("fill", đa giác[], (r, g, b), opacity) | ("stroke", [(điểm[], kín)], (r, g, b), opacity, rộng, cap)."""
+    out = []
     for tag, attr_s in _TAG.findall(svg):
         A = dict(_ATTR.findall(attr_s))
         num = lambda k, dflt=0.0: float(A.get(k, dflt))  # noqa: E731
@@ -297,15 +298,32 @@ def parse(svg: str, hue: float = 0.0) -> list:
         op = float(A.get("opacity", 1.0))
         fill = parse_color(A.get("fill", "#000000"))
         if fill is not None:
-            shapes.append(([p for p, _ in subs if len(p) > 2], hue_rotate(fill, hue), op))
+            out.append(("fill", [p for p, _ in subs if len(p) > 2], hue_rotate(fill, hue), op))
         stroke = parse_color(A.get("stroke"))
         sw = float(A.get("stroke-width", 1.0)) * math.sqrt(abs(m[0] * m[3] - m[1] * m[2]))
         if stroke is not None and sw > 0:
-            polys = []
-            for p, closed in subs:
-                polys.extend(_stroke_polys(p, closed, sw, A.get("stroke-linecap", "butt")))
-            shapes.append((polys, hue_rotate(stroke, hue), op))
+            out.append(("stroke", subs, hue_rotate(stroke, hue), op, sw, A.get("stroke-linecap", "butt")))
+    return out
+
+
+def parse(svg: str, hue: float = 0.0) -> list:
+    """SVG (chuỗi các thẻ) -> [(đa giác[], (r, g, b), opacity)] theo thứ tự vẽ. hue: xoay màu (độ)."""
+    shapes = []
+    for it in items(svg, hue):
+        if it[0] == "fill":
+            shapes.append(it[1:])
+            continue
+        _, subs, col, op, sw, cap = it
+        polys = []
+        for p, closed in subs:
+            polys.extend(_stroke_polys(p, closed, sw, cap))
+        shapes.append((polys, col, op))
     return shapes
+
+
+def transform(m, pts) -> list:
+    """Áp ma trận affine m lên danh sách điểm."""
+    return _apply(m, pts)
 
 
 # ---------------------------------------------------------------- tô

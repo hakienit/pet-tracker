@@ -1,6 +1,8 @@
 """Bóng nổi kéo thả. Hai kiểu (Cài đặt → Bóng nổi):
 - tín hiệu: đĩa + 1 trong 6 kiểu viền / thanh quota, giữa là % và ba đèn; viền động theo trạng thái.
 - mascot: mascot chính là bóng, biểu cảm + chuyển động theo trạng thái, chip dưới chân (3 kiểu).
+macOS: ảnh trên Canvas nền trong suốt không hiện (Tk 8.6), nên bóng tín hiệu là Canvas nền đặc trong cửa sổ cắt theo
+hình (plat.clip_round), còn mascot, chip và huy hiệu bản mới vẽ bằng polygon / line (gfx.draw_items).
 """
 from __future__ import annotations
 
@@ -8,7 +10,7 @@ import math
 import time
 import tkinter as tk
 
-from .. import mascots
+from .. import mascots, vector
 from .. import platform as plat
 from ..config import save_state
 from . import gfx
@@ -31,6 +33,7 @@ class Bubble:
         self._drag = None
         self._moved = False
         self._mimgs: dict = {}
+        self._clip_r = False  # macOS: bán kính đang cắt (None = không cắt); False = chưa cắt
         self.canvas.bind("<ButtonPress-1>", self._press)
         self.canvas.bind("<B1-Motion>", self._motion)
         self.canvas.bind("<ButtonRelease-1>", self._release)
@@ -67,6 +70,18 @@ class Bubble:
             self._build_mascot(v)
         else:
             self._build_signal(v)
+        self._clip()
+
+    def _clip(self) -> None:
+        """macOS: cửa sổ bóng tín hiệu cắt theo hình đĩa / bo vuông, bóng mascot không cắt (nền trong suốt)."""
+        if not gfx.ALPHA:
+            return
+        p = self.app.prefs
+        signal = p["bubble_type"] != "mascot"
+        self.canvas.configure(bg=self.app.kit.P["disc"] if signal else "systemTransparent")
+        r = gfx.shape_radius(p["signal"] if p["signal"] in gfx.SIGNALS else "s01", self.size()) if signal else None
+        if r != self._clip_r and plat.clip_round(self.win, r):
+            self._clip_r = r
 
     # ---- tín hiệu
     def _build_signal(self, v) -> None:
@@ -79,7 +94,7 @@ class Bubble:
         if a is None:
             base = gfx.signal_rows(style, v["pct"] or 0, v["pct_col"], P, s)
             a = k.cache[akey] = gfx.Animated(self.app.root, base, gfx.shape_radius(style, s), k.px(3), state, P,
-                                             fringe=P["fringe"])
+                                             bg=P["disc"] if gfx.ALPHA else None, fringe=P["fringe"])
         self.anim = a
         self.bg_item = self.canvas.create_image(0, 0, anchor="nw", image=a.still())
         sc = s / k.S / D_DESIGN  # tỉ lệ so với cỡ thiết kế
@@ -98,11 +113,19 @@ class Bubble:
         y = cy + k.px(10 * sc)
         for (name, col, n), lw in zip(lamps, widths):
             color = col if n else P["dim"]
-            self.canvas.create_image(x, y, anchor="w", image=k.icon(name, ic / k.S, color, None if gfx.ALPHA else P["disc"], 2.6))
+            self.canvas.create_image(x, y, anchor="w", image=k.icon(name, ic / k.S, color, P["disc"], 2.6))
             self.canvas.create_text(x + ic + k.px(1), y, text=str(n), anchor="w", fill=color, font=flamp,
                                     tags="lamp-run" if name == "run" and n else ())
             x += lw + gap
-        if v["update"]:
+        if v["update"] and gfx.ALPHA:  # macOS: cửa sổ bị cắt theo hình, huy hiệu nằm trong vòng, vẽ bằng primitive
+            r = k.px(10 * sc)
+            d = (s / 2 - r - k.px(3)) * math.sqrt(0.5)
+            bx, by = s / 2 + d, s / 2 - d
+            self.canvas.create_oval(bx - r, by - r, bx + r, by + r, fill=P["upd"], outline=P["disc"], width=max(1, k.px(1.5)))
+            q = r * 1.1
+            gfx.draw_items(self.canvas, gfx.icon_items("dl", "#ffffff", 2.6), vector.affine(scale=q / 24, tx=bx - q / 2, ty=by - q / 2),
+                           None)
+        elif v["update"]:
             r = k.px(12 * sc)
             self.canvas.create_image(s - r * 2 + k.px(2), -k.px(1), anchor="nw",
                                      image=k.image(("upd-badge", r, P["upd"]), lambda: self._badge_rows(r * 2, P), None))
@@ -131,10 +154,19 @@ class Bubble:
         return True
 
     # ---- mascot
+    def _hue(self) -> float:
+        h = self.app.prefs["hue"]
+        return mascots.hues()[h] if 0 <= h < len(mascots.hues()) else 0
+
+    def _m_pose(self, sx=1.0, sy=1.0, rot=0.0, dx=0.0, dy=0.0):
+        """macOS: ma trận vẽ mascot vector tại m_origin + (dx, dy)."""
+        ox, oy = self.m_origin
+        return mascots.pose(int(self.size() * 72 / D_DESIGN), sx, sy, rot, ox + dx, oy + dy)
+
     def _mascot_img(self, mood: str, sx=1.0, sy=1.0, rot=0.0):
         k, P, p = self.app.kit, self.app.kit.P, self.app.prefs
         size = int(self.size() * 72 / D_DESIGN)
-        hue = mascots.hues()[p["hue"]] if 0 <= p["hue"] < len(mascots.hues()) else 0
+        hue = self._hue()
         key = ("mb", p["mascot"], mood, size, P["name"], hue, round(sx, 2), round(sy, 2), round(rot, 1))
         return k.image(key, lambda: mascots.rows(p["mascot"], mood, size, P["name"], hue, sx=sx, sy=sy, rot=rot), None)
 
@@ -146,7 +178,11 @@ class Bubble:
         size = int(self.size() * 72 / D_DESIGN)
         n = mascots.canvas_size(size)
         self.m_origin = ((w - n) / 2, h - n - k.px(12))
-        self.m_item = self.canvas.create_image(*self.m_origin, anchor="nw", image=self._mascot_img(self.mood))
+        if gfx.ALPHA:
+            self.m_vec = gfx.draw_items(self.canvas, mascots.items(self.app.prefs["mascot"], self.mood, P["name"], self._hue()),
+                                        self._m_pose(), "m")
+        else:
+            self.m_item = self.canvas.create_image(*self.m_origin, anchor="nw", image=self._mascot_img(self.mood))
         self._chip(v, w, h)
         self._fx = []
         if k.anim.enabled:
@@ -183,14 +219,20 @@ class Bubble:
         width = sum(f.measure(c) if t == "t" else ic if t == "i" else k.px(22) for t, c, _ in parts) + gap * (len(parts) - 1)
         cw, ch = width + k.px(14), f.metrics("linespace") + k.px(4)
         x0, y0 = (w - cw) / 2, h - ch - k.px(1)
-        self.canvas.create_image(x0, y0, anchor="nw", image=k.rounded(int(cw), int(ch), ch / 2, P["isl"], P["discBd"]))
+        if gfx.ALPHA:
+            gfx.pill(self.canvas, x0, y0, x0 + cw, y0 + ch, P["isl"], P["discBd"])
+        else:
+            self.canvas.create_image(x0, y0, anchor="nw", image=k.rounded(int(cw), int(ch), ch / 2, P["isl"], P["discBd"]))
         x, mid = x0 + k.px(7), y0 + ch / 2
         for t, c, col in parts:
             if t == "t":
                 self.canvas.create_text(x, mid, text=c, anchor="w", fill=col, font=f)
                 x += f.measure(c) + gap
             elif t == "i":
-                self.canvas.create_image(x, mid, anchor="w", image=k.icon(c, 10, col, None if gfx.ALPHA else P["isl"], 2.6))
+                if gfx.ALPHA:
+                    gfx.draw_items(self.canvas, gfx.icon_items(c, col, 2.6), vector.affine(scale=ic / 24, tx=x, ty=mid - ic / 2), None)
+                else:
+                    self.canvas.create_image(x, mid, anchor="w", image=k.icon(c, 10, col, P["isl"], 2.6))
                 x += ic + gap
             else:
                 for i, val in enumerate(c):
@@ -229,8 +271,11 @@ class Bubble:
             ph = (t / 0.16) % 1
             dx = 2 * S * (1 if ph < 0.5 else -1)
             rot = 1.0 if ph < 0.5 else -1.0
-        self.canvas.itemconfigure(self.m_item, image=self._mascot_img(mood, sx, sy, rot))
-        self.canvas.coords(self.m_item, ox + dx, oy + dy)
+        if gfx.ALPHA:
+            gfx.move_items(self.canvas, self.m_vec, self._m_pose(sx, sy, rot, dx, dy))
+        else:
+            self.canvas.itemconfigure(self.m_item, image=self._mascot_img(mood, sx, sy, rot))
+            self.canvas.coords(self.m_item, ox + dx, oy + dy)
         self._effects(t, mood)
         return True
 
@@ -326,6 +371,7 @@ class Bubble:
     def show(self) -> None:
         self.win.deiconify()
         self.win.attributes("-topmost", True)
+        self._clip()
 
     def hide(self) -> None:
         self.win.withdraw()
