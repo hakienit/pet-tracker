@@ -11,11 +11,14 @@ from .. import platform as plat
 from ..i18n import t
 from . import fmt
 
+BRANCH = "⑂" if plat.IS_MAC else "⎇"  # ⑂ / ⎇: font hệ thống macOS vẽ ⎇ nghiêng, lệch dòng
+
 
 class Menus:
     def __init__(self, app):
         self.app = app
         self.sheet = None
+        self.opened_at = 0.0  # macOS: cả Tk lẫn _poll_right_click có thể bắt cùng một cú chuột phải
 
     # ---------------------------------------------------------------- khung
     def close(self) -> None:
@@ -29,6 +32,7 @@ class Menus:
 
     def _new(self):
         self.close()
+        self.opened_at = time.time()
         P = self.app.kit.P
         top = tk.Toplevel(self.app.root)
         top.overrideredirect(True)
@@ -54,6 +58,7 @@ class Menus:
             top.configure(bg=k.P["line"])
             body.pack_configure(padx=1, pady=1)
             top.geometry(f"{W + 2}x{h + 2}+{sx}+{sy}")
+        self.app.float_top(top)
         top.bind("<Escape>", lambda e: self.close())
         top.focus_force()
         if not plat.GLOBAL_MOUSE:
@@ -106,7 +111,12 @@ class Menus:
         tk.Frame(body, bg=self.app.kit.P["menuBg"], height=self.app.kit.px(h)).pack(fill="x")
 
     # ---------------------------------------------------------------- chuột phải island / bóng
+    def just_opened(self) -> bool:
+        return plat.IS_MAC and time.time() - self.opened_at < 0.5
+
     def island_menu(self, x: int, y: int) -> None:
+        if self.just_opened():
+            return
         app = self.app
         top, body = self._new()
 
@@ -132,6 +142,8 @@ class Menus:
 
     # ---------------------------------------------------------------- menu ⋯ của session
     def session_menu(self, sess: dict, x: int, y: int) -> None:
+        if self.just_opened():
+            return
         app, k = self.app, self.app.kit
         P = k.P
         top, body = self._new()
@@ -184,7 +196,7 @@ class Menus:
         gtxt, gkind = session_ops.state_text(sess.get("git"))
         if gtxt:
             st = sess["git"]
-            label = f"⎇ {'worktree' if st.get('linked') else (st.get('branch') or 'git')} · {gtxt}"
+            label = f"{BRANCH} {'worktree' if st.get('linked') else (st.get('branch') or 'git')} · {gtxt}"
             k.lbl(head, k.ellipsis(label, "meta", W - k.px(32)), "meta", P["ok"] if gkind == "done" else P["warn"]).pack(fill="x")
         tk.Frame(body, bg=P["line"], height=1).pack(fill="x")
         self._pad(body, 4)

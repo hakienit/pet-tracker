@@ -88,7 +88,7 @@ def to_photo(master, rows, bg=None, fringe="#0d0d11"):
     """PhotoImage từ hàng RGBA. bg: màu nền đặc phía sau (panel); None: cửa sổ trong suốt (island, bóng)."""
     if not rows or not rows[0]:
         return tk.PhotoImage(master=master, width=1, height=1)
-    if ALPHA:
+    if ALPHA and not bg:  # macOS, nền có màu đặc: put() như Windows (đường đã chạy ổn ở 0.1.8 trong panel bo góc)
         return tk.PhotoImage(master=master, data=base64.b64encode(render.png_bytes(rows)).decode("ascii"), format="png")
     hexrows = _flatten(rows, bg) if bg else _keyed(rows, plat.transparent_key(), fringe)
     img = tk.PhotoImage(master=master, width=len(rows[0]), height=len(rows))

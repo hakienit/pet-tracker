@@ -60,6 +60,7 @@ class Toasts:
         if not plat.round_corners(win, P["line"]):
             win.configure(bg=P["line"])
             body.pack_configure(padx=1, pady=1)
+        app.float_top(win)
         self.items.insert(0, {"key": key, "win": win, "until": time.time() + ttl if ttl else None})
         while len(self.items) > MAX:  # bỏ thông báo tự ẩn cũ nhất trước; "cần bạn" (không tự ẩn) giữ lại sau cùng
             old = next((i for i in reversed(self.items) if i["until"]), self.items[-1])

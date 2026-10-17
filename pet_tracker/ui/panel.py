@@ -462,6 +462,7 @@ class Panel:
         border = P["line"] if st == "idle" else render.rgb2hex(render.mix(render.hex2rgb(fill), render.hex2rgb(scol), 0.55))
         outer, c = k.card(parent, fill, border, width=self.inner_w(), state=st if st in ("wait", "run") else None)
         outer.pack(fill="x")
+        outer._sess = s  # chuột phải khi app không active (macOS): app._poll_right_click tìm session qua card
         iw = self.inner_w() - k.px(24)
         refs = {}
         # dòng 1: tên · thời gian · model · effort · ⋯
@@ -680,7 +681,7 @@ class Panel:
         if not self.app.inside(self.win, x, y):
             return
         base = self.scroll_target if self.scroll_target is not None else self.offset()
-        self.scroll_to(base - (delta / 120.0) * 72 * self.app.kit.S, animate=True)
+        self.scroll_to(base - delta * plat.WHEEL_PX_PER_DELTA * self.app.kit.S, animate=True)
 
     def _update_thumb(self) -> None:
         sb, k, P = self.sbar, self.app.kit, self.app.kit.P
@@ -731,8 +732,13 @@ class Panel:
                 if island:
                     y = g - 1 - y
                 c.create_oval(x - r, y - r, x + r, y + r, fill=P["dim"], outline="", tags="dot")
-        c.configure(cursor="size_ne_sw" if island else "size_nw_se")
-        c.place(x=0, y=0, rely=1.0 if island else 0.0, anchor="sw" if island else "nw")
+        # tên con trỏ size_* chỉ có trên Windows: macOS báo "bad cursor spec" và app thoát ngay khi mở
+        if plat.IS_WINDOWS:
+            c.configure(cursor="size_ne_sw" if island else "size_nw_se")
+        else:
+            c.configure(cursor="bottom_left_corner" if island else "top_left_corner")
+        inset = k.px(3) if plat.IS_MAC else 0  # góc panel bo tròn: dời tay nắm vào trong
+        c.place(x=inset, y=-inset if island else inset, rely=1.0 if island else 0.0, anchor="sw" if island else "nw")
         c.bind("<Enter>", lambda e: c.itemconfigure("dot", fill=P["fg2"]))
         c.bind("<Leave>", lambda e: c.itemconfigure("dot", fill=P["dim"]))
         c.bind("<ButtonPress-1>", self._rz_start)

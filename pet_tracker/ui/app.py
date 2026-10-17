@@ -218,6 +218,8 @@ class App:
         if self.cfg.get("config_error"):
             log(self.cfg["config_error"])
         self.root.after(200, self._pump)
+        if plat.IS_MAC:
+            self._poll_right_click()
 
     # ================================================================ tuỳ chọn
     def lang_code(self) -> str:
@@ -816,6 +818,43 @@ class App:
     # ================================================================ vòng lặp
     def request_show(self) -> None:
         self._want_show = True
+
+    @staticmethod
+    def float_top(win) -> None:
+        """macOS: -topmost đặt lúc cửa sổ chưa dựng không có tác dụng (popup nằm dưới panel); đặt lại rồi nâng
+        NSWindow lên trên bóng / island (level 25, xem plat.make_transparent)."""
+        if not plat.IS_MAC:
+            return
+        win.attributes("-topmost", False)
+        win.attributes("-topmost", True)
+        win.lift()
+        plat.set_level(win, 26)
+
+    def _poll_right_click(self, prev: bool = False) -> None:
+        """macOS: khi Wisp không phải app đang active, Tk nuốt cú chuột phải đầu tiên (chỉ để kích hoạt app).
+        Đọc nút phải toàn cục và mở menu nếu con trỏ đang trên card session, island hoặc bóng."""
+        down = plat.mouse_down(1)
+        if down and not prev:
+            x, y = plat.cursor_pos(self.root)
+            sess = self._session_at(x, y) if self.panel.visible and self.menus.sheet is None else None
+            anchor = self.island.win if self.prefs["display"] == "island" else self.bubble.win
+            if sess is not None:
+                self.menus.session_menu(sess, x, y)
+            elif self.inside(anchor, x, y):
+                self.menus.island_menu(x, y)
+        self.root.after(50, self._poll_right_click, down)
+
+    def _session_at(self, x: int, y: int):
+        """Session của card nằm dưới (x, y) trong panel, hoặc None."""
+        try:
+            w = self.panel.win.winfo_containing(x, y)
+        except (tk.TclError, KeyError):
+            return None
+        while w is not None:
+            if hasattr(w, "_sess"):
+                return w._sess
+            w = w.master
+        return None
 
     def mouse_reset(self) -> None:
         self._lbtn_prev = plat.mouse_down() if plat.GLOBAL_MOUSE else False

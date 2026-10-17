@@ -21,25 +21,28 @@ import threading
 from pathlib import Path
 
 __all__ = [
-    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
+    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS", "WHEEL_PX_PER_DELTA",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
     "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
-    "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
+    "focus_session", "open_terminal", "set_level", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
     "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
 ]
 
 NAME = "macOS"
-GLOBAL_MOUSE = False            # không đọc chuột toàn cục (cần quyền Input Monitoring); dùng FocusOut
+GLOBAL_MOUSE = True             # đọc trạng thái nút chuột toàn cục (CGEventSourceButtonState, không cần quyền)
 # Tk 8.6 aqua báo chuột phải là Button-2 (Tk 8.7+/9 đổi sang Button-3); Control-click là chuột phải
 # của trackpad / chuột một nút.
 RIGHT_CLICK_EVENTS = ("<Button-2>", "<Button-3>", "<Control-Button-1>")
+# Tk 8.6 aqua: <MouseWheel> delta tính theo dòng (con lăn 1-3, touchpad ~ pixel/10, tối thiểu 1), không phải bội của 120
+WHEEL_PX_PER_DELTA = 12
 CAN_SELF_UPDATE = False         # giai đoạn 1: chỉ mở trang release
 
 BUNDLE_ID = "sg.vinova.wisp"
 LEGACY_BUNDLE_ID = "sg.vinova.pet-tracker"  # tên cũ (Claude PET): LaunchAgent cũ được đổi sang tên mới
 # TODO(mac): xác minh tên service Keychain mà Claude Code dùng (`security dump-keychain | grep -i claude`).
 KEYCHAIN_SERVICES = ("Claude Code-credentials",)
+CORNER_RADIUS = 10.0            # bo góc panel (macOS 11+ dùng 10pt cho cửa sổ thường)
 MENU_BAR_PT = 25                # TODO(mac): lấy đúng vùng dùng được (NSScreen.visibleFrame) nếu cần PyObjC
 
 
@@ -116,27 +119,162 @@ def work_area(root=None, pt=None) -> tuple:
 
 
 def cursor_pos(root=None) -> tuple:
-    if root is None:
-        return 0, 0
-    return root.winfo_pointerxy()
+    """Vị trí con trỏ toàn cục. winfo_pointerxy của Tk trả vị trí cũ khi app không active (panel mở mà đang ở
+    app khác), nên đọc thẳng từ Quartz."""
+    try:
+        if _cg is None:
+            _init_cg()
+        ev = _cg.CGEventCreate(None)
+        try:
+            pt = _cg.CGEventGetLocation(ev)
+        finally:
+            _cf.CFRelease(ev)
+        return int(pt.x), int(pt.y)
+    except Exception:
+        return root.winfo_pointerxy() if root is not None else (0, 0)
 
 
-def mouse_down() -> bool:
-    return False
+_cg = _cf = _Pt = None
+
+
+def _init_cg():
+    """Nạp CoreGraphics/CoreFoundation và khai báo kiểu: thiếu argtypes thì ctypes cắt con trỏ còn 32 bit
+    (CFRelease(ev) sẽ segfault). Chỉ gán biến toàn cục sau khi cấu hình xong."""
+    global _cg, _cf, _Pt
+    import ctypes
+    import ctypes.util
+
+    class Pt(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+    cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+    cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+    cg.CGEventSourceButtonState.restype = ctypes.c_bool
+    cg.CGEventSourceButtonState.argtypes = [ctypes.c_int32, ctypes.c_uint32]
+    cg.CGEventCreate.restype = ctypes.c_void_p
+    cg.CGEventCreate.argtypes = [ctypes.c_void_p]
+    cg.CGEventGetLocation.restype = Pt
+    cg.CGEventGetLocation.argtypes = [ctypes.c_void_p]
+    cf.CFRelease.restype = None
+    cf.CFRelease.argtypes = [ctypes.c_void_p]
+    _Pt, _cf, _cg = Pt, cf, cg
+
+
+def mouse_down(button: int = 0) -> bool:
+    """Nút chuột đang giữ (0 trái, 1 phải; mọi app). Panel/popup đóng khi bấm ra ngoài. Lỗi -> False."""
+    try:
+        if _cg is None:
+            _init_cg()
+        return _cg.CGEventSourceButtonState(1, button)  # kCGEventSourceStateCombinedSessionState
+    except Exception:
+        return False
 
 
 def transparent_key():
     return None  # alpha thật, không dùng color key
 
 
+def _objc():
+    """(send, getClass): gọi Objective-C runtime qua ctypes, không cần PyObjC."""
+    import ctypes
+    import ctypes.util
+    objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+    ctypes.cdll.LoadLibrary(ctypes.util.find_library("AppKit"))
+    ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.restype = ctypes.c_void_p
+
+    def send(obj, sel, *args, res=ctypes.c_void_p, argt=()):
+        f = objc.objc_msgSend
+        f.restype, f.argtypes = res, [ctypes.c_void_p, ctypes.c_void_p, *argt]
+        return f(obj, objc.sel_registerName(sel.encode()), *args)
+
+    return send, lambda name: objc.objc_getClass(name.encode())
+
+
+def _ns_windows():
+    import ctypes
+    send, cls = _objc()
+    wins = send(send(cls("NSApplication"), "sharedApplication"), "windows")
+    for i in range(send(wins, "count", res=ctypes.c_ulong)):
+        yield send, send(wins, "objectAtIndex:", i, argt=(ctypes.c_ulong,))
+
+
+def _raise_transparent_windows(level: int) -> None:
+    """Đặt mức nổi của mọi cửa sổ trong suốt (bóng/island) của tiến trình này.
+
+    Tk aqua: sau -transparent, -topmost không còn tác dụng (NSWindow level về 0) nên bóng/island nằm sau cửa sổ
+    của app đang dùng. Gọi thẳng NSWindow.setLevel:."""
+    import ctypes
+    for send, w in _ns_windows():
+        if not send(w, "isOpaque", res=ctypes.c_bool):
+            send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))
+
+
 def make_transparent(toplevel) -> None:
-    # Tk aqua: cửa sổ trong suốt + nền systemTransparent. TODO(mac): xác minh bóng không có viền/bóng đổ lạ.
+    # Tk aqua: cửa sổ trong suốt + nền systemTransparent.
     toplevel.attributes("-transparent", True)
     toplevel.configure(bg="systemTransparent")
+    toplevel.update_idletasks()  # NSWindow chỉ tồn tại sau khi Tk dựng xong
+    try:
+        _raise_transparent_windows(25)  # trên panel (19) và thanh menu (24): viền lửa của island lấn lên thanh menu
+    except Exception:
+        pass
+
+
+def set_level(win, level: int) -> None:
+    """Đặt mức nổi NSWindow của cửa sổ Tk `win` (tìm theo tiêu đề tạm). Lỗi thì bỏ qua."""
+    import ctypes
+    try:
+        old = win.title()
+        win.title(tag := f"wisp-lvl-{id(win)}")
+        for send, w in _ns_windows():
+            t = send(w, "title")
+            if t and ctypes.string_at(send(t, "UTF8String")).decode() == tag:
+                send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))
+                break
+        win.title(old)
+    except Exception:
+        pass
 
 
 def round_corners(win, border_hex: str) -> bool:
-    return False  # vẽ viền 1px thủ công; cửa sổ overrideredirect trên macOS là góc vuông
+    """Bo góc + viền 1px + bóng đổ cho cửa sổ overrideredirect: layer của contentView bo và cắt nội dung,
+    cửa sổ để trong suốt để bóng đổ theo hình bo (cửa sổ đặc thì bóng vẫn hình chữ nhật)."""
+    import ctypes
+    import ctypes.util
+    try:
+        win.update_idletasks()
+        old = win.title()
+        win.title(tag := f"wisp-{id(win)}")
+        h = border_hex.lstrip("#")
+        for send, w in _ns_windows():
+            t = send(w, "title")
+            if not t or ctypes.string_at(send(t, "UTF8String")).decode() != tag:
+                continue
+            level = send(w, "level", res=ctypes.c_long)
+            send(w, "setOpaque:", False, res=None, argt=(ctypes.c_bool,))
+            send(w, "setBackgroundColor:", send(_objc()[1]("NSColor"), "clearColor"), res=None,
+                 argt=(ctypes.c_void_p,))
+            send(w, "setHasShadow:", True, res=None, argt=(ctypes.c_bool,))
+            cv = send(w, "contentView")
+            send(cv, "setWantsLayer:", True, res=None, argt=(ctypes.c_bool,))
+            layer = send(cv, "layer")
+            send(layer, "setCornerRadius:", CORNER_RADIUS, res=None, argt=(ctypes.c_double,))
+            send(layer, "setMasksToBounds:", True, res=None, argt=(ctypes.c_bool,))
+            send(layer, "setBorderWidth:", 1.0, res=None, argt=(ctypes.c_double,))
+            cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+            cg.CGColorCreateGenericRGB.restype = ctypes.c_void_p
+            cg.CGColorCreateGenericRGB.argtypes = [ctypes.c_double] * 4
+            col = cg.CGColorCreateGenericRGB(*(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)), 1.0)
+            send(layer, "setBorderColor:", col, res=None, argt=(ctypes.c_void_p,))
+            send(w, "invalidateShadow", res=None)
+            send(w, "setLevel:", level, res=None, argt=(ctypes.c_long,))  # đổi opaque làm mất mức nổi (-topmost)
+            win.title(old)
+            return True
+        win.title(old)
+    except Exception:
+        pass
+    return False
 
 
 # ---------------------------------------------------------------- hệ thống
