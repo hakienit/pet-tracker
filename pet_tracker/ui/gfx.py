@@ -89,12 +89,21 @@ def to_photo(master, rows, bg=None, fringe="#0d0d11"):
     """PhotoImage từ hàng RGBA. bg: màu nền đặc phía sau (panel); None: cửa sổ trong suốt (island, bóng)."""
     if not rows or not rows[0]:
         return tk.PhotoImage(master=master, width=1, height=1)
-    if ALPHA and not bg:  # macOS, nền có màu đặc: put() như Windows (đường đã chạy ổn ở 0.1.8 trong panel bo góc)
-        return tk.PhotoImage(master=master, data=base64.b64encode(render.png_bytes(rows)).decode("ascii"), format="png")
-    hexrows = _flatten(rows, bg) if bg else _keyed(rows, plat.transparent_key(), fringe)
-    img = tk.PhotoImage(master=master, width=len(rows[0]), height=len(rows))
-    img.put(render.to_photo_data(hexrows))
-    return img
+    if ALPHA and not bg:  # macOS, không có nền đặc: PNG alpha thật (có nền thì put() như Windows)
+        return _png_photo(master, rows)
+    if bg:
+        img = tk.PhotoImage(master=master, width=len(rows[0]), height=len(rows))
+        img.put(render.to_photo_data(_flatten(rows, bg)))
+        return img
+    # Windows, cửa sổ màu key: mép trộn sẵn với màu fringe như _keyed, nhưng điểm gần trong suốt là trong suốt thật
+    # (alpha 0) thay cho màu key, để item Canvas nằm dưới ảnh (vòng sóng sau mascot) vẫn hiện
+    key = plat.transparent_key()
+    return _png_photo(master, [[(0, 0, 0, 0) if c == key else (*render.hex2rgb(c), 255) for c in row]
+                               for row in _keyed(rows, key, fringe)])
+
+
+def _png_photo(master, rows):
+    return tk.PhotoImage(master=master, data=base64.b64encode(render.png_bytes(rows)).decode("ascii"), format="png")
 
 
 # ---------------------------------------------------------------- icon

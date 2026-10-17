@@ -9,6 +9,7 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 ### Fixed
 - macOS: vùng đặt island, bóng, panel và thông báo lấy từ `NSScreen.visibleFrame` (trừ đúng thanh menu và Dock, theo
   từng màn hình) thay cho thanh menu cố định 25pt và bỏ qua Dock.
+- Windows: vòng sóng phía sau mascot (trạng thái cần bạn) hiện đủ; trước đó vùng trong suốt của ảnh mascot che mất.
 
 ## [0.2.1] - 2026-10-17
 
