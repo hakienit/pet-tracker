@@ -6,6 +6,8 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-17
+
 Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế hoạch ở `docs/REDESIGN_PLAN.md`.
 
 ### Added
@@ -27,7 +29,7 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Menu ⋯ của session có thêm: mở thư mục dự án, sao chép ID, chi tiết, tắt thông báo. Thao tác không hoàn tác được
   có khối xác nhận liệt kê rõ hậu quả.
 - Font Archivo (OFL) đóng gói kèm app, nạp riêng cho process, nên chữ giống nhau trên Windows và macOS.
-- 42 unit test (`python -m unittest discover -s tests -t .`), chạy trong CI.
+- 45 unit test (`python -m unittest discover -s tests -t .`), chạy trong CI.
 - macOS: cập nhật một chạm như Windows: tải dmg, kiểm SHA256 và chữ ký, thay Wisp.app khi app thoát, lỗi thì
   giữ bản cũ. Log ở `~/Library/Application Support/Wisp/update.log`.
 
@@ -37,6 +39,7 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Island rộng cố định theo nội dung, đổi rộng có animation, đèn có nhãn số thay cho chấm không nhãn.
 - Cỡ chữ tính bằng pixel, bỏ cách cộng thêm 3pt trên macOS. Icon vẽ bằng vector, giống nhau trên hai hệ điều hành.
 - Kết quả thao tác hiện bằng thông báo, không ghi ở footer nữa.
+- README thành trang giới thiệu mới, ảnh chụp từ landing `docs/site/index.html`.
 - Kiểm tra bản mới mỗi 24 giờ (`update_interval_hours` mặc định 24). Bóng nổi mặc định 80 px.
 
 ### Fixed
@@ -195,7 +198,8 @@ Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...v0.1.6
