@@ -10,6 +10,7 @@ Các điểm cần xác minh trên Mac được đánh dấu `TODO(mac)`.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import plistlib
@@ -45,7 +46,7 @@ LEGACY_BUNDLE_ID = "sg.vinova.pet-tracker"  # tên cũ (Claude PET): LaunchAgent
 # TODO(mac): xác minh tên service Keychain mà Claude Code dùng (`security dump-keychain | grep -i claude`).
 KEYCHAIN_SERVICES = ("Claude Code-credentials",)
 CORNER_RADIUS = 10.0            # bo góc panel (macOS 11+ dùng 10pt cho cửa sổ thường)
-MENU_BAR_PT = 25                # TODO(mac): lấy đúng vùng dùng được (NSScreen.visibleFrame) nếu cần PyObjC
+MENU_BAR_PT = 25                # dự phòng khi không đọc được NSScreen.visibleFrame
 
 
 def _run(args, timeout=5.0) -> subprocess.CompletedProcess:
@@ -112,8 +113,38 @@ def dpi_scale(root) -> float:
     return 1.0
 
 
+def _screens() -> list:
+    """[(frame, visibleFrame)] của từng màn hình, toạ độ Tk (gốc trên-trái màn hình chính, point), màn hình chính
+    (có thanh menu) đầu tiên. visibleFrame đã trừ thanh menu và Dock."""
+    import ctypes
+
+    class Rect(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double), ("w", ctypes.c_double), ("h", ctypes.c_double)]
+
+    send, cls = _objc()
+    scr = send(cls("NSScreen"), "screens")
+    raw = []
+    for i in range(send(scr, "count", res=ctypes.c_ulong)):
+        s = send(scr, "objectAtIndex:", i, argt=(ctypes.c_ulong,))
+        raw.append((send(s, "frame", res=Rect, stret=True), send(s, "visibleFrame", res=Rect, stret=True)))
+    top = raw[0][0].h  # Cocoa: gốc dưới-trái màn hình chính, y hướng lên
+
+    def conv(r):
+        return int(r.x), int(top - r.y - r.h), int(r.x + r.w), int(top - r.y)
+    return [(conv(f), conv(v)) for f, v in raw]
+
+
 def work_area(root=None, pt=None) -> tuple:
-    # Tk không liệt kê được từng màn hình trên macOS: luôn dùng màn hình chính (pt bị bỏ qua).
+    """(left, top, right, bottom) vùng dùng được của màn hình chứa pt (gần nhất nếu nằm ngoài), pt None: màn hình
+    chính. Lỗi -> màn hình chính trừ MENU_BAR_PT."""
+    try:
+        scr = _screens()
+        if pt is None:
+            return scr[0][1]
+        x, y = pt
+        return min(scr, key=lambda s: max(s[0][0] - x, 0, x - s[0][2]) ** 2 + max(s[0][1] - y, 0, y - s[0][3]) ** 2)[1]
+    except Exception:
+        pass
     if root is None:
         return 0, MENU_BAR_PT, 1440, 900
     w, h = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -175,18 +206,22 @@ def transparent_key():
     return None  # alpha thật, không dùng color key
 
 
+@functools.lru_cache(maxsize=1)
 def _objc():
-    """(send, getClass): gọi Objective-C runtime qua ctypes, không cần PyObjC."""
+    """(send, getClass): gọi Objective-C runtime qua ctypes, không cần PyObjC. stret=True cho hàm trả struct lớn
+    (NSRect): Intel phải gọi objc_msgSend_stret, Apple Silicon dùng objc_msgSend."""
     import ctypes
     import ctypes.util
+    import platform
+    x86 = platform.machine() == "x86_64"
     objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
     ctypes.cdll.LoadLibrary(ctypes.util.find_library("AppKit"))
     ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
     objc.objc_getClass.restype = ctypes.c_void_p
     objc.sel_registerName.restype = ctypes.c_void_p
 
-    def send(obj, sel, *args, res=ctypes.c_void_p, argt=()):
-        f = objc.objc_msgSend
+    def send(obj, sel, *args, res=ctypes.c_void_p, argt=(), stret=False):
+        f = objc.objc_msgSend_stret if stret and x86 else objc.objc_msgSend
         f.restype, f.argtypes = res, [ctypes.c_void_p, ctypes.c_void_p, *argt]
         return f(obj, objc.sel_registerName(sel.encode()), *args)
 
