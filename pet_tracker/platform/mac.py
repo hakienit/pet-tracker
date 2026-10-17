@@ -83,7 +83,7 @@ def ui_language() -> str:
 
 
 def register_font(path) -> bool:
-    """Nạp font cho process (CTFontManagerRegisterFontsForURL, scope process). TODO(mac): kiểm trên Mac thật."""
+    """Nạp font cho process (CTFontManagerRegisterFontsForURL, scope process); test: tests/test_mac_session.py."""
     try:
         import ctypes
         import ctypes.util

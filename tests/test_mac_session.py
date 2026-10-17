@@ -71,3 +71,19 @@ class ProcStart(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(MAC, "chỉ macOS")
+class Fonts(unittest.TestCase):
+    def test_archivo_registered_for_tk(self):
+        import tkinter as tk
+        from tkinter import font as tkfont
+        from pet_tracker.ui.kit import register_fonts
+        self.assertTrue(register_fonts())
+        root = tk.Tk()
+        try:
+            fams = set(tkfont.families(root))
+        finally:
+            root.destroy()
+        print("archivo families:", sorted(f for f in fams if "Archivo" in f))
+        self.assertIn("Archivo", fams)

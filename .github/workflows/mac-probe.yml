@@ -36,7 +36,7 @@ jobs:
       - name: Test (cập nhật một chạm macOS và toàn bộ unit test)
         run: |
           "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
-          echo "::notice title=tests::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*' tests.txt | paste -sd' ' -)"
+          echo "::notice title=tests::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*|archivo families: .*' tests.txt | paste -sd' ' -)"
       - name: UI thật (tools/ui_shot.py)
         run: |
           "$PYTHON" tools/ui_shot.py --shot ui_mac.png | tee ui.txt
@@ -69,4 +69,4 @@ jobs:
         run: |
           "$PYTHON" -c "import platform; print(platform.machine())"
           "$PYTHON" -m unittest discover -s tests -t . -v 2>&1 | tee tests.txt
-          echo "::notice title=tests-intel::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*' tests.txt | paste -sd' ' -)"
+          echo "::notice title=tests-intel::$(grep -oE '^(Ran|OK|FAILED).*|screens: .*|archivo families: .*' tests.txt | paste -sd' ' -)"
