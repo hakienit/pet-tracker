@@ -39,6 +39,7 @@ CASES = [
     (6, "rounded", "put", "đặc + round_corners + put() (cách panel 0.2 trên Mac sau merge)"),
     (7, "plain", "png", "cửa sổ đặc thường + PNG alpha (đối chứng)"),
     (8, "rounded", "png-r", "đặc + round_corners bo tròn hết cỡ (đĩa) + PNG alpha: thay cho cửa sổ trong suốt?"),
+    (9, "transparent-solid", "png", "-transparent + Canvas nền ĐẶC + PNG alpha: lỗi do nền systemTransparent?"),
 ]
 
 
@@ -63,9 +64,10 @@ def build(root, n, kind, how, x, y):
     w.overrideredirect(True)
     w.attributes("-topmost", True)
     bg = SOLID
-    if kind == "transparent":
+    if kind.startswith("transparent"):
         plat.make_transparent(w)
-        bg = "systemTransparent" if plat.IS_MAC else plat.transparent_key()
+        if kind == "transparent":
+            bg = "systemTransparent" if plat.IS_MAC else plat.transparent_key()
     w.geometry(f"{D}x{D}+{x}+{y}")
     imgs = []
     if how == "label":
@@ -119,10 +121,11 @@ def shoot(root, path, cells):
     from PIL import Image
     im = Image.open(path).convert("RGB")
     k = im.width / root.winfo_screenwidth()  # Retina: ảnh 2x so với point của Tk
-    print(f"\nTk {root.tk.call('info', 'patchlevel')}, ảnh {im.width}x{im.height}, tỉ lệ {k:g}\n")
+    hexc = lambda c: "#%02x%02x%02x" % c  # noqa: E731
+    desk = im.getpixel((int(im.width * 0.6), int(im.height * 0.6)))  # nền desktop: đen thì BLACK = không vẽ gì
+    print(f"\nTk {root.tk.call('info', 'patchlevel')}, ảnh {im.width}x{im.height}, tỉ lệ {k:g}, desktop {hexc(desk)}\n")
     print("| ô | kết quả | màu trong đĩa | màu góc ảnh (ngoài đĩa) | cách vẽ |\n|---|---|---|---|---|")
     desc = {n: d for n, _, _, d in CASES}
-    hexc = lambda c: "#%02x%02x%02x" % c  # noqa: E731
     for n, x, y in cells:
         rgb = im.getpixel((int((x + 22) * k), int((y + D / 2) * k)))
         corner = im.getpixel((int((x + 10) * k), int((y + 10) * k)))  # trong khung ảnh, ngoài đĩa: Tk 9 vẽ đen?

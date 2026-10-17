@@ -29,8 +29,9 @@ jobs:
           "$PYTHON" -m pip install --quiet pillow
           "$PYTHON" tools/mac_probe.py --shot probe.png | tee probe.txt
           { echo "## mac_probe"; sed -n '/^Tk /,$p' probe.txt; } >> "$GITHUB_STEP_SUMMARY"
-          # annotation đọc được qua API công khai (check-runs/<job>/annotations), log thì cần token
-          grep -E '^(Tk |  ô |\| [0-9])' probe.txt | while IFS= read -r line; do echo "::notice title=mac_probe::$line"; done
+          # annotation đọc được qua API công khai (check-runs/<job>/annotations), log thì cần token;
+          # tối đa 10 notice mỗi step nên gộp thành một, xuống dòng mã hoá %0A
+          echo "::notice title=mac_probe::$(grep -E '^(Tk |  ô |\| [0-9])' probe.txt | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()
         with:
