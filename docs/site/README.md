@@ -20,6 +20,12 @@ Windows 10/11, in PowerShell:
 irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex
 ```
 
+Or in cmd / Git Bash:
+
+```bat
+powershell -NoProfile -c "irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex"
+```
+
 macOS (beta), in Terminal:
 
 ```bash

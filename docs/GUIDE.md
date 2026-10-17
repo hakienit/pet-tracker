@@ -71,6 +71,24 @@ vào `%LOCALAPPDATA%\Programs\Wisp` (đổi bằng biến môi trường `WISP_I
 shortcut "Wisp" trong Start Menu rồi mở app. Chạy lại lệnh để cài lại hoặc cập nhật. Lệnh này tin tuyệt đối
 vào repo: ai push được vào `main` là sửa được script cài.
 
+Từ cmd hoặc Git Bash (`irm` chỉ có trong PowerShell), gọi qua `powershell`:
+
+```bat
+powershell -NoProfile -c "irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex"
+```
+
+Máy công ty khoá PowerShell ở Constrained Language Mode (AppLocker / WDAC) vẫn cài được: script tránh gọi .NET
+trực tiếp, tải lại bằng `curl.exe` nếu `Invoke-WebRequest` hỏng, băm bằng `certutil` và giải nén bằng `tar.exe`
+nếu `Get-FileHash` / `Expand-Archive` bị chặn. Chỉ không tạo được shortcut Start Menu (cần COM): script cảnh
+báo kèm đường dẫn `wisp.exe`.
+
+PowerShell bị chặn hẳn, hoặc antivirus chặn kiểu lệnh `irm | iex`: dán vào cmd (Windows 10 1803 trở lên có sẵn
+`curl` và `tar`; cách này không kiểm SHA256, không tạo shortcut, phải tự thoát Wisp đang chạy trước):
+
+```bat
+mkdir "%LOCALAPPDATA%\Programs\Wisp" & cd /d "%LOCALAPPDATA%\Programs\Wisp" && curl -fLO https://github.com/hakienit/pet-tracker/releases/latest/download/wisp-win-x64.zip && "%SystemRoot%\System32\tar.exe" -xf wisp-win-x64.zip && del wisp-win-x64.zip && start "" wisp.exe
+```
+
 Cài tay:
 
 1. Tải [wisp-win-x64.zip](https://github.com/hakienit/pet-tracker/releases/latest/download/wisp-win-x64.zip) (luôn là bản mới nhất).

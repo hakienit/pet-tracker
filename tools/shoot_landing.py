@@ -35,6 +35,7 @@ WIDTH = 1000   # bề rộng khối khi chụp (CSS px), khớp .shot-on trong l
 DPR = 2        # ảnh rộng 2000 px: nét trên màn hình retina
 REPO = "https://github.com/hakienit/pet-tracker"
 WIN_CMD = "irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex"
+WIN_CMD2 = f'powershell -NoProfile -c "{WIN_CMD}"'  # cùng lệnh, gõ được từ cmd và Git Bash
 MAC_CMD = "curl -fsSL https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.sh | bash"
 
 # trang -> (file html, thư mục ra, các khối ảnh tĩnh, trạng thái của ảnh động demo hoặc None)
@@ -51,7 +52,7 @@ TEXT = {
         "sub": "Wisp floats at the top of your screen: quota with a forecast, every running session, and a gentle nudge when one is waiting for you.",
         "win": "Download for Windows", "mac": "macOS (beta)", "other": "Tiếng Việt", "other_file": "README.vi.md",
         "install": "Install in one line", "install_l": "Downloads the latest release, checks its SHA256 and starts Wisp. Run it again to update. Requires Claude Code, signed in.",
-        "win_h": "Windows 10/11, in PowerShell:", "mac_h": "macOS (beta), in Terminal:", "manual": "Manual download",
+        "win_h": "Windows 10/11, in PowerShell:", "win2_h": "Or in cmd / Git Bash:", "mac_h": "macOS (beta), in Terminal:", "manual": "Manual download",
         "demo": "Idle, running, needs you, done: the island follows your sessions.",
         "privacy": "Private by design", "privacy_l": "Wisp reads Claude Code data on your machine only (`~/.claude`). Your login token goes only to `api.anthropic.com` for quota; turn it off with `\"quota_api_enabled\": false`. Hooks post to `127.0.0.1` only.",
         "more": "Learn more", "guide": "Full guide", "changelog": "Changelog", "site": "Website",
@@ -71,7 +72,7 @@ TEXT = {
         "sub": "Wisp nổi ở mép trên màn hình: quota có dự báo, mọi session đang chạy, và nhắc nhẹ khi có session đang chờ bạn.",
         "win": "Tải cho Windows", "mac": "macOS (thử nghiệm)", "other": "English", "other_file": "README.md",
         "install": "Cài bằng một dòng", "install_l": "Tải bản mới nhất, kiểm SHA256 rồi mở Wisp. Chạy lại để cập nhật. Cần Claude Code đã đăng nhập.",
-        "win_h": "Windows 10/11, dán vào PowerShell:", "mac_h": "macOS (thử nghiệm), dán vào Terminal:", "manual": "Tải tay",
+        "win_h": "Windows 10/11, dán vào PowerShell:", "win2_h": "Hoặc dán vào cmd / Git Bash:", "mac_h": "macOS (thử nghiệm), dán vào Terminal:", "manual": "Tải tay",
         "demo": "Rảnh, đang chạy, cần bạn, xong: island đổi theo session của bạn.",
         "privacy": "Riêng tư từ đầu", "privacy_l": "Wisp chỉ đọc dữ liệu Claude Code trên máy bạn (`~/.claude`). Token chỉ gửi tới `api.anthropic.com` để lấy quota; tắt bằng `\"quota_api_enabled\": false`. Hooks chỉ gửi tới `127.0.0.1`.",
         "more": "Tìm hiểu thêm", "guide": "Hướng dẫn đầy đủ", "changelog": "Lịch sử thay đổi", "site": "Website",
@@ -196,6 +197,7 @@ def readme(page: Path, out: Path, secs: list, lang: str, demo: bool) -> str:
     if demo:
         lines += [img("demo", T["demo"], 760), f'<p align="center"><sub>{html.escape(T["demo"])}</sub></p>', ""]
     lines += [f"## {T['install']}", "", T["install_l"], "", T["win_h"], "", "```powershell", WIN_CMD, "```", "",
+              T["win2_h"], "", "```bat", WIN_CMD2, "```", "",
               T["mac_h"], "", "```bash", MAC_CMD, "```", "",
               f"{T['manual']}: [wisp-win-x64.zip]({REPO}/releases/latest/download/wisp-win-x64.zip) · "
               f"[wisp-macos-universal2.dmg]({REPO}/releases/latest/download/wisp-macos-universal2.dmg)", ""]

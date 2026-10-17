@@ -20,6 +20,12 @@ Windows 10/11, dán vào PowerShell:
 irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex
 ```
 
+Hoặc dán vào cmd / Git Bash:
+
+```bat
+powershell -NoProfile -c "irm https://raw.githubusercontent.com/hakienit/pet-tracker/main/install.ps1 | iex"
+```
+
 macOS (thử nghiệm), dán vào Terminal:
 
 ```bash
