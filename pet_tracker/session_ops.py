@@ -24,15 +24,46 @@ from .procenv import clean_env
 _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
-def _git(cwd, *args, timeout: float = 8.0):
-    """(returncode, stdout) của một lệnh git; (-1, lỗi) nếu không chạy được."""
+def _git(cwd, *args, timeout: float = 8.0, opts: tuple = ()):
+    """(returncode, stdout) của một lệnh git; (-1, lỗi) nếu không chạy được. opts: thêm tuỳ chọn toàn cục
+    (`-c k=v`...) đặt trước subcommand, sau các tuỳ chọn khoá cứng."""
+    # không chạy mã từ config của repo (core.fsmonitor, core.hooksPath) và không để GIT_* kế thừa (GIT_DIR,
+    # GIT_WORK_TREE, GIT_CONFIG_PARAMETERS...) lái git sang repo/config khác; status không ghi lock/index
+    pre = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=", *opts]
+    if args[:1] == ("status",):
+        pre.append("--no-optional-locks")
+    env = {k: v for k, v in clean_env().items() if not k.upper().startswith("GIT_")}
+    env["GIT_TERMINAL_PROMPT"] = "0"  # không hỏi mật khẩu trên terminal; stdin đóng để không treo chờ nhập
     try:
-        p = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout, creationflags=_NO_WINDOW, env=clean_env())
+        p = subprocess.run(["git", *pre, *args], cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout, creationflags=_NO_WINDOW, env=env,
+                           stdin=subprocess.DEVNULL)
         # rstrip: giữ khoảng trắng đầu dòng của `status --short`
         return p.returncode, (p.stdout if p.returncode == 0 else (p.stderr or p.stdout)).rstrip()
     except (OSError, subprocess.SubprocessError) as e:
         return -1, str(e)
+
+
+def _filters_off(cwd):
+    """Tuỳ chọn `-c` vô hiệu mọi filter driver (clean/smudge/process) khai báo trong config repo: `status` và
+    `worktree remove` băm lại file lệch stat nên sẽ chạy lệnh clean của repo. Tên driver là dữ liệu không tin
+    cậy. Tên có khoảng trắng/ký tự điều khiển/'=' không diễn tả được bằng `-c`, bỏ qua thì filter vẫn chạy:
+    trả None (đóng-khi-lỗi, caller không được chạy status/remove). Cũng None nếu không đọc được config."""
+    rc, out = _git(cwd, "config", "--name-only", "--get-regexp", r"^filter\..*\.(clean|smudge|process)$")
+    if rc not in (0, 1):  # 1 = không có filter nào
+        return None
+    names = set()
+    for k in out.splitlines() if rc == 0 else ():
+        n = k[7:k.rindex(".")] if k.startswith("filter.") and "." in k[7:] else ""
+        if not n or "=" in n or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in n):
+            return None
+        names.add(n)
+    args = []
+    for n in sorted(names):
+        for v in ("clean", "smudge", "process"):
+            args += ["-c", f"filter.{n}.{v}="]
+        args += ["-c", f"filter.{n}.required=false"]
+    return args
 
 
 def is_orca(path: str) -> bool:
@@ -53,7 +84,11 @@ def git_state(cwd: str):
     top, gitdir, common = (os.path.abspath(x) for x in out.splitlines()[:3])
     linked = os.path.normcase(gitdir) != os.path.normcase(common)
     # ghi rõ cờ untracked/ignored: không để config git của người dùng (status.showUntrackedFiles=no) giấu file
-    rc, out = _git(cwd, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "--ignored=matching")
+    filt = _filters_off(cwd)
+    if filt is None:  # có filter driver không vô hiệu được: không chạy status (sẽ chạy lệnh clean của repo)
+        return None
+    rc, out = _git(cwd, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "--ignored=matching",
+                   opts=tuple(filt))
     if rc != 0:
         return None
     branch, upstream, ahead, dirty, ignored = None, None, None, 0, []
@@ -293,7 +328,17 @@ def _remote_has_head(st: dict) -> bool:
     rc_h, head = _git(st["top"], "rev-parse", "HEAD")
     if rc_r or rc_m or rc_h:
         return False
-    rc, out = _git(st["top"], "ls-remote", remote.strip(), merge.strip(), timeout=20)
+    remote, merge = remote.strip(), merge.strip()
+    if remote.startswith("-") or merge.startswith("-"):  # config không tin cậy: chặn chèn tuỳ chọn vào ls-remote
+        return False
+    # chỉ https/ssh, mỗi giao thức khác tắt riêng (config repo đặt được protocol.<x>.allow=always); không chạy
+    # helper/ssh/askpass do repo khai báo. http thường bị chặn có chủ ý: coi như "chưa push" (an toàn)
+    safe = ("protocol.allow=never", "protocol.ext.allow=never", "protocol.file.allow=never",
+            "protocol.git.allow=never", "protocol.fd.allow=never", "protocol.https.allow=always",
+            "protocol.ssh.allow=always", "core.sshCommand=ssh -o BatchMode=yes", "credential.helper=",
+            "core.askPass=")
+    opts = tuple(x for c in safe for x in ("-c", c))
+    rc, out = _git(st["top"], "ls-remote", remote, merge, timeout=20, opts=opts)
     return rc == 0 and bool(out) and out.split()[0] == head.strip()
 
 
@@ -307,8 +352,12 @@ def remove_worktree(sess: dict, claude_dir: str) -> tuple:
             return False, "có session khác đang chạy trong worktree, không xoá"
     if not st["merged"] and not _remote_has_head(st):
         return False, "branch chưa merge và remote không còn đúng commit này, không xoá"
+    filt = _filters_off(st["top"])
+    if filt is None:
+        return False, "filter config không an toàn, không xoá"
     # chạy git từ thư mục .git chung: process con không được đứng trong thư mục sắp xoá (Windows khoá thư mục)
-    rc, out = _git(st["common"], "-c", "status.showUntrackedFiles=all", "worktree", "remove", st["top"], timeout=60)
+    rc, out = _git(st["common"], "-c", "status.showUntrackedFiles=all", "worktree", "remove", st["top"], timeout=60,
+                   opts=tuple(filt))
     if rc != 0:
         return False, f"git worktree remove: {out.splitlines()[-1] if out else rc}"
     msg = f"đã xoá worktree {os.path.basename(st['top'])}"
