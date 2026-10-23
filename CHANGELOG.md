@@ -6,6 +6,45 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 
 ## [Unreleased]
 
+### Added
+- **Control room**: cửa sổ giám sát cây dự án → team (worktree) → session → phòng ban → subagent và task nền,
+  với trạng thái đang chạy, treo, xong, lỗi. Mở bằng click phải vào island → Control room; đúp chuột vào
+  session để đưa cửa sổ của nó lên. Chi tiết trong `docs/GUIDE.md`.
+- Huy hiệu worker trên card session: số subagent và task nền đang chạy; có subagent treo thì chữ màu vàng.
+- Hai khoá config: `agent_prefixes` (tiền tố bỏ khi gom phòng ban, mặc định `["les-"]`) và `stuck_after_sec`
+  (số giây transcript subagent im lặng trước khi coi là treo, mặc định 120; subagent con đang chạy hoặc tool
+  chưa có kết quả thì vẫn là đang chạy).
+
+### Changed
+- Đọc transcript theo đoạn và có trần bộ nhớ: mỗi đoạn tối đa 8 MiB, đọc cho tới hết file; dòng lớn
+  hơn 1 MB bị bỏ; meta lớn hơn 64 KB bị bỏ; mỗi session giữ tối đa 500 worker mới nhất.
+- FIFO và file không thường bị bỏ qua khi đọc transcript, không làm treo thread thu thập.
+
+### Security
+- Các lệnh git Wisp chạy không còn thực thi `core.fsmonitor`, hooks và filter driver (clean, smudge, process)
+  khai báo trong config của repo. Biến `GIT_*` từ môi trường bị bỏ trước khi chạy git; `status` không ghi lock.
+- `git ls-remote` (kiểm đã push chưa) không chạy helper ext, ssh command, credential helper hay askpass do repo
+  khai báo, và chỉ dùng https hoặc ssh; giao thức khác bị tắt, tham số bắt đầu bằng `-` bị từ chối. Hệ quả: một số
+  worktree có remote khác https/ssh giờ hiện là "chưa push".
+- `git worktree remove` từ chối chạy khi filter config của repo không an toàn.
+- Deep link Claude desktop trên macOS chỉ nhận host session id đúng dạng `local_` cộng chữ, số, gạch nối (tối đa
+  64 ký tự), giống Windows, và mã hoá id trước khi ghép vào link. Trước đó chỉ kiểm tiền tố `local_`.
+
+### Known limits
+- Control room và các bản vá git chưa kiểm trên Windows; không có kiểm chạy thật ở đó.
+- Các khoá config khác của repo chưa được kiểm từng khoá; chỉ những khoá nêu ở trên bị chặn.
+- Có một khoảng ngắn giữa bước kiểm filter và `git status`; repo có thể đổi config trong khoảng đó.
+- Wisp chỉ được thử với git 2.54. Phiên bản git tối thiểu hỗ trợ `protocol.<tên>.allow` chưa được xác minh; trên
+  git cũ hơn, việc chặn `ext` và `file` cho `ls-remote` có thể không có tác dụng.
+- Tài liệu `git help config` của 2.54 chỉ mô tả `protocol.<tên>.allow` cho lệnh clone, fetch và push. Với `ls-remote`,
+  các test chạy thật trên git 2.54 (ext, ssh command, uploadpack, gitProxy, credential helper, askpass, include)
+  xác nhận không có helper nào chạy; hành vi này chưa được thử trên phiên bản git khác.
+- Hardening giao thức `fd::` (`protocol.fd.allow=never`) chưa có test nào chạy tới.
+- `url.<x>.insteadOf` hoặc `http.proxy` trong repo vẫn có thể chuyển `ls-remote` sang host https/ssh khác. Lúc đó
+  chỉ có thể làm nhánh trông như đã push; xoá worktree vẫn từ chối worktree bẩn hoặc branch chưa merge.
+- Remote khác https/ssh (ví dụ `git://`, `file`, `http`), và người dùng dựa vào `GIT_SSH_COMMAND` hoặc
+  `GIT_ASKPASS`, đều thấy worktree là "chưa push".
+
 ## [0.1.7] - 2026-10-16
 
 ### Added

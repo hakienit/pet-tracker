@@ -206,6 +206,8 @@ Copy `config.example.json` thành `config.json` (cùng thư mục) và sửa:
 | `update_check` | true | tự kiểm tra bản mới khi mở app và mỗi `update_interval_hours` giờ |
 | `update_interval_hours` | 1 | chu kỳ kiểm tra bản mới |
 | `update_api_url` | null | chỉ dùng để test (trỏ tới API giả lập); null = GitHub Releases của repo |
+| `agent_prefixes` | `["les-"]` | tiền tố bỏ khi gom phòng ban trong [Control room](#control-room) |
+| `stuck_after_sec` | 120 | số giây im lặng trước khi subagent trong Control room bị coi là treo |
 
 Log nhẹ (lỗi, lần kéo, mở panel) ở `%APPDATA%\Wisp\wisp.log`.
 
@@ -329,6 +331,72 @@ Các trường hợp **không focus được / giới hạn**:
 - Cần cùng phiên desktop (session 1); process chạy dưới user khác / elevated có thể từ chối
   `AttachConsole`.
 
+## Control room
+
+Cửa sổ giám sát mọi session Claude Code đang chạy trên máy, xếp theo cây: dự án → team → session → phòng ban → worker.
+
+Mở: click phải vào island (hoặc bóng nổi) → **Control room**. Lần đầu mở mới dựng cửa sổ; các lần sau đưa cửa sổ đang có lên trước. Cửa sổ đổi kích thước được, vị trí và kích thước lưu ở `state.json` (khoá `control_room_geometry`). Đóng rồi mở lại thì cây hiện ngay theo dữ liệu gần nhất.
+
+Thanh trên cùng đếm: dự án, team, subagent đang chạy, task nền đang chạy, subagent treo.
+
+### Cây
+
+| Tầng | Là gì | Lấy từ |
+|---|---|---|
+| Project | một repo | thư mục git chung (bỏ `.git`); session ngoài git thì lấy thư mục `cwd` |
+| Team | một worktree, kèm nhánh | thư mục top của git; có git thì không lấy từ `cwd`, vì `cwd` có thể là thư mục con |
+| Session | một session đang chạy | tên session; không có tên thì 8 ký tự đầu của id |
+| Phòng ban | nhóm subagent cùng loại | `agentType` bỏ mọi thứ tới dấu `:` cuối cùng (kể cả namespace nhiều dấu `:`), rồi bỏ tiền tố đầu tiên khớp trong `agent_prefixes`: `les-engineering` thành `engineering`, `hba:qa-engineer` thành `qa-engineer`, `code-quality-reviewer` giữ nguyên |
+| Worker | một subagent, hoặc một task nền trong nhóm "Task nền" | subagent: `subagents/agent-*.jsonl` và `.meta.json` cạnh nó; task nền: lệnh Bash chạy nền trong transcript chính |
+
+- Subagent con nằm dưới subagent cha khi cha phát ra lệnh `Agent` (hoặc `Task`) sinh ra con đó. Chuỗi lồng quá 8 tầng, hoặc vòng (A gọi B, B gọi A), thì nút bị đưa lên làm gốc của nhóm phòng ban.
+- Nhóm, team, session hoặc dự án có subagent treo bên dưới được tô vàng.
+- Cột "Trạng thái" và cột "Chạy · token · hoạt động cuối". Chọn một dòng thì khung bên phải hiện chi tiết.
+
+### Trạng thái
+
+Nhãn hiển thị: đang chạy, treo, xong, lỗi, đã dừng, đã kết thúc. Cách quyết định:
+
+| Trạng thái | Subagent | Task nền |
+|---|---|---|
+| đang chạy (`running`) | chưa xong, và một trong ba đúng: transcript được ghi trong `stuck_after_sec` giây gần nhất; còn tool chưa có kết quả; còn subagent con đang chạy | chưa có thông báo kết thúc |
+| treo (`stuck`) | chưa xong, transcript im quá `stuck_after_sec` giây, không có tool đang chạy và không có con đang chạy | không có: task nền không bao giờ treo |
+| xong (`done`) | `finished` trong meta là true, hoặc có thông báo kết thúc (`task-notification`) của session với status khác `failed`/`killed` | thông báo kết thúc với status khác `failed`/`killed` |
+| lỗi (`failed`) | thông báo kết thúc có status `failed` | status `failed` |
+| đã dừng (`killed`) | thông báo kết thúc có status `killed` | status `killed` |
+| đã kết thúc (`ended`) | không dùng | task khởi chạy trước giờ bắt đầu của session (session được resume); không còn thông báo nên không thể đang chạy |
+
+Worker đã xong hiện thời gian từ lúc bắt đầu tới lần ghi cuối. Worker đang chạy hiện thời gian tới giờ.
+
+### Thao tác
+
+- Click chọn dòng: khung bên phải hiện chi tiết (mô tả, loại agent, phòng ban, thời gian chạy, token, hoạt động cuối).
+- Đúp chuột hoặc Enter trên dòng session: đưa cửa sổ đang host session đó lên, theo cùng logic như click session trong panel. Chỉ tìm session còn sống trong snapshot hiện tại; session đã thoát thì không có gì xảy ra.
+- Subagent, task nền, phòng ban, team và dự án chỉ để xem. Control room không dừng, xoá hay gửi lệnh tới agent nào.
+
+### Nguồn dữ liệu và giới hạn
+
+- Đọc transcript và meta trong `claude_dir` (mặc định `~/.claude`, tôn trọng `CLAUDE_CONFIG_DIR`). Không gọi mạng. Chỉ ghi vị trí cửa sổ vào `state.json`.
+- Project và team dùng kết quả git mà collector đã có (cache 30 giây cho mỗi thư mục). Không chạy lệnh git mới.
+- Chỉ session còn sống (pid còn chạy) mới có trong cây.
+- Giới hạn bộ nhớ: dòng lớn hơn 1 MB bị bỏ; meta lớn hơn 64 KB bị bỏ; mỗi session giữ tối đa 500 worker mới nhất; mỗi session hiện tối đa 2000 dòng (gồm dòng session, nhóm và worker). Phần dư thành dòng `+N more` chỉ để đếm.
+
+### Cấu hình
+
+| Khoá | Mặc định | Ý nghĩa |
+|---|---|---|
+| `agent_prefixes` | `["les-"]` | tiền tố bỏ khi gom phòng ban; chỉ bỏ tiền tố đầu tiên khớp. Không phải list thì dùng mặc định; mục không phải chuỗi bị bỏ |
+| `stuck_after_sec` | 120 | số giây transcript subagent im lặng (không có tool đang chạy, không có con đang chạy) trước khi coi là treo. Số âm hoặc không phải số thì dùng mặc định |
+
+### Giới hạn đã biết
+
+- Chưa kiểm trên Windows: không có kiểm chạy thật ở đó.
+- Subagent lồng nhau mới kiểm bằng dữ liệu giả. Chưa có transcript thật lồng sâu, nên định dạng có thể đổi.
+- Tool chạy mãi không bao giờ hiện treo: tool chưa có kết quả luôn được coi là đang chạy.
+- Task nền không có trạng thái treo, kể cả khi im lặng lâu.
+- Subagent không có `.meta.json` vẫn hiện, với loại và phòng ban là `?`.
+- Repo có tên filter git không an toàn (khoảng trắng, ký tự điều khiển, dấu `=`): git bị bỏ qua. Session không có thông tin git, dự án và team lấy từ `cwd`, không có nhánh.
+
 ## Cấu trúc code
 
 ```
@@ -347,6 +415,8 @@ pet-tracker/
   pet_tracker/
     config.py              defaults, config.json, state.json (vị trí bóng), thư mục state theo OS
     claude_data.py         sessions/*.json, parser transcript .jsonl, context, ước tính local
+    org.py                 gom session thành cây Project > Team > Session > worker (hàm thuần)
+    control_room.py        cửa sổ Control room (Tk), làm sạch chuỗi từ agent
     quota.py               gọi endpoint usage OAuth, chuẩn hoá cửa sổ limit
     ui.py                  bubble + panel (tkinter), thread collector, popup, updater UI
     procenv.py             env sạch (bỏ biến CLAUDE_*) cho tiến trình con

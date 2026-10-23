@@ -42,6 +42,8 @@ Muốn tải tay: [Windows .zip](https://github.com/hakienit/pet-tracker/release
 - **Quota tài khoản**: % đã dùng của cửa sổ 5 giờ và 7 ngày, giờ reset, đổi màu khi gần chạm giới hạn.
 - **Mọi session đang chạy**: CLI lẫn Claude desktop, kèm model, thư mục và git branch, busy hay idle,
   context window đã dùng, số subagent.
+- **Control room**: click phải vào island → Control room để xem cây dự án → team → session → subagent
+  và task nền, agent nào đang chạy, treo, xong hay lỗi.
 - **Một click về đúng cửa sổ**: bấm vào session để đưa terminal, IDE hoặc Claude desktop đang chạy nó lên.
 - **Dọn dẹp session** (Windows): handoff rồi đóng, đóng, xoá session, xoá worktree đã merge; mở lại session
   vừa đóng.

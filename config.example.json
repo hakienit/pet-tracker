@@ -8,5 +8,7 @@
   },
   "warn_percent": 60,
   "danger_percent": 85,
-  "bubble_size": 64
+  "bubble_size": 64,
+  "agent_prefixes": ["les-"],
+  "stuck_after_sec": 120
 }
