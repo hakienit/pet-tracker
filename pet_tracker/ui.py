@@ -12,7 +12,7 @@ from tkinter import font as tkfont
 
 import base64
 
-from . import __version__, procenv, render, session_ops, updater
+from . import __version__, org, procenv, render, session_ops, updater
 from . import platform as plat
 from .claude_data import ClaudeDataStore, account_info, short_model
 from .config import STATE_DIR, load_config, load_state, save_state
@@ -31,6 +31,35 @@ def log(msg: str) -> None:
             f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
     except Exception:
         pass
+
+
+LOG_MAX = 200
+SID_MAX = 64
+ELLIPSIS_IN_MAX = 500   # _ellipsis chỉ đo tối đa từng này ký tự đầu của chuỗi
+
+
+def safe_log(msg) -> str:
+    """Chuỗi an toàn để ghi log: chỉ ASCII (escape kiểu repr, ký tự điều khiển cũng bị escape), tối đa 200 ký tự."""
+    try:
+        text = str(msg)
+    except Exception:
+        text = "?"
+    return ascii(text[:LOG_MAX])[1:-1][:LOG_MAX]
+
+
+def _control_room_log(msg) -> None:
+    """log= của Control room: chuỗi do agent viết đi qua safe_log trước khi vào log."""
+    log(safe_log(msg))
+
+
+def find_live_session(sessions, sid):
+    """Tra session live theo session_id trong snapshot hiện tại; trả đúng dict gốc (trùng id: lấy cái đầu), không thì None."""
+    if not isinstance(sid, str) or len(sid) > SID_MAX or not isinstance(sessions, (list, tuple)):
+        return None
+    for s in sessions:
+        if isinstance(s, dict) and s.get("session_id") == sid:
+            return s
+    return None
 
 
 # ---------------------------------------------------------------- palette
@@ -236,6 +265,11 @@ class Collector(threading.Thread):
                     self._git_cache.pop(self._git_stale.pop(), None)
                 for s in sessions:
                     s["git"] = self._git_state(s.get("cwd"), now)
+                try:  # lỗi org không làm mất sessions/quota
+                    tree = org.build(sessions, self.cfg, now)
+                except Exception as e:
+                    log(f"org error: {repr(e)[:200]}")  # repr: chuỗi từ agent có thể nằm trong thông báo
+                    tree = None
                 local = {
                     "5h": self.store.usage_window(5 * 3600, now),
                     "7d": self.store.usage_window(7 * 86400, now),
@@ -243,6 +277,7 @@ class Collector(threading.Thread):
                 self.out.put({
                     "ts": now,
                     "sessions": sessions,
+                    "org": tree,
                     "quota": self._quota,
                     "local": local,
                     "account": self._account,
@@ -252,6 +287,47 @@ class Collector(threading.Thread):
                 self.out.put({"ts": time.time(), "error": f"{type(e).__name__}: {e}"})
             self.kick.wait(float(self.cfg["refresh_sessions_sec"]))
             self.kick.clear()
+
+
+# ---------------------------------------------------------------- huy hiệu worker trên card (hàm thuần)
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def worker_badge(workers) -> tuple:
+    """(text, warn) của một session: đếm subagent running/stuck và bgtask running; có stuck thì warn.
+    Không worker nào đang chạy thì text rỗng. Mục sai kiểu, kind lạ hay state lạ bị bỏ qua."""
+    ws = [w for w in workers if isinstance(w, dict)] if isinstance(workers, list) else []
+    agents = sum(1 for w in ws if w.get("kind") == "subagent" and w.get("state") in ("running", "stuck"))
+    tasks = sum(1 for w in ws if w.get("kind") == "bgtask" and w.get("state") == "running")
+    warn = any(w.get("kind") == "subagent" and w.get("state") == "stuck" for w in ws)
+    parts = ([_plural(agents, "agent")] if agents else []) + ([_plural(tasks, "task")] if tasks else [])
+    return " · ".join(parts), warn
+
+
+def org_workers(org_tree):
+    """session_id -> list worker của session trong cây org (snap["org"]). None khi không có cây (collector lỗi)."""
+    if not isinstance(org_tree, dict):
+        return None
+    out = {}
+    for p in org_tree.get("projects") or []:
+        for t in (p.get("teams") or []) if isinstance(p, dict) else []:
+            for s in (t.get("sessions") or []) if isinstance(t, dict) else []:
+                if isinstance(s, dict) and isinstance(s.get("session_id"), str):
+                    out[s["session_id"]] = s.get("workers") or []
+    return out
+
+
+def _worker_counts(workers) -> tuple:
+    """Số worker theo (kind, state): khoá live của card, đổi số thì sửa chữ tại chỗ, không dựng lại card."""
+    if not isinstance(workers, list):
+        return None  # không có org; [] (org có session, không worker) là khoá khác
+    c = {}
+    for w in workers:
+        if isinstance(w, dict):
+            k = (w.get("kind"), w.get("state"))
+            c[k] = c.get(k, 0) + 1
+    return tuple(sorted(c.items(), key=repr))
 
 
 # ---------------------------------------------------------------- app
@@ -264,6 +340,7 @@ class PetApp:
         self._ops_done: queue.Queue = queue.Queue()   # (sid, tên, ok, thông báo, cwd, mục đã đóng) từ thread thao tác
         self.snap = None
         self.sig = None
+        self.control_room = None     # tạo lười ở lần mở đầu tiên từ popup
 
         global _ROOT
         self.root = tk.Tk()
@@ -872,11 +949,20 @@ class PetApp:
                         bd=0, padx=0, pady=0, **kw)
 
     def _ellipsis(self, text: str, font: tkfont.Font, max_px: int) -> str:
-        if font.measure(text) <= max_px:
+        """Cắt đuôi cho vừa max_px rồi thêm "…". Chỉ đo tối đa ELLIPSIS_IN_MAX ký tự đầu (đo chuỗi dài rất chậm),
+        tìm điểm cắt bằng nhị phân: O(log n) lần đo thay vì O(n)."""
+        cut = len(text) > ELLIPSIS_IN_MAX
+        text = text[:ELLIPSIS_IN_MAX]
+        if not cut and font.measure(text) <= max_px:
             return text
-        while text and font.measure(text + "…") > max_px:
-            text = text[:-1]
-        return text + "…"
+        lo, hi, best = 0, len(text) - 1, 0   # best: k lớn nhất trong [0, len-1] có đo(text[:k] + "…") <= max_px
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if font.measure(text[:mid] + "…") <= max_px:
+                best, lo = mid, mid + 1
+            else:
+                hi = mid - 1
+        return text[:best] + "…"
 
     def _bar(self, parent, pct: float, color: str, width: int, height: float = 6):
         h = max(4, int(height * self.S))
@@ -961,25 +1047,32 @@ class PetApp:
                              fmt_clock(w.get("resets_at"))) for w in q.get("windows", [])),
                       q.get("ok"), q.get("error"), q.get("stale_error"),
                       int((q.get("fetched_at") or 0) // 60) if q.get("stale_error") else None),
-            "sessions": (tuple(self._card_key(s) for s in snap.get("sessions", [])), snap.get("error")),
+            "sessions": (tuple(self._card_key(s, self._workers_of(s)) for s in snap.get("sessions", [])),
+                         snap.get("error")),
             "closed": tuple((c.get("session_id"), c.get("handoff"), fmt_ago(c.get("closed_at")))
                             for c in self._closed_list()),
             "local": tuple(fmt_k(local_total(snap.get("local", {}).get(k))) for k in ("5h", "7d")),
         }
 
+    _wmap = None  # session_id -> worker của render hiện tại (None: không có org), đặt trong _render_panel
+
+    def _workers_of(self, s: dict):
+        return None if self._wmap is None else self._wmap.get(s.get("session_id"))
+
     @staticmethod
-    def _card_key(s: dict) -> tuple:
+    def _card_key(s: dict, workers=None) -> tuple:
         """(cấu trúc, số liệu) của một card. Chỉ số liệu đổi thì sửa chữ tại chỗ, không dựng lại card."""
         ago = fmt_ago(s.get("last_activity"))
         gtxt = session_ops.state_text(s.get("git"))
         struct = (s["session_id"], s["status"], s["model"], s.get("effort"), s["cwd"], s.get("git_branch"),
                   s["name"], s.get("entrypoint"), s["has_transcript"], bool(ago), bool(gtxt[0]))
         live = (s["context_tokens"], s["context_limit"], s["totals"]["messages"], s["totals"]["output"],
-                s["subagents"], ago, gtxt, s.get("git", {}) and s["git"].get("linked"))
+                s["subagents"], ago, gtxt, s.get("git", {}) and s["git"].get("linked"), _worker_counts(workers))
         return struct, live
 
     def _render_panel(self, force=False):
         snap = self.snap or {}
+        self._wmap = org_workers(snap.get("org"))  # tra worker theo session một lần cho cả render này
         sig = self._signature(snap)
         if not force and sig == self.sig:
             self._update_footer()
@@ -1235,14 +1328,24 @@ class PetApp:
         # dòng 4: trạng thái + số liệu
         r4 = tk.Frame(inner, bg=SURFACE)
         r4.pack(fill="x", pady=(int(8 * S), 0))
-        self._lbl(r4, "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"])),
-                  font=self.f_xsb, fg=status_col).pack(side="left")
-        refs["stats"] = self._lbl(r4, self._card_stats(s), font=self.f_xs, fg=MUTED)
+        status_txt = "● " + ("Đang chạy" if is_busy else ("Rảnh" if s["status"] == "idle" else s["status"]))
+        self._lbl(r4, status_txt, font=self.f_xsb, fg=status_col).pack(side="left")
+        refs["fit"] = (cw, status_txt)  # bề rộng dòng và chữ trạng thái: để cắt số liệu vừa chỗ
+        refs["stats"] = self._lbl(r4, self._fit_stats(refs, s), font=self.f_xs, fg=MUTED)
         refs["stats"].pack(side="left", padx=(int(8 * S), 0))
         ago = fmt_ago(s.get("last_activity"))
         if ago:
             refs["ago"] = self._lbl(r4, ago, font=self.f_xs, fg=FAINT)
             refs["ago"].pack(side="right")
+
+        # huy hiệu worker: dòng riêng dưới số liệu (chung dòng thì Tk cắt mất thời gian). Dòng luôn có mặt;
+        # nhãn chỉ pack khi có chữ, nên card không có worker không hở thêm dòng.
+        wtxt, warn = self._worker_label(s)
+        wrow = tk.Frame(inner, bg=SURFACE)
+        wrow.pack(fill="x")
+        refs["workers"] = self._lbl(wrow, wtxt, font=self.f_xs, fg=YELLOW if warn else MUTED)
+        if wtxt:
+            refs["workers"].pack(side="left", pady=(int(4 * S), 0))
 
         # trạng thái git của thư mục session: xong (sạch + đã merge/push) thì dọn được
         gtxt, gkind = session_ops.state_text(s.get("git"))
@@ -1262,12 +1365,30 @@ class PetApp:
         more.bind("<Leave>", lambda ev: more.configure(fg=MUTED))
         return card, arrow
 
+    def _fit_stats(self, refs: dict, s: dict) -> str:
+        """Số liệu dòng 4, cắt đuôi cho vừa chỗ còn lại sau trạng thái và thời gian (Tk không tự cắt chữ)."""
+        cw, status_txt = refs["fit"]
+        ago = fmt_ago(s.get("last_activity"))
+        room = cw - self.f_xsb.measure(status_txt) - int(8 * self.S)
+        if ago:
+            room -= self.f_xs.measure(ago) + int(8 * self.S)
+        return self._ellipsis(self._card_stats(s), self.f_xs, room)
+
+    def _worker_label(self, s: dict) -> tuple:
+        """(chữ huy hiệu worker, warn). Không có org thì giữ nhãn `N subagent` của collector."""
+        workers = self._workers_of(s)
+        if workers is None:
+            text, warn = (f"{s['subagents']} subagent" if s["subagents"] else ""), False
+        else:
+            text, warn = worker_badge(workers)
+        return (f"  ·  {text}" if text else ""), warn
+
     @staticmethod
     def _card_stats(s: dict) -> str:
         bits = [f"{s['totals']['messages']} msg", f"{fmt_k(s['totals']['output'])} out"]
-        if s["subagents"]:
-            bits.append(f"{s['subagents']} subagent")
-        ep = ENTRYPOINTS.get(s.get("entrypoint") or "", s.get("entrypoint") or "")
+        raw = s.get("entrypoint")
+        raw = raw if isinstance(raw, str) else ""  # list/dict không băm được, số không phải chuỗi: coi như thiếu
+        ep = ENTRYPOINTS.get(raw, raw)
         if ep:
             bits.append(ep)
         return "  ·  ".join(bits)
@@ -1280,7 +1401,14 @@ class PetApp:
             refs["pct"].configure(text=f"{s['context_pct']:.0f}%", fg=col)
             refs["tok"].configure(text=f"{fmt_k(s['context_tokens'])} / {fmt_k(s['context_limit'])}")
         self._set_bar(refs["bar"], s["context_pct"], col)
-        refs["stats"].configure(text=self._card_stats(s))
+        refs["stats"].configure(text=self._fit_stats(refs, s))
+        wtxt, warn = self._worker_label(s)
+        lbl = refs["workers"]
+        lbl.configure(text=wtxt, fg=YELLOW if warn else MUTED)
+        if wtxt and not lbl.winfo_manager():
+            lbl.pack(side="left", pady=(int(4 * self.S), 0))
+        elif not wtxt and lbl.winfo_manager():
+            lbl.pack_forget()
         if "ago" in refs:
             refs["ago"].configure(text=fmt_ago(s.get("last_activity")))
         if "git" in refs:
@@ -1786,6 +1914,7 @@ class PetApp:
                         act(self._toggle_autostart))
         self._sheet_row(body, ICON_CHECK if self.island else ICON_STARTUP_OFF, "Dạng Dynamic Island",
                         "đang bật" if self.island else "bóng nổi", act(self._toggle_island))
+        self._sheet_row(body, ICON_OPEN, "Control room", "giám sát", act(self._open_control_room))
         tk.Frame(body, bg=LINE, height=1).pack(fill="x", padx=int(14 * S), pady=int(4 * S))
         self._sheet_row(body, ICON_EXIT, "Thoát Wisp", "", act(self.quit), danger=True)
         tk.Frame(body, bg=SHEET_BG, height=int(6 * S)).pack(fill="x")
@@ -1796,10 +1925,60 @@ class PetApp:
             ok, msg = plat.focus_session(sess)
         except Exception as e:
             ok, msg = False, f"lỗi: {type(e).__name__}: {e}"
-        log(f"focus session {sess.get('name')!r} pid={sess.get('pid')}: ok={ok} {msg}")
+        log(f"focus session name='{safe_log(sess.get('name'))}' pid='{safe_log(sess.get('pid'))}': ok={ok} {safe_log(msg)}")
         self._flash(("Đã mở: " if ok else "Không mở được: ") + msg, GREEN if ok else YELLOW)
         if ok:
             self.hide_panel()
+
+    # ---------- Control room
+    def _control_room_theme(self) -> dict:
+        return {"bg": BG, "surface": SURFACE, "line": LINE, "fg": FG, "fg2": FG2, "muted": MUTED,
+                "faint": FAINT, "green": GREEN, "yellow": YELLOW, "red": RED, "accent": ACCENT, "sel": TRACK,
+                "f_xs": self.f_xs, "f_sm": self.f_sm, "f_smb": self.f_smb, "f_title": self.f_title,
+                "f_big": self.f_big, "scale": self.S, "top": 28 if plat.IS_MAC else 0}
+
+    def _open_control_room(self):
+        try:
+            if self.panel_visible:  # panel topmost sẽ che Control room: ẩn trước (như popup)
+                self.hide_panel()
+            if self.control_room is None:
+                # import tại chỗ để test có stub tkinter không gắn stub vào control_room (không phải vì vòng import)
+                from .control_room import ControlRoom
+                self.control_room = ControlRoom(self.root, self._control_room_theme(), self.state, save_state,
+                                                self._focus_from_control_room, log=_control_room_log)
+            if self.snap is not None:  # hiện cây ngay, không chờ snapshot kế tiếp
+                self.control_room.render(self.snap)
+            if self.control_room.show():
+                return
+            # show() đã reset và ghi log lỗi dựng; ở đây chỉ dọn tham chiếu và báo người dùng
+        except Exception as e:
+            log(f"control room: {type(e).__name__}: {safe_log(e)}")
+        self._close_control_room()
+        self.control_room = None  # dựng lại sạch ở lần mở sau
+        self._flash("Không mở được Control room, xem wisp.log", YELLOW)
+        self.show_panel()  # footer chỉ vẽ khi panel mở; phòng đã đóng nên panel không che gì
+
+    def _focus_from_control_room(self, sid):
+        """Đúp chuột/Enter trong Control room: chỉ focus session live trong snapshot hiện tại, không dựng dict mới."""
+        sess = find_live_session((self.snap or {}).get("sessions"), sid)
+        if sess is not None:
+            self._focus_session(sess)
+
+    def _render_control_room(self):
+        if self.control_room is None:
+            return
+        try:
+            self.control_room.render(self.snap)
+        except Exception as e:
+            log(f"control room render: {type(e).__name__}: {safe_log(e)}")
+
+    def _close_control_room(self):
+        if self.control_room is None:
+            return
+        try:
+            self.control_room.close()
+        except Exception as e:
+            log(f"control room close: {type(e).__name__}: {safe_log(e)}")
 
     def _session_menu(self, sess: dict, x: int, y: int):
         """Popup dọn dẹp một session: mở, đóng, xoá session, xoá worktree đã xong."""
@@ -1968,6 +2147,7 @@ class PetApp:
             self._draw_bubble()
             if self.panel_visible:
                 self._render_panel()
+            self._render_control_room()
         if self._sheet is not None:
             down = _lbutton_down()
             if down and not self._lbtn_prev:
@@ -1999,6 +2179,7 @@ class PetApp:
             return False
 
     def quit(self):
+        self._close_control_room()
         self.collector.stop.set()
         self.collector.kick.set()
         try:

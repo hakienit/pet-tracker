@@ -48,12 +48,17 @@ DEFAULTS = {
     "update_interval_hours": 1,
     # Ghi đè URL API (chỉ dùng để test); None = https://api.github.com/repos/hakienit/pet-tracker/releases/latest
     "update_api_url": None,
+    # Control room: agent_type bắt đầu bằng tiền tố này thì gom theo "phòng ban" (les-engineering -> engineering)
+    "agent_prefixes": ["les-"],
+    # Worker đang chạy mà im lặng quá số giây này thì tính là "stuck"
+    "stuck_after_sec": 120,
 }
 
 
 def load_config() -> dict:
     cfg = dict(DEFAULTS)
     cfg["context_windows"] = dict(DEFAULTS["context_windows"])
+    cfg["agent_prefixes"] = list(DEFAULTS["agent_prefixes"])  # bản sao: sửa cfg không đổi DEFAULTS
     cfg["config_error"] = None  # lỗi đọc config.json (hiện trên panel); None = ổn hoặc không có file
     if CONFIG_FILE.exists():
         try:
