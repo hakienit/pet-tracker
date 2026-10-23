@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · 10 bản nháp giao diện</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Bricolage+Grotesque:wght@500;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Archivo:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&family=Press+Start+2P&family=Nunito:wght@400;600;700;800&family=Saira:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --chrome-bg:#0d0e11; --chrome-fg:#ebecf0; --chrome-mut:#a2a6b1; --chrome-line:#262830; --chrome-acc:#d97757;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--chrome-bg);color:var(--chrome-fg);font-family:'IBM Plex Sans',system-ui,sans-serif}
+header.top{position:sticky;top:0;z-index:10;background:rgba(13,14,17,.94);border-bottom:1px solid var(--chrome-line);padding:14px 24px;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center}
+header.top h1{font-size:18px;margin:0;font-weight:600}
+header.top nav{display:flex;flex-wrap:wrap;gap:6px}
+header.top nav a{color:var(--chrome-mut);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--chrome-line)}
+header.top nav a:hover{color:var(--chrome-fg);border-color:#3a3d47}
+header.top nav a.picked{color:#1a1208;background:var(--chrome-acc);border-color:var(--chrome-acc)}
+#picked{font-size:13px;color:var(--chrome-mut)}
+main{padding:24px;display:flex;flex-direction:column;gap:48px}
+section.draft{display:flex;flex-direction:column;gap:12px}
+.dhead{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.dhead h2{margin:0;font-size:20px;font-weight:600}
+.dhead .sub{color:var(--chrome-mut);font-size:14px}
+.pick{margin-left:auto;font:inherit;font-size:14px;padding:9px 16px;min-height:40px;border-radius:10px;border:1px solid #3a3d47;background:#16181d;color:var(--chrome-fg);cursor:pointer}
+.pick:hover{border-color:var(--chrome-acc)}
+.pick:focus-visible{outline:2px solid var(--chrome-acc);outline-offset:2px}
+.pick[aria-pressed="true"]{background:var(--chrome-acc);color:#1a1208;border-color:var(--chrome-acc);font-weight:600}
+.frame{border-radius:14px;overflow:hidden;border:1px solid var(--chrome-line);max-width:100%}
+.scene{width:1280px;height:800px;position:relative;overflow:hidden;transform-origin:0 0}
+.stage{position:absolute;left:0;top:0;width:840px;height:800px}
+.rail{position:absolute;left:840px;top:0;width:440px;height:800px;padding:28px 30px;background:#16181d;color:#e9eaee;display:flex;flex-direction:column;gap:18px;border-left:1px solid #2a2c33}
+.rail h3{margin:0;font-size:26px;line-height:1.15}
+.rail .desc{font-size:14px;line-height:1.45;color:#b4b8c2;margin-top:6px}
+.rail .lbl{font-size:12px;font-weight:600;color:#a2a6b1;margin-bottom:8px;letter-spacing:.02em}
+.rail ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5;color:#c9ccd4}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:12px;padding:3px 8px;border-radius:6px;background:#22252c;color:#c9ccd4}
+.isl-row{display:flex;align-items:center;gap:12px;min-height:38px}
+.isl-row .cap{font-size:12.5px;color:#a2a6b1;width:84px;flex:none}
+.sw{display:flex;gap:6px}
+.sw span{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.12)}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mono{font-variant-numeric:tabular-nums}
+@keyframes flick{0%,100%{transform:scale(1) translateY(0)}35%{transform:scale(1.04,.97) translateY(.5px)}70%{transform:scale(.97,1.04) translateY(-.5px)}}
+.flicker{animation:flick 1.6s ease-in-out infinite;transform-origin:50% 90%}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.flicker,.pulse{animation:none}}
+footer.note{padding:0 24px 40px;color:var(--chrome-mut);font-size:13px;line-height:1.6;max-width:900px}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Wisp · 10 bản nháp giao diện</h1>
+  <nav id="nav" aria-label="Các bản nháp"></nav>
+  <span id="picked" aria-live="polite"></span>
+</header>
+<main id="list"></main>
+<footer class="note">
+  Mỗi khung là một màn hình 1280×800. Bên trái: island và panel đang mở, kịch bản giống nhau cho mọi bản (1 session cần bạn, 1 đang chạy, 1 vừa xong, 1 rảnh; quota 5 giờ 62%, đốt nhanh hơn nhịp).
+  Bên phải: các trạng thái của island, thông báo, bảng màu. Bấm "Chọn bản này" để đánh dấu (chọn được nhiều bản để ghép), danh sách chọn hiện trên thanh đầu trang và được nhớ trong trình duyệt này.
+  Dữ liệu là mẫu. Font tải từ Google Fonts, mất mạng thì rơi về font hệ thống.
+</footer>
+<script>
+// ---------------------------------------------------------------- dữ liệu mẫu chung
+const Q = { h5: 62, h5Reset: '15:40', h5Left: '1 giờ 52 phút', fc: '15:10', d7: 38, d7Reset: 'T4 22/10', d7Left: '5 ngày', pace: 1.3, d7Pace: 42,
+  hist: [0, 4, 7, 9, 13, 18, 22, 25, 29, 34, 38, 41, 45, 50, 54, 58, 62] };
+const SESS = [
+  { st: 'wait', name: 'fix-auth-redirect', proj: 'pet-tracker', branch: 'hakienit/fix-auth', model: 'Opus 5.5', effort: 'high', ctx: 71, ctxTxt: '142k / 200k', ago: '40 giây', tool: 'Bash', detail: 'git push origin main', host: 'Windows Terminal', burn: '9%/giờ' },
+  { st: 'run', name: 'landing-hero', proj: 'vinova-web', branch: 'feat/hero', model: 'Sonnet 5.5', effort: 'medium', ctx: 34, ctxTxt: '340k / 1M', ago: 'vừa xong', tool: 'Edit', detail: 'src/components/Hero.tsx', todo: [3, 5], host: 'VS Code', burn: '14%/giờ' },
+  { st: 'done', name: 'release-notes', proj: 'pet-tracker', branch: 'main', model: 'Haiku 5.5', effort: 'low', ctx: 18, ctxTxt: '180k / 1M', ago: '2 phút', detail: 'Đã cập nhật CHANGELOG cho 0.1.8 và bump version.', host: 'Windows Terminal', burn: '1%/giờ' },
+  { st: 'idle', name: 'api-refactor', proj: 'core-api', branch: 'refactor/db', model: 'Opus 5.5', effort: 'high', ctx: 88, ctxTxt: '176k / 200k', ago: '25 phút', detail: 'Context 88%: nên compact hoặc handoff', host: 'Windows Terminal', burn: '0%/giờ' },
+];
+const LABEL = { wait: 'Cần bạn', run: 'Đang chạy', done: 'Xong', idle: 'Rảnh' };
+const line = (s) => s.st === 'wait' ? `Chờ duyệt ${s.tool}: ${s.detail}` : s.st === 'run' ? `${s.tool} ${s.detail}` : s.detail;
+
+// ---------------------------------------------------------------- icon (nét, theo currentColor)
+const P = {
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  run: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+  done: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  idle: '<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/>',
+  gear: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  more: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/>',
+  branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10"/><path d="M18 9c0 5-6 4-11 8.5"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  chev: '<path d="M9 6l6 6-6 6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
+  check2: '<path d="M4 12.5l4 4L20 5"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>',
+  term: '<path d="M4 6l6 6-6 6"/><path d="M12 18h8"/>',
+};
+const ic = (n, s = 16, sw = 1.8) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block">${P[n]}</svg>`;
+const stIcon = { wait: 'bell', run: 'run', done: 'done', idle: 'idle' };
+
+function ring(p, s, w, c, tr, cap = 'round') {
+  const r = (s - w) / 2, C = 2 * Math.PI * r;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true" style="flex:none;display:block"><circle cx="${s / 2}" cy="${s / 2}" r="${r}" fill="none" stroke="${tr}" stroke-width="${w}"/><circle cx="${s / 2}" cy="${s / 2}" r="${r}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="${cap}" stroke-dasharray="${(C * p) / 100} ${C}" transform="rotate(-90 ${s / 2} ${s / 2})"/></svg>`;
+}
+const bar = (p, c, tr, h = 6, r) => `<div style="height:${h}px;border-radius:${r ?? h / 2}px;background:${tr};overflow:hidden"><div style="width:${p}%;height:100%;border-radius:${r ?? h / 2}px;background:${c}"></div></div>`;
+const flame = (s, c, eye = '#000', cls = '') => `<svg class="${cls}" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;display:block"><path d="M12 2.5c2.9 3.6 6.5 6.3 6.5 11a6.5 6.5 0 0 1-13 0c0-3 2-4.6 2.6-7.2 1.2 1.2 1.8 2.6 1.8 3.7.6-2.6 1.4-4.6 2.1-7.5z" fill="${c}"/><circle cx="9.9" cy="14.6" r="1.1" fill="${eye}"/><circle cx="14.1" cy="14.6" r="1.1" fill="${eye}"/></svg>`;
+const sleepy = (s, c, eye = '#000') => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;display:block"><path d="M12 6c2.2 2.7 5 4.7 5 8.3a5 5 0 0 1-10 0c0-2.3 1.5-3.5 2-5.5.9.9 1.4 2 1.4 2.8.5-2 1-3.5 1.6-5.6z" fill="${c}"/><path d="M9.2 15h1.6M13.2 15h1.6" stroke="${eye}" stroke-width="1.1" stroke-linecap="round"/></svg>`;
+const lvl = (p, t) => (p >= 85 ? t.danger : p >= 60 ? t.warn : t.ok);
+const st = (s, t) => t[s.st];
+
+// đường usage 5 giờ: lịch sử (đặc) + dự báo (đứt) tới 100%, vạch reset
+function spark(w, h, t, opts = {}) {
+  const n = Q.hist.length - 1, nowX = w * 0.627, fcX = w * 0.9;
+  const pts = Q.hist.map((v, i) => [(nowX * i) / n, h - (h * v) / 100]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = d + ` L ${nowX.toFixed(1)} ${h} L 0 ${h} Z`;
+  const last = pts[pts.length - 1];
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true" style="display:block;overflow:visible">
+    <line x1="0" y1="0.5" x2="${w}" y2="0.5" stroke="${t.line}" stroke-dasharray="3 4"/>
+    ${opts.area !== false ? `<path d="${area}" fill="${t.areaFill || t.warn}" opacity="${t.areaOp ?? 0.16}"/>` : ''}
+    <path d="${d}" fill="none" stroke="${t.lineCol || t.warn}" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M ${last[0].toFixed(1)} ${last[1].toFixed(1)} L ${fcX} 1" fill="none" stroke="${t.danger}" stroke-width="2" stroke-dasharray="4 4"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5" fill="${t.lineCol || t.warn}"/>
+    <circle cx="${fcX}" cy="1" r="3.5" fill="${t.danger}"/>
+    <line x1="${w}" y1="0" x2="${w}" y2="${h}" stroke="${t.mut}" stroke-width="1.5"/>
+  </svg>`;
+}
+
+// màn hình nền: một cửa sổ editor mờ
+const desk = (bg, win) => `<div style="position:absolute;inset:0;background:${bg}"></div><div style="position:absolute;left:56px;top:150px;width:728px;height:560px;border-radius:10px;background:${win}"></div><div style="position:absolute;left:56px;top:150px;width:728px;height:34px;border-radius:10px 10px 0 0;background:rgba(255,255,255,.04)"></div>`;
+
+// thông báo thả xuống từ island (dùng chung, nhận token của từng bản)
+function toast(t, o = {}) {
+  const r = o.radius ?? 14, b = o.border ?? `1px solid ${t.line}`, sh = o.shadow ?? '0 10px 30px rgba(0,0,0,.35)';
+  return `<div style="background:${t.toastBg || t.surf};color:${t.fg};border:${b};border-radius:${r}px;box-shadow:${sh};padding:12px 14px;display:flex;gap:12px;align-items:flex-start;font-family:${o.font || 'inherit'}">
+    <div style="color:${t.wait};margin-top:1px">${ic('bell', 18)}</div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+      <div style="font-size:13.5px;font-weight:600">fix-auth-redirect cần bạn duyệt</div>
+      <div class="ell" style="font-size:12.5px;color:${t.mut};font-family:${o.mono || 'inherit'}">Bash: git push origin main</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button style="font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;min-height:30px;border-radius:${o.btnR ?? 8}px;border:0;background:${t.btnBg || t.wait};color:${t.btnFg || '#1a1205'}">Mở cửa sổ</button>
+        <button style="font:inherit;font-size:12.5px;padding:6px 12px;min-height:30px;border-radius:${o.btnR ?? 8}px;border:1px solid ${t.line};background:transparent;color:${t.fg2 || t.fg}">Để sau</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+const DRAFTS = [];
+
+// ================================================================ 00 · Hiện tại
+DRAFTS.push({
+  id: 'd00', no: '00', name: 'Hiện tại (v0.1.7)', font: "'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif",
+  sub: 'Mốc so sánh. Chỉ biết đang chạy / rảnh.', feas: 'đang chạy',
+  desc: 'Session đang chờ bạn duyệt vẫn hiện "Đang chạy". Chấm trên island không có nhãn, chữ nhỏ nhất 8pt.',
+  changes: ['Không có trạng thái "cần bạn", không có thông báo', 'Thẻ có viền trái màu, chỉ dùng màu để báo trạng thái', 'Token 5 giờ / 7 ngày chiếm chỗ mà ít giá trị'],
+  t: { fg: '#eeeef3', mut: '#8d8e9b', line: '#2a2b34', surf: '#1f2027', wait: '#d97757', ok: '#3fb950', warn: '#e3b341', danger: '#f0524f' },
+  swatches: ['#16171c', '#1f2027', '#d97757', '#3fb950', '#e3b341', '#f0524f', '#5aa7ff'],
+  island(v) {
+    const pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62, c = pct >= 85 ? '#f0524f' : pct >= 60 ? '#e3b341' : '#3fb950';
+    const busy = v === 'run' || v === 'wait' ? `<span style="font-size:12px;font-weight:600;color:#d97757">● ${v === 'wait' ? 2 : 1}</span>` : '';
+    const dot = v !== 'idle' ? '<span style="font-size:12px;color:#f0524f">●</span>' : '';
+    return `<div style="height:30px;min-width:150px;padding:0 16px;border-radius:15px;background:#0b0b0e;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:13px;color:#eeeef3"><span style="font-weight:600;color:${c}">${pct}%</span><span style="font-size:12px;color:#8d8e9b">${v === 'quota' ? '7 ngày' : '4 agent'}</span>${busy}${dot}</div>`;
+  },
+  toast() { return `<div style="border:1px dashed #4b5160;border-radius:8px;padding:14px;font-size:13px;color:#a2a6b1">Không có. Kết quả thao tác chỉ hiện ở footer của panel, dễ bị bỏ lỡ.</div>`; },
+  stage() {
+    const card = (s) => {
+      const busy = s.st === 'wait' || s.st === 'run', sc = busy ? '#d97757' : '#3fb950', cc = s.ctx >= 85 ? '#f0524f' : s.ctx >= 60 ? '#e3b341' : '#3fb950';
+      const mc = { 'Opus 5.5': '#b392f0', 'Sonnet 5.5': '#5aa7ff', 'Haiku 5.5': '#4cc9b0' }[s.model];
+      return `<div style="display:flex;background:#1f2027"><div style="width:3px;background:${sc}"></div><div style="flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:4px"><span class="ell" style="flex:1;font-size:13px;font-weight:600">${s.name}</span><span style="font-size:10px;font-weight:600;color:#15161a;background:${mc};border-radius:8px;padding:1px 6px">${s.model}</span><span style="font-size:10px;color:#c6c7d1;background:#33343e;border-radius:8px;padding:1px 6px">${s.effort}</span><span style="font-size:11px;color:#8d8e9b;padding-left:6px">⋯</span></div>
+        <div class="ell" style="font-size:11px;margin-top:2px"><b style="font-weight:600;color:#c6c7d1">${s.proj}</b><span style="color:#5f606d">&nbsp; D:\\vinova &nbsp; ⎇ ${s.branch}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin:10px 0 5px"><span style="color:#8d8e9b">Context</span><span><span style="color:#c6c7d1">${s.ctxTxt}</span>&nbsp; <b style="color:${cc}">${s.ctx}%</b></span></div>
+        ${bar(s.ctx, cc, '#2f3039', 5)}
+        <div style="display:flex;gap:8px;font-size:11px;margin-top:8px;white-space:nowrap"><b style="color:${sc}">● ${busy ? 'Đang chạy' : 'Rảnh'}</b><span style="flex:1;color:#8d8e9b">38 msg · 52.1k out · CLI</span><span style="color:#5f606d">${s.ago === 'vừa xong' ? s.ago : s.ago + ' trước'}</span></div>
+      </div></div>`;
+    };
+    const qc = (lab, p, c, a, b) => `<div style="background:#1f2027;padding:10px 12px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;align-items:flex-end"><span style="font-size:12px;font-weight:600">${lab}</span><span style="font-size:20px;font-weight:600;color:${c}">${p}%</span></div>${bar(p, c, '#2f3039', 6)}<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#8d8e9b">${a}</span><span style="color:#5f606d">${b}</span></div></div>`;
+    const sec = (a, b, c = '#5f606d') => `<div style="display:flex;justify-content:space-between;margin:14px 0 6px;font-size:11px"><b style="color:#8d8e9b">${a}</b><span style="color:${c}">${b}</span></div>`;
+    return `${desk('#2a3039', '#1e232b')}
+      <div style="position:absolute;left:0;right:0;top:6px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:234px;top:46px;width:372px;height:740px;border-radius:8px;border:1px solid #3a3b47;background:#16171c;overflow:hidden;color:#eeeef3">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 10px 12px 16px;border-bottom:1px solid #2a2b34">${flame(30, '#d97757', '#16171c')}<div style="flex:1"><div style="font-size:15px;font-weight:600">Wisp</div><div style="font-size:11px;color:#8d8e9b">ban@example.com · Max 20x</div></div><span style="color:#8d8e9b;padding:0 5px">↻</span><span style="color:#8d8e9b;padding:0 5px">✕</span></div>
+        <div style="padding:0 16px">
+          ${sec('GIỚI HẠN SỬ DỤNG', 'Anthropic API')}
+          ${qc('5 giờ', 62, '#e3b341', 'Reset sau 1 giờ 52 phút', 'lúc 15:40')}<div style="height:6px"></div>${qc('7 ngày', 38, '#3fb950', 'Reset sau 5 ngày', 'T4 22/10 09:00')}
+          ${sec('SESSIONS (4)', '2 đang chạy', '#d97757')}
+          <div style="display:flex;flex-direction:column;gap:6px">${SESS.map(card).join('')}</div>
+          ${sec('TOKEN ĐÃ DÙNG', 'ước tính trên máy này')}
+          <div style="background:#1f2027;padding:12px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px"><div><div style="font-size:11px;color:#8d8e9b">5 giờ qua</div><div style="font-size:20px;font-weight:600">18.4M</div></div><div><div style="font-size:11px;color:#8d8e9b">7 ngày qua</div><div style="font-size:20px;font-weight:600">212M</div></div></div>
+        </div>
+      </div>`;
+  },
+});
+
+// ================================================================ 01 · Graphite
+DRAFTS.push({
+  id: 'd01', no: '01', name: 'Graphite', font: "'IBM Plex Sans',system-ui,sans-serif",
+  sub: 'Bản hiện tại làm lại cho đúng. Rủi ro thấp nhất.', feas: 'dễ',
+  desc: 'Giữ bố cục quen thuộc, sửa phần sai: trạng thái có icon và chữ, thẻ "cần bạn" nổi lên đầu, island rộng cố định, quota có dự báo.',
+  changes: ['Sắp xếp: cần bạn → đang chạy → vừa xong → rảnh', 'Bỏ viền trái màu và khối token; thêm dòng dự báo quota', 'Chữ nhỏ nhất 12px, số dùng Plex Mono không nhảy'],
+  t: { scene: '#262b33', win: '#1d2128', bg: '#121317', surf: '#1b1c22', line: '#2c2e36', fg: '#eef0f4', fg2: '#c4c7d0', mut: '#9a9eaa', acc: '#d97757',
+    wait: '#f5b544', run: '#7ab4ff', done: '#4fd1b0', idle: '#8e929d', ok: '#4fd1b0', warn: '#f5b544', danger: '#ff6b6b', toastBg: '#1b1c22' },
+  swatches: ['#121317', '#1b1c22', '#d97757', '#f5b544', '#7ab4ff', '#4fd1b0', '#ff6b6b'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62, c = lvl(pct, t);
+    const right = { idle: [t.idle, 'idle', 'Rảnh'], run: [t.run, 'run', '1 đang chạy'], wait: [t.wait, 'bell', '1 cần bạn'], quota: [t.danger, 'trend', 'Hết lúc 15:10'] }[v];
+    return `<div style="width:232px;height:32px;border-radius:16px;background:#0a0a0c;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 8px;color:${t.fg};font-family:${this.font}">
+      ${ring(pct, 20, 3, c, '#2b2c33')}<span class="mono" style="font-family:'IBM Plex Mono';font-size:13px;font-weight:600">${pct}%</span>
+      <span style="width:1px;height:14px;background:#33343c"></span>
+      <span style="display:flex;align-items:center;gap:6px;color:${right[0]};font-size:13px;font-weight:600">${ic(right[1], 15, 2)}${right[2]}</span>
+      ${v === 'wait' ? `<span style="margin-left:auto;font-size:12px;color:${t.mut}">· 1 chạy</span>` : ''}</div>`;
+  },
+  toast() { return toast(this.t, { mono: "'IBM Plex Mono'" }); },
+  stage() {
+    const t = this.t, mono = "'IBM Plex Mono'";
+    const card = (s) => {
+      const c = st(s, t), hot = s.st === 'wait';
+      return `<div style="background:${hot ? '#241f15' : t.surf};border:1px solid ${hot ? 'rgba(245,181,68,.45)' : t.surf};border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;align-items:center;gap:6px"><span style="display:flex;align-items:center;gap:5px;color:${c};font-size:12px;font-weight:600">${ic(stIcon[s.st], 14, 2)}${LABEL[s.st]}</span><span style="font-size:12px;color:${t.mut}">· ${s.ago}</span><span style="margin-left:auto;font-size:12px;color:${t.mut}">${s.model} · ${s.effort}</span><span style="color:${t.mut};padding:2px 0 2px 6px">${ic('more', 16)}</span></div>
+        <div class="ell" style="font-size:14px;font-weight:600">${s.name}</div>
+        <div class="ell" style="font-size:12.5px;color:${t.fg2};font-family:${s.st === 'done' ? 'inherit' : mono}">${line(s)}</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:12px;color:${t.mut};margin-top:2px"><span style="display:flex;align-items:center;gap:4px">${ic('folder', 13)}${s.proj}</span><span class="ell" style="display:flex;align-items:center;gap:4px;flex:1">${ic('branch', 13)}${s.branch}</span><span style="width:44px">${bar(s.ctx, lvl(s.ctx, t), '#2b2c33', 4)}</span><span class="mono" style="font-family:${mono};color:${lvl(s.ctx, t)};width:30px;text-align:right">${s.ctx}%</span></div>
+        ${hot ? `<div style="display:flex;gap:8px;margin-top:4px"><button style="font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:8px;border:0;background:${t.wait};color:#1a1205;display:flex;align-items:center;gap:6px">${ic('open', 14, 2)}Mở cửa sổ</button><span style="font-size:12px;color:${t.mut};align-self:center">duyệt trong ${s.host}</span></div>` : ''}
+        ${s.todo ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:${t.mut}"><span style="flex:1">${bar(60, t.run, '#2b2c33', 4)}</span>Việc ${s.todo[0]}/${s.todo[1]}</div>` : ''}
+      </div>`;
+    };
+    const q = (lab, p, sub, extra = '') => `<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:13px;font-weight:600">${lab}</span><span style="font-size:12px;color:${t.mut}">${sub}</span><span class="mono" style="margin-left:auto;font-family:${mono};font-size:18px;font-weight:600;color:${lvl(p, t)}">${p}%</span></div>${bar(p, lvl(p, t), '#2b2c33', 6)}${extra}</div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:230px;top:50px;width:380px;border-radius:14px;border:1px solid ${t.line};background:${t.bg};color:${t.fg};box-shadow:0 18px 50px rgba(0,0,0,.45);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 10px 12px 16px">${flame(26, t.acc, t.bg)}<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">Wisp</div><div class="ell" style="font-size:12px;color:${t.mut}">ban@example.com · Max 20x</div></div>
+          <button aria-label="Làm mới" style="background:none;border:0;color:${t.mut};width:32px;height:32px;display:grid;place-items:center;border-radius:8px">${ic('refresh', 17)}</button><button aria-label="Cài đặt" style="background:none;border:0;color:${t.mut};width:32px;height:32px;display:grid;place-items:center;border-radius:8px">${ic('gear', 17)}</button></div>
+        <div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:10px">
+          <div style="background:${t.surf};border-radius:10px;padding:11px 12px;display:flex;flex-direction:column;gap:10px">
+            ${q('5 giờ', 62, 'reset 15:40 · còn 1g 52p', `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${t.warn}">${ic('trend', 14, 2)}Theo tốc độ này hết lúc 15:10, trước reset 30 phút</div>`)}
+            <div style="height:1px;background:${t.line}"></div>
+            ${q('7 ngày', 38, 'reset T4 22/10')}
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:13px;font-weight:600">Session · 4</span><span style="font-size:12px;color:${t.mut}">1 cần bạn · 1 chạy · 1 xong</span></div>
+          <div style="display:flex;flex-direction:column;gap:6px">${SESS.map(card).join('')}</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:${t.mut}">${ic('chev', 14)}Đã đóng gần đây (3)<span style="margin-left:auto">v0.2.0</span></div>
+        </div>
+      </div>`;
+  },
+});
+
+// ================================================================ 02 · Ember
+DRAFTS.push({
+  id: 'd02', no: '02', name: 'Ember', font: "'Be Vietnam Pro',system-ui,sans-serif",
+  sub: 'Đốm lửa là nhân vật chính, island kể chuyện.', feas: 'vừa',
+  desc: 'Đốm lửa đổi dáng theo trạng thái: cháy khi chạy, sáng vàng khi cần bạn, ngủ khi rảnh. Island nở thành "live activity" ghi rõ session nào cần bạn.',
+  changes: ['Header là một câu tóm tắt thay cho email', 'Hai vòng quota cạnh nhau, dự báo dạng viên thuốc', 'Hàng session gọn, mỗi hàng một đốm lửa màu trạng thái'],
+  t: { scene: '#2b2420', win: '#221c18', bg: '#16110e', surf: '#211915', line: '#35281f', fg: '#fbefe6', fg2: '#e3cfc1', mut: '#b8a091', acc: '#ff8a4c',
+    wait: '#ffc145', run: '#ff8a4c', done: '#7fd8a6', idle: '#9c8a7e', ok: '#7fd8a6', warn: '#ffc145', danger: '#ff6b5e', toastBg: '#211915', btnBg: '#ffc145' },
+  swatches: ['#16110e', '#211915', '#ff8a4c', '#ffc145', '#7fd8a6', '#ff6b5e', '#fbefe6'],
+  island(v) {
+    const t = this.t;
+    const m = { idle: [sleepy(22, t.idle, '#16110e'), 'Rảnh, chưa có việc', t.mut, 200], run: [flame(22, t.run, '#16110e', 'flicker'), 'landing-hero đang chạy', t.fg, 230],
+      wait: [flame(22, t.wait, '#16110e', 'flicker'), 'fix-auth-redirect cần bạn', t.wait, 270], quota: [flame(22, t.danger, '#16110e', 'flicker'), 'Còn 9% · hết lúc 15:10', t.danger, 240] }[v];
+    return `<div style="width:${m[3]}px;height:34px;border-radius:17px;background:#0c0907;display:inline-flex;align-items:center;gap:8px;padding:0 14px 0 8px;font-family:${this.font}">${m[0]}<span class="ell" style="font-size:13px;font-weight:600;color:${m[2]}">${m[1]}</span>${v === 'wait' ? `<span style="margin-left:auto;font-size:12px;color:${t.mut}">62%</span>` : ''}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 18, btnR: 12 }); },
+  stage() {
+    const t = this.t, H = "'Bricolage Grotesque'";
+    const row = (s) => {
+      const c = st(s, t), hot = s.st === 'wait';
+      const f = s.st === 'idle' ? sleepy(26, c, t.surf) : flame(26, c, t.surf, s.st === 'run' || hot ? 'flicker' : '');
+      return `<div style="display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:16px;background:${hot ? '#2c2116' : t.surf};${hot ? 'border:1px solid rgba(255,193,69,.4);' : 'border:1px solid transparent;'}">
+        ${f}<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><div style="display:flex;align-items:baseline;gap:8px"><span class="ell" style="font-size:14px;font-weight:600">${s.name}</span><span style="font-size:12px;color:${c};font-weight:600;flex:none">${LABEL[s.st]}</span></div>
+        <div class="ell" style="font-size:12.5px;color:${t.fg2}">${line(s)}</div>
+        <div class="ell" style="font-size:12px;color:${t.mut}">${s.proj} · ${s.branch} · ${s.model}</div>
+        ${hot ? `<div style="margin-top:6px"><button style="font:inherit;font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:12px;border:0;background:${t.wait};color:#1a1205">Mở để duyệt</button></div>` : ''}</div>
+        <div style="text-align:right;flex:none"><div class="mono" style="font-size:15px;font-weight:600;color:${lvl(s.ctx, t)}">${s.ctx}%</div><div style="font-size:11.5px;color:${t.mut}">context</div></div></div>`;
+    };
+    const rq = (lab, p, sub) => `<div style="flex:1;display:flex;align-items:center;gap:12px;background:${t.surf};border-radius:16px;padding:12px"><div style="position:relative;width:64px;height:64px">${ring(p, 64, 7, lvl(p, t), '#33271f')}<div class="mono" style="position:absolute;inset:0;display:grid;place-items:center;font-family:${H};font-size:17px;font-weight:700">${p}%</div></div><div><div style="font-size:13.5px;font-weight:600">${lab}</div><div style="font-size:12px;color:${t.mut};margin-top:2px">${sub}</div></div></div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:225px;top:52px;width:390px;border-radius:24px;background:${t.bg};color:${t.fg};box-shadow:0 18px 50px rgba(0,0,0,.5);border:1px solid ${t.line};padding:18px 16px 16px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:14px;align-items:center">${flame(54, t.wait, t.bg, 'flicker')}<div style="flex:1"><div style="font-family:${H};font-size:22px;font-weight:700;line-height:1.15">1 session đang chờ bạn</div><div style="font-size:13px;color:${t.mut};margin-top:3px">1 đang chạy · 1 vừa xong · 1 rảnh</div></div><button aria-label="Cài đặt" style="background:none;border:0;color:${t.mut};width:34px;height:34px;display:grid;place-items:center">${ic('gear', 18)}</button></div>
+        <div style="display:flex;gap:10px">${rq('5 giờ', 62, 'reset 15:40')}${rq('7 ngày', 38, 'reset T4 22/10')}</div>
+        <div style="display:flex;align-items:center;gap:8px;background:#2c2116;color:${t.warn};border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:500">${ic('trend', 15, 2)}Đốt nhanh hơn nhịp 1.3×, hết lúc 15:10</div>
+        <div style="display:flex;flex-direction:column;gap:8px">${SESS.map(row).join('')}</div>
+      </div>`;
+  },
+});
+
+// ================================================================ 03 · Terminal
+DRAFTS.push({
+  id: 'd03', no: '03', name: 'Terminal', font: "'JetBrains Mono',ui-monospace,monospace",
+  sub: 'Toàn bộ là chữ đơn cách, dùng hết bằng bàn phím.', feas: 'dễ',
+  desc: 'Một bảng như htop: mỗi session một dòng, phím tắt hiện sẵn ở chân. Rất dày thông tin, vẽ bằng chữ nên tkinter làm dễ và giống hệt trên macOS.',
+  changes: ['Điều hướng bằng ↑↓, Enter mở, d đóng, h handoff', 'Thanh quota bằng khối ký tự, không cần ảnh', 'Màu theo nhóm Ayu: hổ phách = cần bạn, lam = chạy'],
+  t: { scene: '#1d2127', win: '#161a20', bg: '#0e1116', surf: '#141922', line: '#232a35', fg: '#d7dde8', fg2: '#b8c1d1', mut: '#8a94a6', acc: '#ffb454',
+    wait: '#ffb454', run: '#59c2ff', done: '#aad94c', idle: '#7f8a9c', ok: '#aad94c', warn: '#ffb454', danger: '#f07178', toastBg: '#0e1116', btnFg: '#0e1116' },
+  swatches: ['#0e1116', '#141922', '#ffb454', '#59c2ff', '#aad94c', '#f07178', '#d7dde8'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62, c = lvl(pct, t), n = Math.round(pct / 12.5);
+    const blocks = `<span style="color:${c}">${'▮'.repeat(n)}</span><span style="color:#2c3442">${'▮'.repeat(8 - n)}</span>`;
+    const r = { idle: `<span style="color:${t.idle}">· rảnh</span>`, run: `<span style="color:${t.run}">▶1</span>`, wait: `<span style="color:${t.wait}">!1</span> <span style="color:${t.run}">▶1</span>`, quota: `<span style="color:${t.danger}">hết 15:10</span>` }[v];
+    return `<div style="height:30px;border-radius:6px;background:#07090c;border:1px solid #232a35;display:inline-flex;align-items:center;gap:10px;padding:0 12px;font-family:${this.font};font-size:12.5px;color:${t.fg};white-space:pre"><span style="color:${c};font-weight:700">${String(pct).padStart(2, ' ')}%</span>${blocks}${r}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 6, btnR: 4, font: this.font, shadow: 'none', mono: this.font }); },
+  stage() {
+    const t = this.t;
+    const blk = (p, w = 22) => { const n = Math.round((p / 100) * w); return `<span style="color:${lvl(p, t)}">${'█'.repeat(n)}</span><span style="color:#262e3b">${'█'.repeat(w - n)}</span>`; };
+    const g = { wait: '!', run: '▶', done: '✓', idle: '·' };
+    const row = (s, i) => `<div style="padding:7px 10px;border-radius:4px;${i === 0 ? `background:#18202c;outline:1px solid #2c3a50;` : ''}">
+      <div style="display:flex;gap:10px;white-space:pre"><span style="color:${i === 0 ? t.fg : 'transparent'}">›</span><span style="color:${st(s, t)};font-weight:700;width:10px">${g[s.st]}</span><span class="ell" style="flex:1;color:${t.fg};font-weight:${s.st === 'wait' ? 700 : 400}">${s.name}</span><span style="color:${t.mut};width:56px">${s.model.split(' ')[0].toLowerCase()}</span><span style="color:${lvl(s.ctx, t)};width:36px;text-align:right">${s.ctx}%</span></div>
+      <div class="ell" style="padding-left:40px;color:${s.st === 'wait' ? t.wait : t.mut};margin-top:2px">${s.st === 'wait' ? `chờ duyệt: ${s.tool} ${s.detail}` : s.st === 'run' ? `${s.tool.toLowerCase()} ${s.detail}  [${s.todo[0]}/${s.todo[1]}]` : s.st === 'done' ? `xong ${s.ago} trước: ${s.detail}` : `rảnh ${s.ago} · ${s.detail}`}</div>
+      <div class="ell" style="padding-left:40px;color:#5d687b">${s.proj} @ ${s.branch}</div></div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:200px;top:48px;width:440px;border-radius:8px;border:1px solid ${t.line};background:${t.bg};color:${t.fg};font-family:${this.font};font-size:12.5px;line-height:1.5;box-shadow:0 18px 50px rgba(0,0,0,.5)">
+        <div style="display:flex;padding:10px 14px;border-bottom:1px solid ${t.line};white-space:pre"><span style="color:${t.acc};font-weight:700">wisp</span><span style="color:${t.mut}"> 0.2.0 · max20x</span><span style="margin-left:auto;color:${t.mut}">[r] làm mới [,] cài đặt</span></div>
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid ${t.line};white-space:pre">
+          <div><span style="color:${t.mut}">5h </span>${blk(62)} <span style="color:${t.warn};font-weight:700"> 62%</span><span style="color:${t.mut}">  reset 15:40</span></div>
+          <div style="color:${t.warn}">   ↗ nhịp 1.3×: hết lúc 15:10 (sớm 30 phút)</div>
+          <div><span style="color:${t.mut}">7d </span>${blk(38)} <span style="color:${t.ok};font-weight:700"> 38%</span><span style="color:${t.mut}">  reset T4 22/10</span></div>
+        </div>
+        <div style="padding:8px 4px;display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;gap:10px;padding:0 10px;color:#5d687b;white-space:pre"><span> </span><span style="width:10px"> </span><span style="flex:1">session (4)</span><span style="width:56px">model</span><span style="width:36px;text-align:right">ctx</span></div>
+          ${SESS.map(row).join('')}
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid ${t.line};color:${t.mut};white-space:pre"><span style="color:${t.fg}">↑↓</span> chọn  <span style="color:${t.fg}">↵</span> mở  <span style="color:${t.fg}">d</span> đóng  <span style="color:${t.fg}">h</span> handoff  <span style="color:${t.fg}">esc</span> ẩn</div>
+      </div>`;
+  },
+});
+
+// ================================================================ 04 · Bento
+DRAFTS.push({
+  id: 'd04', no: '04', name: 'Bento', font: "'Space Grotesk',system-ui,sans-serif",
+  sub: 'Lưới ô vuông, nhìn một lần thấy hết.', feas: 'vừa',
+  desc: 'Panel rộng hơn, chia ô: hai ô quota, một ô lớn cho việc cần bạn, mỗi session một ô. Hợp khi chạy 3–6 session; nhiều hơn thì cuộn theo hàng.',
+  changes: ['Panel 460px, lưới 2 cột', 'Ô "cần bạn" chiếm cả hàng, luôn ở trên', 'Island ghép ba ô: quota · cần bạn · đang chạy'],
+  t: { scene: '#22262d', win: '#1a1d23', bg: '#0f1115', surf: '#181b21', line: '#272b33', fg: '#f1f3f7', fg2: '#cfd3dc', mut: '#9ba1ad', acc: '#9d8cff',
+    wait: '#ffb340', run: '#5cb8ff', done: '#3ddc97', idle: '#8a909c', ok: '#3ddc97', warn: '#ffb340', danger: '#ff6470', toastBg: '#181b21' },
+  swatches: ['#0f1115', '#181b21', '#9d8cff', '#ffb340', '#5cb8ff', '#3ddc97', '#ff6470'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const cell = (inner, bg = '#16181d') => `<span style="height:30px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;background:${bg};border-radius:9px;font-size:13px;font-weight:600">${inner}</span>`;
+    const parts = [cell(`<span class="mono" style="color:${lvl(pct, t)}">${pct}%</span>`)];
+    if (v === 'wait') parts.push(cell(`<span style="color:${t.wait};display:flex">${ic('bell', 14, 2)}</span>1`, '#2a2112'));
+    if (v === 'wait' || v === 'run') parts.push(cell(`<span style="color:${t.run};display:flex">${ic('run', 14, 2)}</span>1`));
+    if (v === 'idle') parts.push(cell(`<span style="color:${t.idle};display:flex">${ic('idle', 14, 2)}</span><span style="color:${t.mut}">Rảnh</span>`));
+    if (v === 'quota') parts.push(cell(`<span style="color:${t.danger}">hết 15:10</span>`, '#2b1518'));
+    return `<div style="display:inline-flex;gap:3px;padding:3px;border-radius:12px;background:#060708;color:${t.fg};font-family:${this.font}">${parts.join('')}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 14 }); },
+  stage() {
+    const t = this.t, mono = "'JetBrains Mono'";
+    const tile = (inner, span = 1, bg = t.surf, extra = '') => `<div style="grid-column:span ${span};background:${bg};border-radius:14px;padding:12px;${extra}">${inner}</div>`;
+    const qt = (lab, p, sub) => tile(`<div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div style="font-size:13px;color:${t.mut}">${lab}</div><div class="mono" style="font-size:30px;font-weight:600;color:${lvl(p, t)};line-height:1.15">${p}%</div><div style="font-size:12px;color:${t.mut}">${sub}</div></div>${ring(p, 52, 6, lvl(p, t), '#262a32')}</div>`);
+    const w = SESS[0];
+    const hot = tile(`<div style="display:flex;align-items:center;gap:6px;color:${t.wait};font-size:12.5px;font-weight:600">${ic('bell', 15, 2)}Cần bạn · ${w.ago}</div>
+      <div style="display:flex;align-items:flex-end;gap:12px;margin-top:6px"><div style="flex:1;min-width:0"><div class="ell" style="font-size:16px;font-weight:600">${w.name}</div><div class="ell" style="font-size:12.5px;color:${t.fg2};font-family:${mono};margin-top:3px">${w.tool}: ${w.detail}</div><div style="font-size:12px;color:${t.mut};margin-top:3px">${w.proj} · ${w.branch}</div></div>
+      <button style="font:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:10px;border:0;background:${t.wait};color:#1a1205;flex:none">Mở cửa sổ</button></div>`, 2, '#251e12', 'border:1px solid rgba(255,179,64,.35)');
+    const st1 = (s) => tile(`<div style="display:flex;align-items:center;gap:6px;color:${st(s, t)};font-size:12.5px;font-weight:600">${ic(stIcon[s.st], 14, 2)}${LABEL[s.st]}<span style="margin-left:auto;color:${t.mut};font-weight:400">${s.ago}</span></div>
+      <div class="ell" style="font-size:14.5px;font-weight:600;margin-top:6px">${s.name}</div><div style="font-size:12px;color:${t.fg2};margin-top:3px;height:32px;overflow:hidden;line-height:1.35">${line(s)}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">${ring(s.ctx, 22, 3.5, lvl(s.ctx, t), '#262a32')}<span class="mono" style="font-size:12px;color:${t.mut}">ctx ${s.ctx}%</span><span style="margin-left:auto;font-size:12px;color:${t.mut}">${s.model.split(' ')[0]}</span></div>`);
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:6px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:190px;top:52px;width:460px;border-radius:18px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:0 18px 50px rgba(0,0,0,.5);padding:12px">
+        <div style="display:flex;align-items:center;gap:10px;padding:2px 4px 12px">${flame(24, t.acc, t.bg)}<span style="font-size:15px;font-weight:600">Wisp</span><span style="font-size:12px;color:${t.mut}">Max 20x</span><span style="margin-left:auto;color:${t.mut};display:flex;gap:4px"><span style="width:30px;height:30px;display:grid;place-items:center">${ic('refresh', 17)}</span><span style="width:30px;height:30px;display:grid;place-items:center">${ic('gear', 17)}</span></span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+          ${qt('5 giờ', 62, 'hết lúc 15:10 · reset 15:40')}${qt('7 ngày', 38, 'reset T4 22/10')}
+          ${hot}${SESS.slice(1).map(st1).join('')}
+          ${tile(`<div style="font-size:12.5px;color:${t.mut}">Đã đóng gần đây</div><div class="mono" style="font-size:26px;font-weight:600;margin-top:4px">3</div><div style="font-size:12px;color:${t.acc};margin-top:4px">Xem và mở lại ›</div>`)}
+        </div>
+      </div>`;
+  },
+});
+
+// ================================================================ 05 · Mica sáng
+DRAFTS.push({
+  id: 'd05', no: '05', name: 'Mica sáng', font: "'Plus Jakarta Sans',system-ui,sans-serif",
+  sub: 'Giao diện sáng, giống app hệ thống của Windows 11 và macOS.', feas: 'vừa',
+  desc: 'Theo chế độ sáng/tối của máy. Danh sách nhóm kiểu cài đặt hệ thống, bộ lọc ở đầu. Không giả kính mờ (tkinter không làm được), chỉ dùng nền nhạt và bóng đổ vẽ sẵn.',
+  changes: ['Có cả chế độ sáng, tự theo hệ điều hành', 'Bộ lọc: Tất cả · Cần bạn · Đang chạy', 'Trạng thái là viên thuốc có nền, chữ đậm đủ tương phản'],
+  t: { scene: '#c9d3df', win: '#e7ecf2', bg: '#f4f5f8', surf: '#ffffff', line: '#e2e5eb', fg: '#14161b', fg2: '#353b47', mut: '#596070', acc: '#2563eb',
+    wait: '#a64b00', run: '#1d4ed8', done: '#03724f', idle: '#52525b', ok: '#03845b', warn: '#c26100', danger: '#c81e1e', toastBg: '#ffffff', btnBg: '#2563eb', btnFg: '#ffffff', areaFill: '#c26100' },
+  bgs: { wait: '#fff1d6', run: '#e6eeff', done: '#dff6ec', idle: '#efeff2' },
+  swatches: ['#f4f5f8', '#ffffff', '#2563eb', '#a64b00', '#1d4ed8', '#03724f', '#c81e1e'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const r = { idle: [t.idle, 'idle', 'Rảnh'], run: [t.run, 'run', '1 đang chạy'], wait: [t.wait, 'bell', '1 cần bạn'], quota: [t.danger, 'trend', 'Hết lúc 15:10'] }[v];
+    return `<div style="height:34px;border-radius:17px;background:#ffffff;border:1px solid #d9dde5;box-shadow:0 4px 14px rgba(20,30,50,.18);display:inline-flex;align-items:center;gap:8px;padding:0 14px 0 8px;font-family:${this.font};color:${t.fg}">${ring(pct, 22, 3.5, lvl(pct, t), '#e6e8ee')}<span class="mono" style="font-size:13.5px;font-weight:700">${pct}%</span><span style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:${r[0]};background:${this.bgs[v === 'quota' ? 'wait' : v] || '#fff'};padding:3px 9px;border-radius:999px">${ic(r[1], 14, 2)}${r[2]}</span></div>`;
+  },
+  toast() { return toast(this.t, { radius: 14, border: '1px solid #d9dde5', shadow: '0 10px 30px rgba(20,30,50,.18)' }); },
+  stage() {
+    const t = this.t, B = this.bgs;
+    const row = (s, i) => `<div style="display:flex;gap:12px;align-items:center;padding:11px 14px;${i ? `border-top:1px solid ${t.line};` : ''}">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><div style="display:flex;align-items:center;gap:8px"><span class="ell" style="font-size:14px;font-weight:600">${s.name}</span><span style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:${st(s, t)};background:${B[s.st]};padding:2px 8px;border-radius:999px;flex:none">${ic(stIcon[s.st], 13, 2.2)}${LABEL[s.st]}</span></div>
+      <div class="ell" style="font-size:12.5px;color:${t.fg2}">${line(s)}</div><div class="ell" style="font-size:12px;color:${t.mut}">${s.proj} · ${s.branch} · ${s.model}</div></div>
+      <div style="text-align:right;flex:none;width:58px"><div class="mono" style="font-size:14px;font-weight:700;color:${lvl(s.ctx, t)}">${s.ctx}%</div>${bar(s.ctx, lvl(s.ctx, t), '#e8eaef', 4)}</div>
+      <span style="color:${t.mut}">${ic('chev', 16)}</span></div>`;
+    const q = (lab, p, sub) => `<div style="flex:1;background:${t.surf};border-radius:12px;border:1px solid ${t.line};padding:12px;display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px;font-weight:600;color:${t.fg2}">${lab}</span><span class="mono" style="font-size:20px;font-weight:700;color:${lvl(p, t)}">${p}%</span></div>${bar(p, lvl(p, t), '#e8eaef', 6)}<div style="font-size:12px;color:${t.mut}">${sub}</div></div>`;
+    const seg = (lab, on) => `<span style="flex:1;text-align:center;font-size:12.5px;font-weight:600;padding:6px 0;border-radius:8px;${on ? `background:#fff;box-shadow:0 1px 3px rgba(20,30,50,.15);color:${t.fg}` : `color:${t.mut}`}">${lab}</span>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:225px;top:54px;width:390px;border-radius:16px;background:${t.bg};border:1px solid #d6dae2;color:${t.fg};box-shadow:0 24px 60px rgba(20,30,50,.28);padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">${flame(26, '#e06b3a', '#fff')}<div style="flex:1"><div style="font-size:15px;font-weight:700">Wisp</div><div style="font-size:12px;color:${t.mut}">ban@example.com · Max 20x</div></div><span style="color:${t.mut};width:32px;height:32px;display:grid;place-items:center">${ic('gear', 18)}</span></div>
+        <div style="display:flex;gap:8px">${q('5 giờ', 62, 'Hết lúc 15:10 · reset 15:40')}${q('7 ngày', 38, 'Reset T4 22/10')}</div>
+        <div style="display:flex;gap:2px;background:#e7e9ee;border-radius:10px;padding:3px">${seg('Tất cả 4', true)}${seg('Cần bạn 1')}${seg('Đang chạy 1')}</div>
+        <div style="background:${t.surf};border-radius:12px;border:1px solid ${t.line};overflow:hidden">${SESS.map(row).join('')}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;color:${t.mut}"><span>Đã đóng gần đây (3)</span><span>v0.2.0</span></div>
+      </div>`;
+  },
+});
+
+// ================================================================ 06 · Tín hiệu
+DRAFTS.push({
+  id: 'd06', no: '06', name: 'Tín hiệu', font: "'Archivo',system-ui,sans-serif",
+  sub: 'Chia làn theo việc bạn phải làm.', feas: 'dễ',
+  desc: 'Panel chia làn: Cần bạn, Đang chạy, Vừa xong, Rảnh. Làn "cần bạn" to nhất, có nút hành động; làn rảnh thu gọn. Quota thu về một dải ở header.',
+  changes: ['Làn thay cho danh sách phẳng', 'Nút Cho phép / Từ chối ngay trong Wisp (giai đoạn 0.4)', 'Island như đèn giao thông: số theo từng trạng thái'],
+  t: { scene: '#252a31', win: '#1c2026', bg: '#111215', surf: '#1a1b20', line: '#2a2c33', fg: '#f2f2f4', fg2: '#cfd1d8', mut: '#9c9fa9', acc: '#ffb02e',
+    wait: '#ffb02e', run: '#58a6ff', done: '#3fd0a4', idle: '#8b8e98', ok: '#3fd0a4', warn: '#ffb02e', danger: '#ff6166', toastBg: '#1a1b20' },
+  swatches: ['#111215', '#1a1b20', '#ffb02e', '#58a6ff', '#3fd0a4', '#ff6166', '#f2f2f4'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const n = { idle: [0, 0, 0], run: [0, 1, 0], wait: [1, 1, 1], quota: [0, 1, 0] }[v];
+    const lamp = (c, k, x) => `<span style="display:flex;align-items:center;gap:4px;color:${x ? c : '#4a4c55'};font-size:13px;font-weight:700">${ic(k, 14, 2.2)}${x}</span>`;
+    return `<div style="height:32px;border-radius:16px;background:#08080a;display:inline-flex;align-items:center;gap:12px;padding:0 14px;font-family:${this.font};color:${t.fg}"><span class="mono" style="font-size:13px;font-weight:700;color:${lvl(pct, t)}">${pct}%</span><span style="width:1px;height:14px;background:#2e3038"></span>${lamp(t.wait, 'bell', n[0])}${lamp(t.run, 'run', n[1])}${lamp(t.done, 'done', n[2])}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 12 }); },
+  stage() {
+    const t = this.t, mono = "'JetBrains Mono'";
+    const lane = (k, title, n, body, open = true) => `<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:6px;color:${t[k]};font-size:12.5px;font-weight:700">${ic(stIcon[k], 15, 2.2)}${title}<span style="color:${t.mut};font-weight:500">${n}</span><span style="margin-left:auto;color:${t.mut}">${ic(open ? 'down' : 'chev', 15)}</span></div>${body}</div>`;
+    const w = SESS[0], r = SESS[1], d = SESS[2], i = SESS[3];
+    const btn = (lab, bg, fg, bd = 'transparent', icn) => `<button style="font:inherit;font-size:12.5px;font-weight:700;padding:7px 12px;min-height:32px;border-radius:9px;border:1px solid ${bd};background:${bg};color:${fg};display:flex;align-items:center;gap:6px">${icn ? ic(icn, 14, 2.2) : ''}${lab}</button>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:225px;top:52px;width:390px;border-radius:16px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:0 18px 50px rgba(0,0,0,.5);overflow:hidden">
+        <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:#16171b;border-bottom:1px solid ${t.line}">
+          <div style="display:flex;align-items:center;gap:8px">${flame(22, '#d97757', '#16171b')}<span style="font-size:15px;font-weight:800">Wisp</span><span style="margin-left:auto;color:${t.mut};display:flex;gap:2px"><span style="width:30px;height:30px;display:grid;place-items:center">${ic('refresh', 17)}</span><span style="width:30px;height:30px;display:grid;place-items:center">${ic('gear', 17)}</span></span></div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:${t.mut}">5 giờ · hết 15:10</span><b class="mono" style="color:${t.warn}">62%</b></div><div style="margin-top:5px">${bar(62, t.warn, '#2a2c33', 5)}</div></div>
+            <div><div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:${t.mut}">7 ngày · T4 22/10</span><b class="mono" style="color:${t.ok}">38%</b></div><div style="margin-top:5px">${bar(38, t.ok, '#2a2c33', 5)}</div></div>
+          </div>
+        </div>
+        <div style="padding:12px 14px 14px;display:flex;flex-direction:column;gap:14px">
+          ${lane('wait', 'Cần bạn', '1', `<div style="background:#2a2112;border:1px solid rgba(255,176,46,.4);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:baseline;gap:8px"><span class="ell" style="font-size:15px;font-weight:700">${w.name}</span><span style="font-size:12px;color:${t.mut};margin-left:auto;flex:none">${w.ago} · ${w.model}</span></div>
+            <div style="font-size:12.5px;color:${t.fg2}">Muốn chạy lệnh ${w.tool}:</div>
+            <div style="font-family:${mono};font-size:12.5px;background:#141210;border-radius:8px;padding:8px 10px;color:#ffd79a">${w.detail}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${btn('Cho phép', t.wait, '#1a1205', 'transparent', 'check2')}${btn('Từ chối', 'transparent', t.fg, '#4a4030', 'ban')}${btn('Mở cửa sổ', 'transparent', t.fg2, 'transparent', 'open')}</div></div>`)}
+          ${lane('run', 'Đang chạy', '1', `<div style="background:${t.surf};border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:5px"><div style="display:flex;gap:8px;align-items:baseline"><span class="ell" style="font-size:14px;font-weight:600">${r.name}</span><span style="margin-left:auto;font-size:12px;color:${t.mut};flex:none">ctx ${r.ctx}%</span></div><div class="ell" style="font-family:${mono};font-size:12px;color:${t.fg2}">${r.tool} ${r.detail}</div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:${t.mut}"><span style="flex:1">${bar(60, t.run, '#2a2c33', 4)}</span>Việc 3/5</div></div>`)}
+          ${lane('done', 'Vừa xong', '1', `<div style="background:${t.surf};border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0"><div class="ell" style="font-size:14px;font-weight:600">${d.name}</div><div class="ell" style="font-size:12.5px;color:${t.fg2}">${d.detail}</div></div><span style="font-size:12px;color:${t.mut};flex:none">${d.ago}</span></div>`)}
+          ${lane('idle', 'Rảnh', '1 · api-refactor, context 88%', '', false)}
+        </div>
+      </div>`;
+  },
+});
+
+// ================================================================ 07 · Nhịp quota
+DRAFTS.push({
+  id: 'd07', no: '07', name: 'Nhịp quota', font: "'Source Sans 3',system-ui,sans-serif",
+  sub: 'Quota là trung tâm: biểu đồ, dự báo, nhịp.', feas: 'vừa',
+  desc: 'Cho ai hay chạm giới hạn. Biểu đồ 5 giờ có đường dự báo tới 100% và vạch reset. Thanh 7 ngày có vạch "nhịp đều" để biết đang dư hay thiếu. Mỗi session ghi mức đốt.',
+  changes: ['Thay khối "token đã dùng" bằng biểu đồ và dự báo', 'Nhịp: 1.3× nghĩa là đốt nhanh hơn mức chia đều', 'Island ghi giờ dự kiến hết quota'],
+  t: { scene: '#1f2633', win: '#18202b', bg: '#0f1420', surf: '#161d2b', line: '#26324a', fg: '#eef2fa', fg2: '#c8d0e0', mut: '#97a3ba', acc: '#7aa2ff',
+    wait: '#ffb547', run: '#7aa2ff', done: '#4fd1a5', idle: '#8893a8', ok: '#4fd1a5', warn: '#ffb547', danger: '#ff6b6b', toastBg: '#161d2b' },
+  swatches: ['#0f1420', '#161d2b', '#7aa2ff', '#ffb547', '#4fd1a5', '#ff6b6b', '#eef2fa'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const tail = { idle: `<span style="color:${t.mut}">ổn, chậm hơn nhịp</span>`, run: `<span style="color:${t.mut}">hết ~16:20</span>`, wait: `<span style="color:${t.warn}">↗ hết 15:10</span><span style="color:${t.wait};display:flex;margin-left:4px">${ic('bell', 14, 2.2)}</span>`, quota: `<span style="color:${t.danger}">↗ hết 15:10</span>` }[v];
+    return `<div style="height:32px;border-radius:16px;background:#070a10;display:inline-flex;align-items:center;gap:8px;padding:0 14px;font-family:${this.font};font-size:13px;font-weight:600;color:${t.fg}"><span class="mono" style="font-family:'Source Code Pro';color:${lvl(pct, t)}">${pct}%</span><svg width="44" height="16" viewBox="0 0 44 16" aria-hidden="true"><path d="M0 15 L8 13 L16 11 L24 8 L32 6 L40 3" fill="none" stroke="${lvl(pct, t)}" stroke-width="1.8"/><path d="M40 3 L44 1" stroke="${t.danger}" stroke-width="1.8" stroke-dasharray="2 2"/></svg>${tail}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 12, mono: "'Source Code Pro'" }); },
+  stage() {
+    const t = this.t, mono = "'Source Code Pro'";
+    const srow = (s) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid ${t.line}"><span style="color:${st(s, t)}">${ic(stIcon[s.st], 16, 2)}</span><div style="flex:1;min-width:0"><div class="ell" style="font-size:14px;font-weight:600">${s.name}</div><div class="ell" style="font-size:12.5px;color:${t.mut}">${s.st === 'wait' ? `<span style="color:${t.wait}">${line(s)}</span>` : line(s)}</div></div><div style="text-align:right;flex:none"><div class="mono" style="font-family:${mono};font-size:12.5px;color:${t.fg2}">${s.burn}</div><div style="font-size:11.5px;color:${t.mut}">ctx ${s.ctx}%</div></div></div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:220px;top:52px;width:400px;border-radius:16px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:0 18px 50px rgba(0,0,0,.5);padding:16px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">${flame(22, '#d97757', t.bg)}<span style="font-size:15px;font-weight:700">Wisp</span><span style="font-size:12.5px;color:${t.mut}">Max 20x</span><span style="margin-left:auto;color:${t.mut};width:30px;height:30px;display:grid;place-items:center">${ic('gear', 17)}</span></div>
+        <div style="background:${t.surf};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:flex-end;gap:10px"><div><div style="font-size:12.5px;color:${t.mut}">5 giờ</div><div class="mono" style="font-size:38px;font-weight:700;line-height:1;color:${t.warn}">62%</div></div>
+            <div style="margin-left:auto;text-align:right"><div style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:${t.warn};background:#2b2416;border-radius:999px;padding:3px 10px">${ic('trend', 14, 2.2)}Nhịp 1.3×</div><div style="font-size:12.5px;color:${t.fg2};margin-top:5px">Hết lúc <b style="color:${t.danger}">15:10</b> · reset 15:40</div></div></div>
+          ${spark(340, 92, t)}
+          <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${t.mut}"><span>10:40</span><span>bây giờ 13:48</span><span>reset 15:40</span></div>
+        </div>
+        <div style="background:${t.surf};border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:13px;font-weight:600">7 ngày</span><span style="font-size:12px;color:${t.mut}">reset T4 22/10</span><b class="mono" style="margin-left:auto;font-family:${mono};font-size:16px;color:${t.ok}">38%</b></div>
+          <div style="position:relative">${bar(38, t.ok, '#243047', 7)}<div style="position:absolute;left:42%;top:-4px;width:2px;height:15px;background:${t.fg}"></div></div>
+          <div style="font-size:12px;color:${t.mut}">Vạch trắng là nhịp đều (42%). Bạn đang dư 4%.</div>
+        </div>
+        <div style="display:flex;flex-direction:column"><div style="display:flex;justify-content:space-between;font-size:12.5px;color:${t.mut};padding-bottom:4px"><span>Session · 4</span><span>mức đốt</span></div>${SESS.map(srow).join('')}</div>
+      </div>`;
+  },
+});
+
+// ================================================================ 08 · Giấy Swiss
+DRAFTS.push({
+  id: 'd08', no: '08', name: 'Giấy Swiss', font: "'Work Sans',system-ui,sans-serif",
+  sub: 'Sáng, chữ lớn, lưới chặt, một màu nhấn đỏ.', feas: 'dễ',
+  desc: 'Kiểu báo in: số rất lớn, đường kẻ mảnh, không thẻ không bóng. Đỏ chỉ dùng cho việc cần bạn và mức nguy hiểm. Dễ đọc ngoài trời, hợp màn hình sáng.',
+  changes: ['Số quota cỡ 56px, đọc được từ xa', 'Danh sách đánh số, không thẻ', 'Không dùng đỏ/xanh để phân biệt: chữ và ô đen/đỏ'],
+  t: { scene: '#d9d4c8', win: '#ebe6db', bg: '#f4f1ea', surf: '#f4f1ea', line: '#1d1d1d', fg: '#141414', fg2: '#2c2b28', mut: '#57534b', acc: '#c8321b',
+    wait: '#c8321b', run: '#141414', done: '#2f6b3a', idle: '#6b665c', ok: '#141414', warn: '#141414', danger: '#c8321b', toastBg: '#f4f1ea', btnBg: '#c8321b', btnFg: '#ffffff' },
+  swatches: ['#f4f1ea', '#141414', '#c8321b', '#2f6b3a', '#6b665c', '#d9d4c8'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const r = { idle: ['Rảnh', '#9a958b'], run: ['1 đang chạy', '#f4f1ea'], wait: ['1 cần bạn', '#ffffff'], quota: ['Hết lúc 15:10', '#ffffff'] }[v];
+    const red = v === 'wait' || v === 'quota';
+    return `<div style="height:32px;display:inline-flex;align-items:stretch;font-family:${this.font};font-size:13px;font-weight:600"><span class="mono" style="background:#141414;color:#f4f1ea;padding:0 12px;display:flex;align-items:center;font-weight:700">${pct}</span><span style="background:${red ? t.acc : '#2a2a2a'};color:${r[1]};padding:0 12px;display:flex;align-items:center">${r[0]}</span></div>`;
+  },
+  toast() { return toast(this.t, { radius: 0, border: '2px solid #141414', shadow: 'none', btnR: 0 }); },
+  stage() {
+    const t = this.t;
+    const row = (s, i) => `<div style="display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;padding:10px 0;border-top:1px solid ${i ? '#1d1d1d40' : '#1d1d1d'}">
+      <span class="mono" style="font-size:13px;color:${t.mut};padding-top:2px">0${i + 1}</span>
+      <div style="min-width:0"><div class="ell" style="font-size:15px;font-weight:600">${s.name}</div><div class="ell" style="font-size:12.5px;color:${t.fg2};margin-top:2px">${line(s)}</div><div class="ell" style="font-size:12px;color:${t.mut};margin-top:2px">${s.proj} / ${s.branch} / ctx ${s.ctx}%</div></div>
+      <span style="font-size:12px;font-weight:700;align-self:start;${s.st === 'wait' ? `background:${t.acc};color:#fff;padding:3px 7px` : `color:${st(s, t)};padding:3px 0`}">${LABEL[s.st]}</span></div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:225px;top:52px;width:390px;background:${t.bg};color:${t.fg};border:2px solid #141414;padding:18px 18px 14px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:20px;font-weight:700">Wisp</span><span style="font-size:12.5px;color:${t.mut}">Max 20x</span><span style="margin-left:auto;font-size:12.5px;font-weight:600;text-decoration:underline">Cài đặt</span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border-top:2px solid #141414;padding-top:12px">
+          <div><div style="font-size:12.5px;font-weight:600">5 giờ</div><div class="mono" style="font-size:56px;font-weight:300;line-height:1;margin-top:4px">62<span style="font-size:22px">%</span></div><div style="margin-top:6px">${bar(62, '#141414', '#d4cfc3', 4, 0)}</div><div style="font-size:12px;margin-top:6px;color:${t.acc};font-weight:600">Hết lúc 15:10, trước reset 30 phút</div></div>
+          <div><div style="font-size:12.5px;font-weight:600">7 ngày</div><div class="mono" style="font-size:56px;font-weight:300;line-height:1;margin-top:4px">38<span style="font-size:22px">%</span></div><div style="margin-top:6px">${bar(38, '#141414', '#d4cfc3', 4, 0)}</div><div style="font-size:12px;margin-top:6px;color:${t.mut}">Reset T4 22/10</div></div>
+        </div>
+        <div><div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;padding-bottom:6px"><span>Session</span><span style="color:${t.mut};font-weight:500">4 · 1 cần bạn</span></div>${SESS.map(row).join('')}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:${t.mut};border-top:1px solid #1d1d1d40;padding-top:10px"><span>Đã đóng gần đây: 3</span><span>v0.2.0</span></div>
+      </div>`;
+  },
+});
+
+// ================================================================ 09 · Pixel
+const PIX = ['....#.....', '....##....', '...###....', '...####...', '..######..', '..######..', '.##o##o##.', '.########.', '.##++++##.', '..######..', '...####...'];
+function pixFlame(cell, c, eye, hi) {
+  let r = '';
+  PIX.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== '.') r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${ch === 'o' ? eye : ch === '+' ? hi : c}"/>`; }));
+  return `<svg width="${10 * cell}" height="${11 * cell}" viewBox="0 0 10 11" shape-rendering="crispEdges" aria-hidden="true" style="flex:none;display:block">${r}</svg>`;
+}
+DRAFTS.push({
+  id: 'd09', no: '09', name: 'Pixel', font: "'Nunito',system-ui,sans-serif",
+  sub: 'Vui, 8-bit, mascot có lời thoại.', feas: 'vừa',
+  desc: 'Wisp là nhân vật pixel nói câu ngắn ("Có 1 việc cần bạn!"). Thanh quota là các khối như thanh máu. Viền dày, bóng cứng, không bo góc: tkinter vẽ được bằng hình chữ nhật.',
+  changes: ['Mascot pixel thay logo, có animation theo trạng thái', 'Quota dạng 20 khối, đổi màu theo mức', 'Chữ số dùng Press Start 2P, chữ tiếng Việt dùng Nunito (font pixel không có dấu)'],
+  t: { scene: '#2a2140', win: '#211a35', bg: '#1a1530', surf: '#251d42', line: '#3a2f63', fg: '#fff8e7', fg2: '#e6dcff', mut: '#bdb0de', acc: '#ffd23f',
+    wait: '#ffd23f', run: '#4cc9ff', done: '#3be8b0', idle: '#a99ccc', ok: '#3be8b0', warn: '#ffd23f', danger: '#ff5d8f', toastBg: '#251d42', btnFg: '#1a1530' },
+  swatches: ['#1a1530', '#251d42', '#ffd23f', '#4cc9ff', '#3be8b0', '#ff5d8f', '#fff8e7'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62, c = lvl(pct, t), n = Math.round(pct / 10);
+    const blocks = Array.from({ length: 10 }, (_, i) => `<span style="width:6px;height:12px;background:${i < n ? c : '#3a2f63'}"></span>`).join('');
+    const tail = { idle: `<span style="color:${t.mut}">zzz</span>`, run: `<span style="color:${t.run}">▶1</span>`, wait: `<span style="color:${t.wait}" class="pulse">!1</span>`, quota: `<span style="color:${t.danger}">15:10</span>` }[v];
+    return `<div style="height:34px;background:#100c1f;border:2px solid #3a2f63;box-shadow:3px 3px 0 #0a0714;display:inline-flex;align-items:center;gap:8px;padding:0 10px 0 6px;font-family:'Press Start 2P';font-size:9px;color:${t.fg}">${pixFlame(2.2, v === 'quota' ? t.danger : v === 'idle' ? t.idle : '#ff8a4c', '#100c1f', '#ffd23f')}<span style="display:flex;gap:2px">${blocks}</span><span style="color:${c}">${pct}%</span>${tail}</div>`;
+  },
+  toast() { return toast(this.t, { radius: 0, border: '2px solid #3a2f63', shadow: '4px 4px 0 #0a0714', btnR: 0 }); },
+  stage() {
+    const t = this.t, PF = "'Press Start 2P'", NB = 'font-weight:800;font-size:13px';
+    const seg = (p) => { const n = Math.round(p / 5), c = lvl(p, t); return `<div style="display:flex;gap:2px">${Array.from({ length: 20 }, (_, i) => `<span style="flex:1;height:12px;background:${i < n ? c : '#3a2f63'}"></span>`).join('')}</div>`; };
+    const card = (s) => `<div style="background:${s.st === 'wait' ? '#3a2f12' : t.surf};border:2px solid ${s.st === 'wait' ? t.wait : t.line};box-shadow:3px 3px 0 #0a0714;padding:9px 11px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px"><span style="${NB};color:${st(s, t)};display:flex;align-items:center;gap:5px;flex:none">${ic(stIcon[s.st], 14, 2.4)}${LABEL[s.st]}</span><span class="ell" style="font-size:14px;font-weight:800;flex:1">${s.name}</span><span style="font-family:${PF};font-size:9px;color:${lvl(s.ctx, t)}">${s.ctx}%</span></div>
+      <div class="ell" style="font-size:12.5px;color:${t.fg2}">${line(s)}</div>
+      ${s.st === 'wait' ? `<div style="display:flex;gap:6px;margin-top:4px"><button style="font-family:inherit;font-weight:800;font-size:13px;padding:5px 12px;border:2px solid #0a0714;background:${t.wait};color:#1a1530;box-shadow:2px 2px 0 #0a0714">Mở cửa sổ</button></div>` : ''}</div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:8px;display:flex;justify-content:center">${this.island('wait')}</div>
+      <div style="position:absolute;left:225px;top:56px;width:390px;background:${t.bg};border:2px solid ${t.line};box-shadow:6px 6px 0 #0a0714;color:${t.fg};padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:12px;align-items:flex-end">${pixFlame(5, '#ff8a4c', '#1a1530', '#ffd23f')}
+          <div style="position:relative;flex:1;background:#fff8e7;color:#1a1530;padding:9px 12px;border:2px solid #0a0714;box-shadow:3px 3px 0 #0a0714;font-weight:800;font-size:14px">Có 1 việc cần bạn!<div style="font-weight:600;font-size:12.5px;color:#4a3f6b">fix-auth-redirect muốn git push</div></div></div>
+        <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="${NB}">5 giờ</span><span style="font-family:${PF};font-size:9px;color:${t.warn}">62% · 15:10</span></div>${seg(62)}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px"><span style="${NB}">7 ngày</span><span style="font-family:${PF};font-size:9px;color:${t.ok}">38%</span></div>${seg(38)}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">${SESS.map(card).join('')}</div>
+      </div>`;
+  },
+});
+
+// ================================================================ 10 · OLED Notch
+DRAFTS.push({
+  id: 'd10', no: '10', name: 'OLED Notch', font: "'Saira',system-ui,sans-serif",
+  sub: 'Đen tuyệt đối, dính mép trên như tai thỏ.', feas: 'khó (macOS)',
+  desc: 'Island dính sát mép trên, panel mọc liền từ island thành một khối đen. Trên MacBook có notch thì ôm lấy notch. Chỉ một màu nhấn cho "cần bạn", còn lại trắng xám và icon.',
+  changes: ['Island và panel là một hình liền, không khoảng hở', 'Một màu nhấn duy nhất, trạng thái khác dùng icon + chữ', 'Cần thử trên Mac thật: Tk có đặt cửa sổ đè lên vùng menu bar được không'],
+  t: { scene: '#3a3f47', win: '#2c3037', bg: '#000000', surf: '#0c0c0c', line: '#1f1f1f', fg: '#f5f5f5', fg2: '#cfcfcf', mut: '#9b9b9b', acc: '#c6ff3d',
+    wait: '#c6ff3d', run: '#f5f5f5', done: '#cfcfcf', idle: '#8a8a8a', ok: '#f5f5f5', warn: '#ffd166', danger: '#ff5c5c', toastBg: '#000000', btnBg: '#c6ff3d', btnFg: '#000' },
+  swatches: ['#000000', '#0c0c0c', '#c6ff3d', '#f5f5f5', '#9b9b9b', '#ff5c5c'],
+  island(v) {
+    const t = this.t, pct = v === 'quota' ? 91 : v === 'idle' ? 12 : 62;
+    const r = { idle: [t.idle, 'idle', ''], run: [t.run, 'run', '1'], wait: [t.wait, 'bell', '1'], quota: [t.danger, 'trend', '15:10'] }[v];
+    return `<div style="width:220px;height:34px;border-radius:0 0 18px 18px;background:#000;display:inline-flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:${this.font};color:${t.fg};font-size:14px"><span class="mono" style="font-weight:500;color:${pct >= 85 ? t.danger : t.fg}">${pct}%</span><span style="width:60px"></span><span style="display:flex;align-items:center;gap:5px;color:${r[0]};font-weight:600">${ic(r[1], 15, 2)}${r[2]}</span></div>`;
+  },
+  toast() { return toast(this.t, { radius: 20, border: '1px solid #1f1f1f', btnR: 999 }); },
+  stage() {
+    const t = this.t;
+    const row = (s) => `<div style="display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid ${t.line}"><span style="color:${st(s, t)};margin-top:2px">${ic(stIcon[s.st], 17, 2)}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px;align-items:baseline"><span class="ell" style="font-size:15px;font-weight:500;color:${s.st === 'wait' ? t.wait : t.fg}">${s.name}</span><span style="font-size:12px;color:${t.mut};margin-left:auto;flex:none">${LABEL[s.st]} · ${s.ago}</span></div><div class="ell" style="font-size:12.5px;color:${t.mut};margin-top:2px">${line(s)}</div></div><span class="mono" style="font-size:13px;color:${s.ctx >= 85 ? t.danger : t.mut};flex:none;margin-top:2px">${s.ctx}%</span></div>`;
+    return `${desk(t.scene, t.win)}
+      <div style="position:absolute;left:0;right:0;top:0;height:26px;background:rgba(20,22,26,.85)"></div>
+      <div style="position:absolute;left:230px;top:0;width:380px;background:#000;color:${t.fg};border-radius:0 0 28px 28px;padding:42px 22px 20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 18px 50px rgba(0,0,0,.55)">
+        <div style="position:absolute;left:50%;top:0;width:120px;height:30px;margin-left:-60px;border-radius:0 0 14px 14px;background:#0a0a0a"></div>
+        <div style="position:absolute;left:22px;right:22px;top:6px;height:22px;display:flex;align-items:center;justify-content:space-between;font-size:14px"><span class="mono">62%</span><span style="display:flex;align-items:center;gap:5px;color:${t.wait};font-weight:600">${ic('bell', 15, 2)}1 cần bạn</span></div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
+          <div><div style="font-size:12.5px;color:${t.mut}">5 giờ</div><div class="mono" style="font-size:44px;font-weight:300;line-height:1.05">62%</div><div style="font-size:12.5px;color:${t.warn}">hết lúc 15:10</div></div>
+          <div><div style="font-size:12.5px;color:${t.mut}">7 ngày</div><div class="mono" style="font-size:44px;font-weight:300;line-height:1.05">38%</div><div style="font-size:12.5px;color:${t.mut}">reset T4 22/10</div></div>
+        </div>
+        <div style="display:flex;gap:4px">${Array.from({ length: 30 }, (_, i) => `<span style="flex:1;height:3px;border-radius:2px;background:${i < 19 ? t.fg : '#262626'}"></span>`).join('')}</div>
+        <div>${SESS.map(row).join('')}</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:${t.mut}"><span>Đã đóng gần đây · 3</span><span>Cài đặt</span></div>
+      </div>`;
+  },
+});
+
+// ---------------------------------------------------------------- dựng trang
+function rail(d) {
+  const iv = [['idle', 'Rảnh'], ['run', 'Đang chạy'], ['wait', 'Cần bạn'], ['quota', 'Sắp hết quota']];
+  return `<aside class="rail" style="font-family:${d.font}">
+    <div><h3>${d.no} · ${d.name}</h3><div class="desc">${d.desc}</div></div>
+    <div class="tags"><span class="tag">${d.font.split(',')[0].replace(/'/g, '')}</span><span class="tag">tkinter: ${d.feas}</span></div>
+    <div><div class="lbl">Đổi so với bản hiện tại</div><ul>${d.changes.map((c) => `<li>${c}</li>`).join('')}</ul></div>
+    <div><div class="lbl">Island</div>${iv.map(([v, cap]) => `<div class="isl-row"><span class="cap">${cap}</span>${d.island(v)}</div>`).join('')}</div>
+    <div><div class="lbl">Thông báo</div>${d.toast()}</div>
+    <div class="sw">${d.swatches.map((c) => `<span style="background:${c}" title="${c}"></span>`).join('')}</div>
+  </aside>`;
+}
+
+const KEY = 'wisp-draft-picks';
+let picks = [];
+try { picks = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { picks = []; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(picks)); } catch (e) { /* trình duyệt chặn storage */ } };
+
+function paintPicks() {
+  document.querySelectorAll('.pick').forEach((b) => {
+    const on = picks.includes(b.dataset.id);
+    b.setAttribute('aria-pressed', on);
+    b.textContent = on ? 'Đã chọn' : 'Chọn bản này';
+  });
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('picked', picks.includes(a.dataset.id)));
+  const names = DRAFTS.filter((d) => picks.includes(d.id)).map((d) => `${d.no} ${d.name}`);
+  document.getElementById('picked').textContent = names.length ? 'Đã chọn: ' + names.join(', ') : 'Chưa chọn bản nào';
+}
+
+const list = document.getElementById('list'), nav = document.getElementById('nav');
+const only = new URLSearchParams(location.search).get('only'); // ?only=d06: chỉ hiện một bản
+DRAFTS.filter((d) => !only || d.id === only).forEach((d) => {
+  nav.insertAdjacentHTML('beforeend', `<a href="#${d.id}" data-id="${d.id}">${d.no} ${d.name}</a>`);
+  const pick = d.id === 'd00' ? '' : `<button class="pick" data-id="${d.id}" aria-pressed="false">Chọn bản này</button>`;
+  list.insertAdjacentHTML('beforeend', `<section class="draft" id="${d.id}" aria-label="${d.no} ${d.name}">
+    <div class="dhead"><h2>${d.no} · ${d.name}</h2><span class="sub">${d.sub}</span>${pick}</div>
+    <div class="frame"><div class="scene" role="img" aria-label="Bản nháp ${d.name}: island và panel của Wisp"><div class="stage" style="font-family:${d.font}">${d.stage()}</div>${rail(d)}</div></div>
+  </section>`);
+});
+list.addEventListener('click', (e) => {
+  const b = e.target.closest('.pick');
+  if (!b) return;
+  const id = b.dataset.id;
+  picks = picks.includes(id) ? picks.filter((x) => x !== id) : [...picks, id];
+  save();
+  paintPicks();
+});
+
+function fit() {
+  const avail = Math.min(1280, list.clientWidth);
+  const k = avail / 1280;
+  document.querySelectorAll('.frame').forEach((f) => {
+    f.style.width = 1280 * k + 'px';
+    f.style.height = 800 * k + 'px';
+    f.firstElementChild.style.transform = `scale(${k})`;
+  });
+}
+addEventListener('resize', fit);
+fit();
+paintPicks();
+</script>
+</body>
+</html>

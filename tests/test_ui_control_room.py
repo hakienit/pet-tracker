@@ -1,8 +1,11 @@
-"""S7: nối Control room vào ui. Hàm thuần safe_log, find_live_session; helper nối dây gọi trên self giả. Không cần Tk display."""
+"""S7: nối Control room vào ui.app. Hàm thuần safe_log, find_live_session; helper nối dây gọi trên self giả;
+mục popup trong menus. Không cần Tk display (phần dựng Tk thật tự bỏ qua khi không có display)."""
 import queue
 import sys
+import time
 import types
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 # Import config/org trước stub tkinter: patch.dict gỡ mọi module import trong lúc stub khỏi sys.modules.
@@ -10,11 +13,15 @@ from pet_tracker import config, org  # noqa: F401
 
 try:
     import tkinter  # noqa: F401
-    from pet_tracker import ui
+    from pet_tracker import i18n, theme
+    from pet_tracker.ui import app as ui
+    from pet_tracker.ui.menus import Menus
 except ImportError:
-    # Python không có _tkinter: ui.py chỉ dùng tk trong thân hàm nên stub đủ để import.
+    # Python không có _tkinter: ui chỉ dùng tk trong thân hàm nên stub đủ để import.
     with mock.patch.dict(sys.modules, tkinter=mock.MagicMock(), **{"tkinter.font": mock.MagicMock()}):
-        from pet_tracker import ui
+        from pet_tracker import i18n, theme
+        from pet_tracker.ui import app as ui
+        from pet_tracker.ui.menus import Menus
 
 
 class _Stub:
@@ -30,12 +37,29 @@ class _Stub:
 
 def _bind(stub, *names):
     for n in names:
-        setattr(stub, n, types.MethodType(getattr(ui.PetApp, n), stub))
+        setattr(stub, n, types.MethodType(getattr(ui.App, n), stub))
     return stub
 
 
 def _live(sid, **extra):
     return {"session_id": sid, "name": f"s-{sid}", "pid": 1, **extra}
+
+
+FONTS = {"meta": "F1", "body": "F2", "body_b": "F3", "title": "F4", "big": "F5"}
+
+
+def _kit(scale=1.0):
+    return SimpleNamespace(P=theme.DARK, f=dict(FONTS), S=scale)
+
+
+def _panel(visible=False):
+    return SimpleNamespace(visible=visible, hide=mock.Mock(), show=mock.Mock())
+
+
+def _room_cls(cls, bg=None):
+    """ControlRoom giả: th là dict thật (App so sánh màu nền khi mở lại)."""
+    cls.return_value.th = {"bg": bg or theme.DARK["bg"]}
+    return cls
 
 
 class SafeLogTest(unittest.TestCase):
@@ -85,9 +109,11 @@ class FindLiveSessionTest(unittest.TestCase):
         self.assertIsNone(ui.find_live_session(sessions, "x" * 65))
         self.assertIsNotNone(ui.find_live_session([_live("x" * 64)], "x" * 64))
 
-    def test_duplicate_ids_return_first_live_match(self):
+    def test_duplicate_ids_return_none(self):
+        # hai session cùng id là mơ hồ: không focus cái nào
         first, second = _live("d", name="first"), _live("d", name="second")
-        self.assertIs(ui.find_live_session([first, second], "d"), first)
+        self.assertIsNone(ui.find_live_session([first, second], "d"))
+        self.assertIsNone(ui.find_live_session([first, _live("x"), second], "d"))
 
     def test_none_or_odd_sessions_return_none(self):
         self.assertIsNone(ui.find_live_session(None, "s1"))
@@ -103,32 +129,32 @@ class FocusFromControlRoomTest(unittest.TestCase):
     def _stub(self, snap):
         stub = _bind(_Stub(), "_focus_from_control_room")
         stub.snap = snap
-        stub._focus_session = mock.Mock()
+        stub.focus_session = mock.Mock()
         return stub
 
     def test_found_focuses_live_dict(self):
         live = _live("s1")
         stub = self._stub({"sessions": [live]})
         stub._focus_from_control_room("s1")
-        stub._focus_session.assert_called_once()
-        self.assertIs(stub._focus_session.call_args.args[0], live)
+        stub.focus_session.assert_called_once()
+        self.assertIs(stub.focus_session.call_args.args[0], live)
 
     def test_not_found_does_nothing(self):
         stub = self._stub({"sessions": [_live("s1")]})
         stub._focus_from_control_room("nope")
-        stub._focus_session.assert_not_called()
+        stub.focus_session.assert_not_called()
 
     def test_bad_id_does_nothing(self):
         stub = self._stub({"sessions": [_live("s1")]})
         stub._focus_from_control_room(7)
         stub._focus_from_control_room("s" * 65)
-        stub._focus_session.assert_not_called()
+        stub.focus_session.assert_not_called()
 
     def test_no_snapshot_does_nothing(self):
         for snap in (None, {}, {"sessions": None}):
             stub = self._stub(snap)
             stub._focus_from_control_room("s1")
-            stub._focus_session.assert_not_called()
+            stub.focus_session.assert_not_called()
 
 
 class RenderHelperTest(unittest.TestCase):
@@ -172,67 +198,87 @@ class CloseHelperTest(unittest.TestCase):
             stub._close_control_room()
         log.assert_called_once()
 
-    def test_quit_tolerates_no_control_room_and_still_destroys(self):
+    def _quit_stub(self):
         stub = _bind(_Stub(), "quit", "_close_control_room")
+        stub.collector = mock.Mock()
+        stub.hook_server = mock.Mock()
+        return stub
+
+    def test_quit_tolerates_no_control_room_and_still_destroys(self):
+        stub = self._quit_stub()
         stub.control_room = None
-        ui.PetApp.quit(stub)
+        ui.App.quit(stub)
         stub.root.destroy.assert_called_once()
 
     def test_quit_survives_close_failure_and_still_destroys(self):
-        stub = _bind(_Stub(), "quit", "_close_control_room")
+        stub = self._quit_stub()
         stub.control_room = mock.Mock()
         stub.control_room.close.side_effect = RuntimeError("boom")
         with mock.patch.object(ui, "log"):
-            ui.PetApp.quit(stub)
+            ui.App.quit(stub)
         stub.control_room.close.assert_called_once()
         stub.root.destroy.assert_called_once()
 
     def test_quit_closes_room_before_destroy(self):
-        stub = _bind(_Stub(), "quit", "_close_control_room")
+        stub = self._quit_stub()
         stub.control_room = mock.Mock()
         order = []
         stub.control_room.close.side_effect = lambda: order.append("close")
         stub.root.destroy.side_effect = lambda: order.append("destroy")
-        ui.PetApp.quit(stub)
+        ui.App.quit(stub)
         self.assertEqual(order, ["close", "destroy"])
 
 
 class OpenControlRoomTest(unittest.TestCase):
-    def _stub(self):
-        stub = _bind(_Stub(), "_open_control_room", "_control_room_theme", "_focus_from_control_room")
+    def _stub(self, snap=None, panel_visible=False):
+        stub = _bind(_Stub(), "_open_control_room", "_control_room_theme", "_focus_from_control_room",
+                     "_close_control_room")
         stub.control_room = None
-        stub.f_xs, stub.f_sm, stub.f_smb, stub.f_title, stub.f_big = "F1", "F2", "F3", "F4", "F5"
-        stub.S = 1.5
+        stub.kit = _kit()
         stub.state = {}
-        stub.snap = None
+        stub.snap = snap
+        stub.panel = _panel(panel_visible)
+        stub.root = mock.Mock()
+        stub.toast_info = mock.Mock()
         return stub
 
-    def test_theme_has_all_keys_from_constants(self):
-        theme = self._stub()._control_room_theme()
+    def test_theme_has_all_keys_and_maps_palette(self):
+        stub = self._stub()
+        theme_ = stub._control_room_theme()
         for key in ("bg", "surface", "line", "fg", "fg2", "muted", "faint", "green", "yellow", "red",
                     "accent", "sel", "f_xs", "f_sm", "f_smb", "f_title", "f_big", "scale", "top"):
-            self.assertIn(key, theme)
-        self.assertEqual(theme["fg"], ui.FG)
-        self.assertEqual(theme["f_big"], "F5")
-        self.assertEqual(theme["scale"], 1.5)
+            self.assertIn(key, theme_)
+        self.assertEqual(theme_["fg"], theme.DARK["fg"])
+        self.assertEqual(theme_["muted"], theme.DARK["mut"])
+        self.assertEqual(theme_["surface"], theme.DARK["surf"])
+        self.assertEqual(theme_["f_big"], "F5")
+        self.assertEqual(theme_["scale"], 1.0)
+
+    def test_theme_follows_light_palette(self):
+        stub = self._stub()
+        stub.kit.P = theme.LIGHT
+        theme_ = stub._control_room_theme()
+        self.assertEqual(theme_["bg"], theme.LIGHT["bg"])
+        self.assertEqual(theme_["fg"], theme.LIGHT["fg"])
 
     def test_lazy_create_once_and_show_each_time(self):
         stub = self._stub()
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
-            ui.PetApp._open_control_room(stub)
-            ui.PetApp._open_control_room(stub)
+            _room_cls(cls)
+            ui.App._open_control_room(stub)
+            ui.App._open_control_room(stub)
         cls.assert_called_once()
         self.assertEqual(cls.return_value.show.call_count, 2)
 
     def test_constructor_wiring(self):
         stub = self._stub()
-        with mock.patch("pet_tracker.control_room.ControlRoom") as cls:
-            ui.PetApp._open_control_room(stub)
+        with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "save_state") as save:
+            ui.App._open_control_room(stub)
         args, kwargs = cls.call_args
         self.assertIs(args[0], stub.root)
         self.assertIsInstance(args[1], dict)
         self.assertIs(args[2], stub.state)
-        self.assertIs(args[3], ui.save_state)
+        self.assertIs(args[3], save)
         self.assertEqual(args[4], stub._focus_from_control_room)
         self.assertIs(kwargs["log"], ui._control_room_log)
 
@@ -247,46 +293,8 @@ class OpenControlRoomTest(unittest.TestCase):
         stub = self._stub()
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log") as log:
             cls.return_value.show.side_effect = RuntimeError("tcl")
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
         log.assert_called_once()
-
-
-class PopupItemTest(unittest.TestCase):
-    def test_menu_has_control_room_item_that_opens_room(self):
-        stub = _bind(_Stub(), "_bubble_menu", "_open_control_room")
-        stub.S = 1.0
-        stub._update = None
-        stub.island = True
-        stub._new_sheet = mock.Mock(return_value=(mock.Mock(), mock.Mock()))
-        stub._sheet_row = mock.Mock()
-        stub._close_sheet = mock.Mock()
-        stub.control_room = None
-        with mock.patch.object(ui, "tk"), mock.patch.object(ui, "plat") as plat, \
-                mock.patch("pet_tracker.control_room.ControlRoom") as cls:
-            plat.autostart_is_enabled.return_value = False
-            ui.PetApp._bubble_menu(stub, 10, 10)
-            rows = [c for c in stub._sheet_row.call_args_list if c.args[2] == "Control room"]
-            self.assertEqual(len(rows), 1)
-            rows[0].args[4]()  # on_click đã bọc act(): đóng popup rồi mở room
-        stub._close_sheet.assert_called()
-        cls.assert_called_once()
-        cls.return_value.show.assert_called_once()
-
-
-class OpenOrderTest(unittest.TestCase):
-    """Rework S7: render trước show, ẩn panel topmost, dựng lỗi thì dọn và thử lại được."""
-
-    def _stub(self, snap=None, panel_visible=False):
-        stub = _bind(_Stub(), "_open_control_room", "_control_room_theme", "_focus_from_control_room",
-                     "_close_control_room")
-        stub.control_room = None
-        stub.f_xs, stub.f_sm, stub.f_smb, stub.f_title, stub.f_big = "F1", "F2", "F3", "F4", "F5"
-        stub.S = 1.0
-        stub.state = {}
-        stub.snap = snap
-        stub.panel_visible = panel_visible
-        stub.root = mock.Mock()
-        return stub
 
     def test_render_before_show_when_snapshot_present(self):
         stub = self._stub(snap={"sessions": []})
@@ -294,63 +302,59 @@ class OpenOrderTest(unittest.TestCase):
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
             cls.return_value.render.side_effect = lambda s: order.append(("render", s))
             cls.return_value.show.side_effect = lambda: order.append("show")
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
         self.assertEqual(order, [("render", {"sessions": []}), "show"])
 
     def test_no_render_without_snapshot(self):
         stub = self._stub(snap=None)
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
         cls.return_value.render.assert_not_called()
         cls.return_value.show.assert_called_once()
 
     def test_visible_panel_hidden_before_show(self):
         stub = self._stub(snap=None, panel_visible=True)
         order = []
-        stub.hide_panel = mock.Mock(side_effect=lambda: order.append("hide"))
+        stub.panel.hide = mock.Mock(side_effect=lambda: order.append("hide"))
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
             cls.return_value.show.side_effect = lambda: order.append("show")
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
         self.assertEqual(order, ["hide", "show"])
 
     def test_hidden_panel_not_hidden_again(self):
         stub = self._stub(snap=None, panel_visible=False)
-        stub.hide_panel = mock.Mock()
         with mock.patch("pet_tracker.control_room.ControlRoom"), mock.patch.object(ui, "log"):
-            ui.PetApp._open_control_room(stub)
-        stub.hide_panel.assert_not_called()
+            ui.App._open_control_room(stub)
+        stub.panel.hide.assert_not_called()
 
     def test_show_false_closes_resets_and_flashes(self):
         stub = self._stub(snap=None)
-        stub._flash = mock.Mock()
-        stub.show_panel = mock.Mock()
         bad, good = mock.Mock(), mock.Mock()
+        bad.th = good.th = {"bg": theme.DARK["bg"]}
         bad.show.return_value = False
         good.show.return_value = True
         with mock.patch("pet_tracker.control_room.ControlRoom", side_effect=[bad, good]) as cls, \
                 mock.patch.object(ui, "log"):
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
             self.assertIsNone(stub.control_room)
             bad.close.assert_called_once()
-            stub._flash.assert_called_once()
-            self.assertIn("Control room", stub._flash.call_args.args[0])
-            stub.show_panel.assert_called_once()    # thông báo chỉ thấy được khi panel mở
-            ui.PetApp._open_control_room(stub)     # lần sau dựng lại từ đầu
-            stub._flash.assert_called_once()        # thành công thì không báo lỗi nữa
-            stub.show_panel.assert_called_once()
+            stub.toast_info.assert_called_once()
+            self.assertIn("Control room", stub.toast_info.call_args.args[0])
+            stub.panel.show.assert_called_once()    # thông báo chỉ thấy được khi panel mở
+            ui.App._open_control_room(stub)        # lần sau dựng lại từ đầu
+            stub.toast_info.assert_called_once()    # thành công thì không báo lỗi nữa
+            stub.panel.show.assert_called_once()
         self.assertEqual(cls.call_count, 2)
         self.assertIs(stub.control_room, good)
         good.show.assert_called_once()
 
     def test_show_true_does_not_flash(self):
         stub = self._stub(snap=None)
-        stub._flash = mock.Mock()
         with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
             cls.return_value.show.return_value = True
-            ui.PetApp._open_control_room(stub)
-        stub._flash.assert_not_called()
+            ui.App._open_control_room(stub)
+        stub.toast_info.assert_not_called()
         self.assertIs(stub.control_room, cls.return_value)
-
 
     def test_failed_render_is_closed_and_reset(self):
         stub = self._stub(snap={"sessions": []})
@@ -358,71 +362,75 @@ class OpenOrderTest(unittest.TestCase):
         bad.render.side_effect = RuntimeError("bad")
         with mock.patch("pet_tracker.control_room.ControlRoom", return_value=bad), \
                 mock.patch.object(ui, "log"):
-            ui.PetApp._open_control_room(stub)
+            ui.App._open_control_room(stub)
         bad.close.assert_called_once()
         bad.show.assert_not_called()
         self.assertIsNone(stub.control_room)
 
+    def test_theme_change_recreates_room_on_next_open(self):
+        stub = self._stub(snap=None)
+        old = mock.Mock()
+        old.th = {"bg": theme.DARK["bg"]}
+        old.show.return_value = True
+        stub.control_room = old
+        stub.kit.P = theme.LIGHT
+        with mock.patch("pet_tracker.control_room.ControlRoom") as cls, mock.patch.object(ui, "log"):
+            _room_cls(cls, bg=theme.LIGHT["bg"])
+            ui.App._open_control_room(stub)
+        old.close.assert_called_once()
+        cls.assert_called_once()
+        self.assertIs(stub.control_room, cls.return_value)
 
 
-
-def _tk_root_available():
-    try:
-        import tkinter
-        r = tkinter.Tk()
-        r.destroy()
-        return True
-    except Exception:
-        return False
-
-
-
-@unittest.skipUnless(_tk_root_available(), "không có Tk/display")
-class RealFailingBuildTest(unittest.TestCase):
-    """Dựng thật qua ControlRoom.show(): _style ném lỗi, show trả False, ui dọn và báo; lần sau dựng được."""
+class PopupItemTest(unittest.TestCase):
+    """Mục 'Control room' trong popup chuột phải của island và bóng (cùng một menu island_menu)."""
 
     def setUp(self):
-        import tkinter
-        self.root = tkinter.Tk()
-        self.root.withdraw()
-        self.addCleanup(self.root.destroy)
-        self.stub = _bind(_Stub(), "_open_control_room", "_control_room_theme", "_focus_from_control_room",
-                          "_close_control_room")
-        self.stub.control_room = None
-        self.stub.f_xs = self.stub.f_sm = self.stub.f_smb = self.stub.f_title = self.stub.f_big = "TkDefaultFont"
-        self.stub.S = 1.0
-        self.stub.state = {}
-        self.stub.snap = {"sessions": [], "org": None}
-        self.stub.panel_visible = False
-        self.stub.root = self.root
-        self.stub._flash = mock.Mock()
-        for p in (mock.patch.object(ui, "log"), mock.patch.object(ui, "save_state")):
-            p.start()
-            self.addCleanup(p.stop)
+        prev_lang = i18n.lang()
+        self.addCleanup(i18n.set_lang, prev_lang)
+        i18n.set_lang("vi")  # nhãn tiếng Việt cố định, không phụ thuộc máy hay test chạy trước
 
-    def test_real_build_failure_flashes_and_retry_builds(self):
-        from pet_tracker import control_room as cr
-        with mock.patch.object(cr.ControlRoom, "_style", side_effect=cr.tk.TclError("forced")):
-            ui.PetApp._open_control_room(self.stub)
-        self.assertIsNone(self.stub.control_room)
-        self.stub._flash.assert_called_once()
-        self.assertIn("Control room", self.stub._flash.call_args.args[0])
-        ui.PetApp._open_control_room(self.stub)
-        room = self.stub.control_room
-        self.assertIsNotNone(room)
-        self.assertIsNotNone(room.tree)                 # org None: cây rỗng, nhưng cửa sổ và cây đã dựng thật
-        self.assertTrue(room.win.winfo_exists())
-        self.stub._flash.assert_called_once()
-        room.close()
+    def _menu(self, display):
+        app = mock.Mock()
+        app.prefs = {"display": display}
+        app.mute_until = 0.0
+        app.update = None
+        app.kit = SimpleNamespace(P=theme.DARK, px=lambda v: int(v))
+        m = Menus(app)
+        m.opened_at = 0.0
+        m._new = mock.Mock(return_value=(mock.Mock(), mock.Mock()))
+        m._item = mock.Mock()
+        m._sep = mock.Mock()
+        m._pad = mock.Mock()
+        m._finish = mock.Mock()
+        return m, app
+
+    def test_menu_has_control_room_item_in_both_modes(self):
+        for display in ("island", "bubble"):
+            with self.subTest(display=display):
+                m, app = self._menu(display)
+                m.island_menu(10, 10)
+                rows = [c for c in m._item.call_args_list if c.args[2] == "Control room"]
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0].args[3], "giám sát")
+
+    def test_item_closes_popup_then_opens_room(self):
+        m, app = self._menu("island")
+        m.close = mock.Mock()
+        m.island_menu(10, 10)
+        row = [c for c in m._item.call_args_list if c.args[2] == "Control room"][0]
+        row.kwargs["cmd"]()  # act(): đóng popup rồi mở room
+        m.close.assert_called()
+        app._open_control_room.assert_called_once()
 
 
 class FocusSessionLogTest(unittest.TestCase):
-    """Rework S7: dòng log của _focus_session không bị giả mạo bằng xuống dòng trong pid hoặc thông báo."""
+    """dòng log của focus_session không bị giả mạo bằng xuống dòng trong pid hoặc thông báo."""
 
     def _stub(self):
-        stub = _bind(_Stub(), "_focus_session")
-        stub._flash = mock.Mock()
-        stub.hide_panel = mock.Mock()
+        stub = _bind(_Stub(), "focus_session")
+        stub.toast_info = mock.Mock()
+        stub.panel = _panel()
         return stub
 
     def test_pid_repr_and_message_escaped(self):
@@ -430,7 +438,7 @@ class FocusSessionLogTest(unittest.TestCase):
         sess = {"name": "n", "pid": "7\nFORGED"}
         with mock.patch.object(ui, "plat") as plat, mock.patch.object(ui, "log") as log:
             plat.focus_session.return_value = (True, "ok\nFORGED line\x1b[0m đ")
-            ui.PetApp._focus_session(stub, sess)
+            ui.App.focus_session(stub, sess)
         msg = log.call_args.args[0]
         self.assertNotIn("\n", msg)
         self.assertIn("pid='7\\nFORGED'", msg)
@@ -441,7 +449,7 @@ class FocusSessionLogTest(unittest.TestCase):
         sess = {"name": "my work", "pid": 7}
         with mock.patch.object(ui, "plat") as plat, mock.patch.object(ui, "log") as log:
             plat.focus_session.return_value = (True, "ok")
-            ui.PetApp._focus_session(stub, sess)
+            ui.App.focus_session(stub, sess)
         self.assertIn("focus session name='my work' pid='7': ok=True", log.call_args.args[0])
 
     def test_name_and_pid_capped(self):
@@ -449,7 +457,7 @@ class FocusSessionLogTest(unittest.TestCase):
         sess = {"name": "n" * 1000, "pid": "p" * 1000}
         with mock.patch.object(ui, "plat") as plat, mock.patch.object(ui, "log") as log:
             plat.focus_session.return_value = (True, "ok")
-            ui.PetApp._focus_session(stub, sess)
+            ui.App.focus_session(stub, sess)
         msg = log.call_args.args[0]
         self.assertIn("n" * 200, msg)
         self.assertNotIn("n" * 201, msg)
@@ -460,28 +468,159 @@ class FocusSessionLogTest(unittest.TestCase):
         stub = self._stub()
         with mock.patch.object(ui, "plat") as plat, mock.patch.object(ui, "log") as log:
             plat.focus_session.side_effect = RuntimeError("bad\nline")
-            ui.PetApp._focus_session(stub, {"name": "n", "pid": 1})
+            ui.App.focus_session(stub, {"name": "n", "pid": 1})
         msg = log.call_args.args[0]
         self.assertNotIn("\n", msg)
         self.assertTrue(msg.isascii(), msg)
         self.assertIn("ok=False", msg)
 
 
+class LangChangeTest(unittest.TestCase):
+    def test_language_change_drops_room_so_labels_refresh(self):
+        stub = _bind(_Stub(), "set_pref", "_close_control_room", "lang_code")
+        stub.prefs = {"lang": "vi"}
+        stub.state = {}
+        stub.lang_code = mock.Mock(return_value="en")
+        room = mock.Mock()
+        room.win = None
+        stub.control_room = room
+        with mock.patch.object(ui, "save_state"), mock.patch.object(ui, "log"), \
+                mock.patch.object(ui.i18n, "set_lang") as set_lang:
+            ui.App.set_pref(stub, "lang", "en")
+        set_lang.assert_called_once()
+        room.close.assert_called_once()
+        self.assertIsNone(stub.control_room)
+
+
+class AgentFieldLogTest(unittest.TestCase):
+    """F3: mọi trường do agent viết đi vào log qua safe_log (xuống dòng, ký tự không phải ASCII bị escape)."""
+
+    HOSTILE = {"session_id": "s\nFORGED", "name": "n\nFORGED đ", "pid": "7\n", "cwd": "/a\nb đ"}
+
+    def _ops_stub(self):
+        stub = _bind(_Stub(), "run_op")
+        stub.busy_sids = set()
+        stub.toast_info = mock.Mock()
+        stub.cfg = {"claude_dir": "/x"}
+        stub.ops_done = queue.Queue()
+        return stub
+
+    def test_run_op_log_line_is_escaped(self):
+        stub = self._ops_stub()
+        sess = dict(self.HOSTILE)
+
+        class SyncThread:
+            def __init__(self, target, **kw):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        with mock.patch.object(ui.threading, "Thread", SyncThread), \
+                mock.patch.object(ui.session_ops, "close_session", return_value=(True, "ok\nFORGED đ")), \
+                mock.patch.object(ui, "log") as log:
+            ui.App.run_op(stub, sess, "close")
+        msg = log.call_args.args[0]
+        self.assertNotIn("\n", msg)
+        self.assertTrue(msg.isascii(), msg)
+        self.assertIn("pid='7\\n'", msg)
+        self.assertIn("cwd='/a\\nb \\u0111'", msg)
+
+    def test_resume_log_line_is_escaped(self):
+        stub = _bind(_Stub(), "resume_closed")
+        stub.forget_closed = mock.Mock()
+        stub.toast_info = mock.Mock()
+        c = {"name": "n\nFORGED đ", "session_id": "s\nX", "cwd": "/tmp"}
+        with mock.patch.object(ui.os.path, "isdir", return_value=True), \
+                mock.patch.object(ui.plat, "open_terminal", return_value=(False, "bad\nline")), \
+                mock.patch.object(ui, "log") as log:
+            ui.App.resume_closed(stub, c)
+        msg = log.call_args.args[0]
+        self.assertNotIn("\n", msg)
+        self.assertTrue(msg.isascii(), msg)
+
+
+class ThemeContrastTest(unittest.TestCase):
+    """R3: trạng thái của Control room tách màu rõ trong cả hai bảng màu và chữ đạt 4.5:1 trên nền cửa sổ."""
+
+    def _th(self, P):
+        stub = _bind(_Stub(), "_control_room_theme")
+        stub.kit = _kit()
+        stub.kit.P = P
+        return stub._control_room_theme()
+
+    def test_states_distinct_and_readable_in_both_palettes(self):
+        for P in (theme.DARK, theme.LIGHT):
+            with self.subTest(palette=P["name"]):
+                th = self._th(P)
+                states = {k: th[k] for k in ("green", "yellow", "red", "muted", "faint")}
+                self.assertEqual(len(set(states.values())), len(states), states)
+                self.assertEqual(th["green"], P["ok"])          # đang chạy: màu thành công của bảng màu
+                for k, col in states.items():
+                    self.assertGreaterEqual(theme.contrast(col, th["surface"]), 4.5, (k, col))
+
+
+class ThemeChangeTest(unittest.TestCase):
+    """R4: đổi giao diện (thủ công hoặc theo hệ thống) đóng Control room đang mở, như đổi ngôn ngữ."""
+
+    def _stub(self):
+        stub = _bind(_Stub(), "set_pref", "_close_control_room", "lang_code")
+        stub.prefs = {"lang": "vi", "theme": "dark"}
+        stub.state = {}
+        stub._rebuild = mock.Mock()
+        stub._refresh_views = mock.Mock()
+        stub.kit = _kit()
+        stub.kit.set_palette = mock.Mock()
+        room = mock.Mock()
+        room.win = None
+        stub.control_room = room
+        return stub, room
+
+    def test_manual_theme_change_closes_room(self):
+        stub, room = self._stub()
+        with mock.patch.object(ui, "save_state"), mock.patch.object(ui, "log"), \
+                mock.patch.object(ui.theme, "palette", return_value=theme.LIGHT):
+            ui.App.set_pref(stub, "theme", "light")
+        room.close.assert_called_once()
+        self.assertIsNone(stub.control_room)
+
+    def test_system_theme_switch_in_pump_closes_room(self):
+        stub = _bind(_Stub(), "_pump", "_close_control_room")
+        stub.update_dirty = stub.update_ready = stub._want_show = False
+        stub.ops_done = queue.Queue()
+        stub.q = queue.Queue()
+        stub.snap = None
+        stub.panel = _panel(visible=False)
+        stub.menus = SimpleNamespace(sheet=None)
+        stub.prefs = {"theme": "system"}
+        stub._last_theme_check = 0.0
+        stub._sys_theme = "dark"
+        stub._theme_name = mock.Mock(return_value="light")
+        stub._render_control_room = mock.Mock()
+        room = mock.Mock()
+        room.win = None
+        stub.control_room = room
+        with mock.patch.object(ui.plat, "system_theme", return_value="light"):
+            ui.App._pump(stub)
+        room.close.assert_called_once()
+        self.assertIsNone(stub.control_room)
+
+
 class PumpRenderTest(unittest.TestCase):
-    """Rework S7: _pump gọi render khi có snapshot mới, kể cả lúc panel ẩn."""
+    """_pump gọi render khi có snapshot mới, kể cả lúc panel ẩn; không có snapshot mới thì không gọi."""
 
     def _stub(self):
         stub = _bind(_Stub(), "_pump")
-        stub._update_dirty = False
-        stub._update_ready = False
+        stub.update_dirty = False
+        stub.update_ready = False
         stub._want_show = False
-        stub._ops_done = queue.Queue()
+        stub.ops_done = queue.Queue()
         stub.q = queue.Queue()
         stub.snap = None
-        stub._sheet = None
-        stub.panel_visible = False
-        stub._lbtn_prev = False
-        stub._modal = False
+        stub.panel = _panel(visible=False)
+        stub.menus = SimpleNamespace(sheet=None)
+        stub.prefs = {"theme": "dark"}
+        stub._last_theme_check = time.time()
         stub._render_control_room = mock.Mock()
         return stub
 
@@ -489,13 +628,14 @@ class PumpRenderTest(unittest.TestCase):
         stub = self._stub()
         snap = {"sessions": [], "org": None}
         stub.q.put(snap)
-        ui.PetApp._pump(stub)
+        ui.App._pump(stub)
         self.assertIs(stub.snap, snap)
         stub._render_control_room.assert_called_once_with()
+        stub.panel.show.assert_not_called()
 
     def test_no_render_without_new_snapshot(self):
         stub = self._stub()
-        ui.PetApp._pump(stub)
+        ui.App._pump(stub)
         stub._render_control_room.assert_not_called()
 
 

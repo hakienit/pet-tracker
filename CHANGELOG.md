@@ -45,6 +45,101 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Remote khác https/ssh (ví dụ `git://`, `file`, `http`), và người dùng dựa vào `GIT_SSH_COMMAND` hoặc
   `GIT_ASKPASS`, đều thấy worktree là "chưa push".
 
+## [0.2.3] - 2026-10-17
+
+### Fixed
+- Lệnh cài Windows (`install.ps1`) chạy được trên máy khoá PowerShell ở Constrained Language Mode: không gọi .NET
+  trực tiếp, dùng `curl.exe` / `certutil` / `tar.exe` khi `Invoke-WebRequest` / `Get-FileHash` / `Expand-Archive`
+  bị chặn, không tạo được shortcut Start Menu thì chỉ cảnh báo.
+
+### Added
+- README và `docs/GUIDE.md`: lệnh cài từ cmd / Git Bash (`powershell -NoProfile -c "irm … | iex"`) và lệnh `curl` + `tar`
+  cho máy chặn hẳn PowerShell.
+
+## [0.2.2] - 2026-10-17
+
+### Fixed
+- macOS: vùng đặt island, bóng, panel và thông báo lấy từ `NSScreen.visibleFrame` (trừ đúng thanh menu và Dock, theo
+  từng màn hình) thay cho thanh menu cố định 25pt và bỏ qua Dock.
+- macOS: đọc token Claude Code trong Keychain đúng như Claude Code lưu: account `claude-code-user`, service có hậu tố
+  khi đặt `CLAUDE_CONFIG_DIR`, và secret dài bị chia mảnh (trước đó có thể đọc nhầm mảnh rồi báo chưa đăng nhập).
+- macOS: session có pid bị tiến trình khác dùng lại không còn hiện là đang chạy (so `procStart` với `ps -o lstart=`).
+- Windows: vòng sóng phía sau mascot (trạng thái cần bạn) hiện đủ; trước đó vùng trong suốt của ảnh mascot che mất.
+
+## [0.2.1] - 2026-10-17
+
+### Fixed
+- Lấy quota không còn bị `HTTP 429` lặp lại: sau một lần 429, Wisp gọi API ít nhất 5 phút một lần trong 30 phút,
+  kể cả khi các lần sau thành công (trước đó về ngay 60 giây rồi lại bị chặn).
+
+### Changed
+- `docs/GUIDE.md` cập nhật cho 0.2: menu chuột phải mới, Cài đặt, cập nhật một chạm trên macOS, cấu trúc code.
+
+### Added
+- Workflow `mac-probe` và `tools/mac_probe.py`: kiểm cách vẽ, unit test và ảnh chụp UI trên runner macOS
+  (push lên nhánh `probe/**`), không cần máy Mac.
+
+## [0.2.0] - 2026-10-17
+
+Bản làm lại giao diện 0.2, theo spec ở `docs/site/design.html` và kế hoạch ở `docs/REDESIGN_PLAN.md`.
+
+### Added
+- **Biết khi nào session cần bạn**: Wisp nhận sự kiện từ hooks kiểu `http` của Claude Code. Server chỉ nghe trên
+  127.0.0.1, có token riêng, và không trả quyết định nào. Session có 4 trạng thái: cần bạn (chờ duyệt / đang hỏi),
+  đang chạy (kèm tool và file / lệnh), xong (kèm câu trả lời cuối), rảnh. Không bật hooks thì Wisp suy ra trạng thái
+  từ poll như trước.
+- Hooks là tuỳ chọn opt-in: lần đầu Wisp hỏi trong panel, sau đó bật / gỡ trong Cài đặt. Wisp chỉ thêm và gỡ đúng
+  entry của mình trong `settings.json`, ghi nguyên tử, giữ bản backup `settings.json.wisp-bak`.
+- Thông báo thả xuống từ island, kèm âm thanh khi có session cần bạn. Có tuỳ chọn âm thanh khi xong, giờ yên lặng,
+  và tắt thông báo cho từng session.
+- Quota có dự báo giờ hết theo tốc độ hiện tại, cảnh báo ở 80% / 95% và khi quota đã hồi.
+- Khối "Token · máy này": hôm nay / tuần / tháng (input + output + cache), chỉ tính trên máy này.
+- Bóng nổi có hai kiểu: tín hiệu (6 kiểu viền) và mascot (40 mẫu, 8 màu hoặc ảnh riêng). Mascot có biểu cảm và
+  chuyển động theo trạng thái, chip dưới chân có 3 kiểu. Cả island lẫn bóng đều có viền động theo trạng thái.
+- Trang Cài đặt trong panel: ngôn ngữ, giao diện, kiểu hiển thị, bóng nổi, mascot, chuyển động, mở cùng máy, thông
+  báo, hooks, ngưỡng quota, cập nhật, nâng cao.
+- Hai ngôn ngữ, tiếng Việt và tiếng Anh, mặc định theo hệ điều hành. Theme sáng / tối theo hệ thống.
+- Menu ⋯ của session có thêm: mở thư mục dự án, sao chép ID, chi tiết, tắt thông báo. Thao tác không hoàn tác được
+  có khối xác nhận liệt kê rõ hậu quả.
+- Font Archivo (OFL) đóng gói kèm app, nạp riêng cho process, nên chữ giống nhau trên Windows và macOS.
+- 45 unit test (`python -m unittest discover -s tests -t .`), chạy trong CI.
+- macOS: cập nhật một chạm như Windows: tải dmg, kiểm SHA256 và chữ ký, thay Wisp.app khi app thoát, lỗi thì
+  giữ bản cũ. Log ở `~/Library/Application Support/Wisp/update.log`.
+
+### Changed
+- Panel chia làn theo trạng thái (cần bạn, đang chạy, xong, rảnh, đã đóng). Bấm tên làn để thu / mở. Card có nền và
+  viền theo trạng thái, effort hiện cạnh model.
+- Island rộng cố định theo nội dung, đổi rộng có animation, đèn có nhãn số thay cho chấm không nhãn.
+- Cỡ chữ tính bằng pixel, bỏ cách cộng thêm 3pt trên macOS. Icon vẽ bằng vector, giống nhau trên hai hệ điều hành.
+- Kết quả thao tác hiện bằng thông báo, không ghi ở footer nữa.
+- README thành trang giới thiệu mới, ảnh chụp từ landing `docs/site/index.html`.
+- Kiểm tra bản mới mỗi 24 giờ (`update_interval_hours` mặc định 24). Bóng nổi mặc định 80 px.
+
+### Fixed
+- macOS: island và bóng nổi hiện được trên Tk 8.6 (ảnh trên nền trong suốt không được vẽ). Island và bóng tín hiệu
+  là cửa sổ nền đặc cắt theo hình, có bóng đổ; bóng mascot, chip và huy hiệu vẽ bằng hình vector. Huy hiệu bản mới
+  của bóng tín hiệu nằm trong vòng.
+
+### Removed
+- Khối "Token đã dùng" 5 giờ / 7 ngày (thay bằng dự báo quota và token theo ngày / tuần / tháng).
+
+## [0.1.8] - 2026-10-16
+
+### Fixed
+- macOS: app không còn thoát ngay khi mở. Con trỏ resize dùng tên chỉ có trên Windows (`size_ne_sw`) làm Tk báo `bad cursor spec`.
+- macOS: lấy quota và kiểm tra cập nhật không còn lỗi `CERTIFICATE_VERIFY_FAILED` (Python của python.org không có chứng chỉ gốc; app đóng gói kèm `certifi`).
+- macOS: panel và popup đóng khi bấm ra ngoài; chuột phải vào session, bóng và island mở menu ngay lần bấm đầu; cuộn chuột và touchpad theo đúng đơn vị của Tk trên macOS.
+- macOS: bóng nổi và island vẽ được trên Tk 8.6 (ảnh PNG không hiện trong cửa sổ trong suốt) và nổi trên mọi app; popup không bị panel che.
+
+### Changed
+- macOS: bóng nổi là một bó lửa có mặt, màu đổi từ xanh sang đỏ theo % quota, đổi biểu cảm (vui, bình thường, lo lắng, giận) và cháy nhanh hơn khi có agent đang chạy; nhãn ghi % và số agent (`1 agent`, `2 agents`).
+- macOS: island sát mép trên, kéo ngang được, có viền lửa đổi màu theo % quota và đốm lửa mascot.
+- macOS: panel và popup bo góc, có viền và bóng đổ; icon trong menu vẽ cùng một kiểu nét mảnh; glyph nhánh git đổi sang `⑂`.
+- Nhãn số agent ghi `agents` khi có nhiều hơn một (mọi nền tảng).
+
+### Added
+- `tools/dev.py`: chạy Wisp từ source và tự khởi động lại khi file `.py` đổi.
+
 ## [0.1.7] - 2026-10-16
 
 ### Added
@@ -176,7 +271,12 @@ Mọi thay đổi đáng chú ý của Wisp (trước đây là Claude PET / pet
 - Script build PyInstaller (onedir, icon, version info, zip portable) và workflow release trên
   GitHub Actions.
 
-[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/hakienit/pet-tracker/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/hakienit/pet-tracker/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/hakienit/pet-tracker/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/hakienit/pet-tracker/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/hakienit/pet-tracker/compare/v0.1.8...v0.2.0
+[0.1.8]: https://github.com/hakienit/pet-tracker/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/hakienit/pet-tracker/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/hakienit/pet-tracker/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/hakienit/pet-tracker/compare/v0.1.4...v0.1.5

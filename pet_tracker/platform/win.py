@@ -15,17 +15,18 @@ from .win_single import SingleInstance
 from .win_update import launch_swap
 
 __all__ = [
-    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS",
+    "NAME", "GLOBAL_MOUSE", "CAN_SELF_UPDATE", "RIGHT_CLICK_EVENTS", "WHEEL_PX_PER_DELTA",
     "init_process", "dpi_scale", "work_area", "cursor_pos", "mouse_down", "transparent_key",
-    "make_transparent", "round_corners", "state_dir", "open_path", "process_alive", "read_credentials",
+    "make_transparent", "round_corners", "clip_round", "state_dir", "open_path", "process_alive", "read_credentials",
     "focus_session", "open_terminal", "autostart_command", "autostart_is_enabled",
     "autostart_enable", "autostart_disable", "autostart_refresh", "SingleInstance", "update_asset_name",
-    "install_dir", "launch_swap",
+    "install_dir", "launch_swap", "system_theme", "reduce_motion", "ui_language", "register_font",
 ]
 
 NAME = "windows"
 GLOBAL_MOUSE = True            # đọc được trạng thái chuột toàn cục (GetAsyncKeyState)
 RIGHT_CLICK_EVENTS = ("<Button-3>",)
+WHEEL_PX_PER_DELTA = 72 / 120   # delta Windows: 120 = một nấc con lăn = 72px
 CAN_SELF_UPDATE = True         # thay thư mục cài bằng script PowerShell
 
 _u32 = ctypes.windll.user32
@@ -105,6 +106,11 @@ def make_transparent(toplevel) -> None:
     toplevel.configure(bg=_TRANSPARENT_KEY)
 
 
+def clip_round(win, radius, border_hex=None) -> bool:
+    """Chỉ macOS cần (xem mac.clip_round): Windows vẽ island / bóng bằng màu key."""
+    return False
+
+
 def round_corners(win, border_hex: str) -> bool:
     """Windows 11: bo góc + viền mảnh (DWMWA_WINDOW_CORNER_PREFERENCE / BORDER_COLOR)."""
     try:
@@ -118,6 +124,46 @@ def round_corners(win, border_hex: str) -> bool:
         col = ctypes.c_uint(r | (g << 8) | (b << 16))
         dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(col), 4)
         return hr == 0
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------- giao diện hệ thống
+def system_theme() -> str:
+    """"light" / "dark" theo Settings → Personalization → Colors (chế độ của app)."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as k:
+            v, _ = winreg.QueryValueEx(k, "AppsUseLightTheme")
+        return "light" if v else "dark"
+    except OSError:
+        return "dark"
+
+
+def reduce_motion() -> bool:
+    """True khi tắt "Animation effects" (SPI_GETCLIENTAREAANIMATION)."""
+    on = ctypes.c_int(1)
+    try:
+        if _u32.SystemParametersInfoW(0x1042, 0, ctypes.byref(on), 0):
+            return not on.value
+    except Exception:
+        pass
+    return False
+
+
+def ui_language() -> str:
+    """"vi" nếu ngôn ngữ giao diện Windows là tiếng Việt, ngược lại "en"."""
+    try:
+        return "vi" if (ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF) == 0x2A else "en"
+    except Exception:
+        return "en"
+
+
+def register_font(path) -> bool:
+    """Nạp file font chỉ cho process này (FR_PRIVATE): không cài vào hệ thống."""
+    try:
+        return bool(ctypes.windll.gdi32.AddFontResourceExW(str(path), 0x10, 0))
     except Exception:
         return False
 

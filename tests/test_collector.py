@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 # Import config/org trước stub tkinter: patch.dict gỡ mọi module import trong lúc stub khỏi sys.modules.
@@ -12,17 +13,17 @@ from pet_tracker import config, org
 
 try:
     import tkinter  # noqa: F401
-    from pet_tracker import ui
+    from pet_tracker.ui import app as ui
 except ImportError:
-    # Python không có _tkinter: ui.py chỉ dùng tk trong thân hàm nên stub đủ để import.
     # Chỉ stub trong lúc import rồi gỡ ra, để test khác (cần Tk thật) không thấy MagicMock.
     with mock.patch.dict(sys.modules, tkinter=mock.MagicMock(), **{"tkinter.font": mock.MagicMock()}):
-        from pet_tracker import ui
+        from pet_tracker.ui import app as ui
 
 
 class FakeStore:
     def __init__(self, sessions):
         self.sessions = sessions
+        self.transcripts = {}
         self.polls = 0
 
     def poll_all(self):
@@ -31,13 +32,15 @@ class FakeStore:
     def active_sessions(self, context_windows):
         return [dict(s) for s in self.sessions]
 
-    def usage_window(self, seconds, now):
-        return {"input": 1, "output": 2}
-
 
 def session(sid="s1"):
     return {"session_id": sid, "cwd": "/repo", "started_at": 1.0, "status": "busy", "name": "x",
             "agent_calls": [], "workers": []}
+
+
+def fake_app(cfg):
+    """Collector chỉ đọc app.cfg và app.prefs (không cần App thật)."""
+    return SimpleNamespace(cfg=cfg, prefs={"quota_api_enabled": False})
 
 
 class DefaultsTest(unittest.TestCase):
@@ -68,10 +71,13 @@ class DefaultsTest(unittest.TestCase):
 
 class CollectorTest(unittest.TestCase):
     def make(self, sessions):
-        cfg = dict(config.DEFAULTS, refresh_sessions_sec=0.01, quota_api_enabled=False)
+        cfg = dict(config.DEFAULTS, refresh_sessions_sec=0.01, claude_dir="/nonexistent")
         with mock.patch.object(ui, "ClaudeDataStore", return_value=FakeStore(sessions)), \
-                mock.patch.object(ui, "account_info", return_value={"email": "a@b"}):
-            return ui.Collector(cfg, queue.Queue())
+                mock.patch.object(ui, "account_info", return_value={"email": "a@b"}), \
+                mock.patch.object(ui, "LocalUsage") as usage, mock.patch.object(ui, "QuotaHistory"):
+            usage.return_value.needs_build.return_value = False
+            usage.return_value.totals.return_value = {"today": 1}
+            return ui.Collector(fake_app(cfg), queue.Queue())
 
     def run_items(self, c, n=2, git=None):
         """Chạy thread collector thật tới khi có n snapshot, rồi dừng."""
@@ -98,7 +104,7 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual([s["session_id"] for s in snap["sessions"]], ["s1"])
         self.assertEqual(snap["sessions"][0]["git"], {"branch": "main"})
         self.assertEqual(snap["sessions"][0]["agent_calls"], [])  # sessions không bị org đổi
-        self.assertEqual(snap["local"]["5h"], {"input": 1, "output": 2})
+        self.assertEqual(snap["usage"], {"today": 1})
         self.assertEqual(snap["account"], {"email": "a@b"})
         json.dumps(snap["org"])
 
@@ -111,7 +117,7 @@ class CollectorTest(unittest.TestCase):
             self.assertIsNone(snap["org"])
             self.assertNotIn("error", snap)
             self.assertEqual([s["session_id"] for s in snap["sessions"]], ["s1"])
-            self.assertIn("local", snap)
+            self.assertIn("usage", snap)
         self.assertTrue(logs)
         for line in logs:
             self.assertNotIn(secret, line)
@@ -153,6 +159,16 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(proj["name"], "proj")
         self.assertEqual([t["top"] for t in proj["teams"]], ["/work/team-a"])
         self.assertEqual(proj["teams"][0]["branch"], "feat")
+
+    def test_org_error_log_is_ascii_and_single_line(self):
+        # F3: repr(e) chứa chuỗi do agent viết (tên, đường dẫn có ký tự không phải ASCII) -> đi qua safe_log
+        c = self.make([session()])
+        with mock.patch.object(ui.org, "build", side_effect=ValueError("đường\nFORGED‮")):
+            _, logs = self.run_items(c, 1)
+        self.assertTrue(logs)
+        for line in logs:
+            self.assertTrue(line.isascii(), line)
+            self.assertNotIn("\n", line)
 
 
 if __name__ == "__main__":

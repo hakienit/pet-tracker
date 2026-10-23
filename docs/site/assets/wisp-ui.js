@@ -1,0 +1,492 @@
+/* Wisp UI: dữ liệu mẫu, màu, icon, 40 mascot và mọi component (island, bóng nổi, panel, cài đặt, menu, thông báo).
+   Dùng chung cho docs/site/index.html (landing) và docs/site/design.html (spec thiết kế).
+   Mỗi hàm trả chuỗi HTML; trang tự gắn vào DOM và gọi lại khi đổi lựa chọn. */
+// ================================================================ chữ (VI / EN): ngắn, nói đúng việc
+const STR = {
+  vi: {
+    title: 'Wisp · bản pre-final', nav: ['Island', 'Bóng tín hiệu', 'Bóng mascot', 'Mascot', 'Panel', 'Cập nhật', 'Cài đặt', 'Menu', 'Xác nhận xoá', 'Thông báo'],
+    dark: 'Tối', light: 'Sáng', pick: 'Chọn', picked: 'Đã chọn',
+    st: { idle: 'Rảnh', run: 'Đang chạy', wait: 'Cần bạn', done: 'Xong', quota: 'Gần hết quota' },
+    sIsland: 'Island', lIsland: 'Đã chốt. Mỗi trạng thái một kiểu viền động. Mũi tên xanh: có bản mới.', updLamp: 'Có bản mới',
+    sBubble: 'Bóng nổi · tín hiệu', lBubble: '6 kiểu người dùng tự chọn trong Cài đặt. Vùng giữa (% quota, ba đèn) luôn nằm trong vòng an toàn, không bị viền, vạch hay mực nước che. Viền động theo trạng thái như island.',
+    sMb: 'Bóng nổi · mascot', lMb: 'Cả 40 mascot đều dùng được làm bóng. Mỗi trạng thái có chuyển động và hiệu ứng riêng: ngủ (zZ bay lên), đi (bụi dưới chân, mắt đảo), nhảy gọi (sóng lan + "!"), nhảy múa (pháo giấy), run (mồ hôi rơi + quầng đỏ). Chọn kiểu chip dưới chân bên dưới.', chipLbl: 'Chip dưới chân', chips: ['% + đèn', '% + việc cần bạn', 'Hai thanh 5h / 7d + đèn'], themeLbl: 'Nền xem trước',
+    sMascot: 'Mascot', lMascot: '40 mẫu chia nhóm, đổi được màu, hoặc dùng ảnh riêng (PNG/SVG). Mascot hiện ở đầu panel và làm bóng nổi.',
+    cats: { all: 'Tất cả', fire: 'Lửa & ánh sáng', crit: 'Sinh vật', thing: 'Đồ vật', nature: 'Thiên nhiên' }, hue: 'Màu', hueNames: ['Gốc', 'Đỏ', 'Hồng', 'Tím', 'Lam', 'Ngọc', 'Lục', 'Vàng'],
+    upload: ['Ảnh của bạn', 'PNG hoặc SVG, nền trong suốt. Có chuyển động, không có biểu cảm.', 'Chọn file…'],
+    moods: ['rảnh', 'chạy', 'cần bạn', 'xong', 'gần hết quota'],
+    sConfirm: 'Xác nhận xoá', lConfirm: '6 cách xác nhận thao tác không hoàn tác được (xoá session, xoá worktree). Chọn một.', cf: { title: 'Xoá session fix-auth-redirect?', lines: ['Đóng process đang chạy', 'Xoá transcript (2,4 MB)', 'Không mở lại được'], cancel: 'Huỷ', del: 'Xoá session', hold: 'Giữ để xoá', again: 'Bấm lần nữa để xoá', undoMsg: 'Đã xoá fix-auth-redirect', undo: 'Hoàn tác', undoSub: 'xoá hẳn sau 8 giây', slide: 'Trượt để xoá' }, cfNames: ['Khối xác nhận trong menu', 'Hộp thoại trên panel', 'Giữ để xoá', 'Bấm lần nữa + đếm ngược', 'Xoá ngay, cho hoàn tác 8 giây', 'Trượt để xoá'],
+    sPanel: 'Panel', lPanel: 'Bấm tên làn để thu / mở. Thu gọn được nhớ giữa các lần mở.',
+    count: (w, r, d, i) => `${w} cần bạn · ${r} đang chạy · ${d} xong · ${i} rảnh`,
+    q5: '5 giờ', q7: '7 ngày', reset5: 'reset 15:40 (1g 52p)', reset7: 'reset T4 22/10', fc: 'Hết lúc ~15:10, trước reset 30p',
+    local: 'Token · máy này', localNote: 'input + output + cache', today: 'Hôm nay', week: 'Tuần', month: 'Tháng',
+    lane: { wait: 'Cần bạn', run: 'Đang chạy', done: 'Xong', idle: 'Rảnh', closed: 'Đã đóng' },
+    ctx: 'Context', open: 'Mở cửa sổ', agoNow: 'vừa xong', ago40: '40 giây', ago2: '2 phút', ago25: '25 phút', task: 'việc 3/5',
+    doneMsg: 'Đã cập nhật CHANGELOG cho 0.1.8 và bump version.',
+    upd: {
+      avail: ['Có bản mới 0.2.1', 'Đang dùng 0.2.0 · Xem thay đổi', 'Cập nhật'], dl: ['Đang tải 0.2.1', '42% · 3,1 / 7,4 MB'],
+      verify: ['Đang kiểm chữ ký', 'SHA256 + Ed25519'], install: ['Đang cài 0.2.1', 'Wisp sẽ tự mở lại'],
+      err: ['Không cập nhật được', 'Chữ ký không khớp, chưa cài gì.', 'Thử lại', 'Tải tay'], mac: ['Có bản mới 0.2.1', 'macOS: tải .dmg từ trang release', 'Tải về'],
+      latest: ['Đang dùng bản mới nhất', 'v0.2.0 · kiểm tra lúc 14:02'],
+    },
+    updLabels: ['Có bản mới', 'Đang tải', 'Kiểm chữ ký', 'Đang cài', 'Lỗi', 'macOS', 'Mới nhất (trong Cài đặt)'],
+    set: {
+      title: 'Cài đặt', general: 'Chung', lang: 'Ngôn ngữ', theme: 'Giao diện', themeOpts: ['Hệ thống', 'Tối', 'Sáng'], mode: 'Kiểu hiển thị', modeOpts: ['Island', 'Bóng nổi'],
+      bubble: 'Kiểu bóng nổi', screen: 'Màn hình', screenVal: 'Màn hình chính', mascot: 'Mascot', motion: 'Chuyển động', motionOpts: ['Hệ thống', 'Bật', 'Tắt'], startup: 'Mở cùng máy',
+      notif: 'Thông báo', sWait: 'Âm thanh khi cần bạn', sDone: 'Âm thanh khi xong', nDone: 'Báo khi session xong', quiet: 'Giờ yên lặng', quietVal: '22:00 – 07:00', qAlert: 'Cảnh báo quota',
+      hooks: 'Hooks', hooksOn: 'Đang bật', hooksSub: 'cổng 47615 · sự kiện cuối 2 giây trước', hooksBtn: 'Gỡ hooks', hooksTest: 'Kiểm tra',
+      quota: 'Quota', warn: 'Ngưỡng cảnh báo', danger: 'Ngưỡng nguy hiểm', api: 'Lấy quota từ Anthropic API',
+      update: 'Cập nhật', autoUpd: 'Tự kiểm tra mỗi 24 giờ', checkNow: 'Kiểm tra ngay',
+      adv: 'Nâng cao', openClaude: 'Mở thư mục ~/.claude', openCfg: 'Mở config.json', openLog: 'Mở file log', refresh: 'Làm mới ngay', quit: 'Thoát Wisp',
+    },
+    menu: {
+      open: 'Mở cửa sổ session', openSub: 'Windows Terminal', folder: 'Mở thư mục dự án', copy: 'Sao chép ID session', details: 'Chi tiết',
+      detailsSub: '38 tin nhắn · 52,1k output · CLI', mute: 'Tắt thông báo session này', handoff: 'Handoff rồi đóng', handoffSub: 'tốn token',
+      close: 'Đóng session', closeSub: 'mở lại được', del: 'Xoá session', delSub: 'xoá transcript', wt: 'Xoá worktree', wtSub: 'branch chưa merge',
+      confirm: 'Xoá hẳn? Không mở lại được', yes: 'Xoá', no: 'Huỷ', dirty: '3 thay đổi chưa commit',
+      isl: ['Làm mới ngay', 'Cài đặt', 'Chuyển sang bóng nổi', 'Tắt âm thanh 1 giờ', 'Kiểm tra cập nhật', 'Thoát Wisp'],
+      menuCaps: ['Menu ⋯ của session', 'Đang xác nhận', 'Chuột phải vào island / bóng'],
+    },
+    toast: [['fix-auth-redirect cần duyệt', 'Bash: git push origin main'], ['release-notes đã xong', 'Đã cập nhật CHANGELOG cho 0.1.8 và bump version.'], ['Quota 5 giờ gần hết', 'Hết lúc ~15:10, trước reset 30p']],
+    later: 'Để sau', foot: 'Bản pre-final, dữ liệu mẫu. Sau khi chốt, trang này thành landing cho README (EN/VI) và web. Bản app đóng gói font Archivo. Animation ở đây là CSS; bản tkinter vẽ bằng khung hình dựng sẵn nên gần giống, không giống hệt.',
+  },
+  en: {
+    title: 'Wisp · pre-final', nav: ['Island', 'Signal bubble', 'Mascot bubble', 'Mascots', 'Panel', 'Update', 'Settings', 'Menus', 'Delete confirm', 'Notifications'],
+    dark: 'Dark', light: 'Light', pick: 'Pick', picked: 'Picked',
+    st: { idle: 'Idle', run: 'Running', wait: 'Needs you', done: 'Done', quota: 'Quota low' },
+    sIsland: 'Island', lIsland: 'Final. One animated border style per state. Blue arrow: update available.', updLamp: 'Update available',
+    sBubble: 'Bubble · signal', lBubble: '6 styles users pick in Settings. The centre (quota %, three lamps) always sits inside a safe circle, never covered by the border, ticks or liquid. Animated border per state, like the island.',
+    sMb: 'Bubble · mascot', lMb: 'All 40 mascots work as the bubble. Each state has its own motion and effect: sleeping (rising zZ), walking (dust, glancing eyes), jumping to call you (ripple + "!"), dancing (confetti), shaking (falling sweat + red glow). Pick the chip style below.', chipLbl: 'Chip under the feet', chips: ['% + lamps', '% + what needs you', 'Two 5h / 7d bars + lamps'], themeLbl: 'Preview background',
+    sMascot: 'Mascots', lMascot: '40 mascots in groups, recolourable, or bring your own image (PNG/SVG). The mascot appears at the top of the panel and as the bubble.',
+    cats: { all: 'All', fire: 'Fire & light', crit: 'Creatures', thing: 'Objects', nature: 'Nature' }, hue: 'Colour', hueNames: ['Original', 'Red', 'Pink', 'Purple', 'Blue', 'Teal', 'Green', 'Yellow'],
+    upload: ['Your image', 'PNG or SVG with a transparent background. Moves, but has no expressions.', 'Choose file…'],
+    moods: ['idle', 'running', 'needs you', 'done', 'quota low'],
+    sConfirm: 'Delete confirmation', lConfirm: '6 ways to confirm an action that cannot be undone (delete session, remove worktree). Pick one.', cf: { title: 'Delete session fix-auth-redirect?', lines: ['Stops the running process', 'Deletes the transcript (2.4 MB)', 'Cannot be reopened'], cancel: 'Cancel', del: 'Delete session', hold: 'Hold to delete', again: 'Click again to delete', undoMsg: 'Deleted fix-auth-redirect', undo: 'Undo', undoSub: 'gone for good in 8s', slide: 'Slide to delete' }, cfNames: ['Confirm block in the menu', 'Dialog over the panel', 'Hold to delete', 'Click again + countdown', 'Delete now, 8s undo', 'Slide to delete'],
+    sPanel: 'Panel', lPanel: 'Click a lane title to collapse or expand it. Collapsed lanes are remembered.',
+    count: (w, r, d, i) => `${w} needs you · ${r} running · ${d} done · ${i} idle`,
+    q5: '5 hours', q7: '7 days', reset5: 'resets 15:40 (1h 52m)', reset7: 'resets Wed 22/10', fc: 'Runs out ~15:10, 30m before reset',
+    local: 'Tokens · this device', localNote: 'input + output + cache', today: 'Today', week: 'Week', month: 'Month',
+    lane: { wait: 'Needs you', run: 'Running', done: 'Done', idle: 'Idle', closed: 'Closed' },
+    ctx: 'Context', open: 'Open window', agoNow: 'just now', ago40: '40s', ago2: '2m', ago25: '25m', task: 'task 3/5',
+    doneMsg: 'Updated CHANGELOG for 0.1.8 and bumped the version.',
+    upd: {
+      avail: ['Update 0.2.1 available', 'You have 0.2.0 · See changes', 'Update'], dl: ['Downloading 0.2.1', '42% · 3.1 / 7.4 MB'],
+      verify: ['Checking signature', 'SHA256 + Ed25519'], install: ['Installing 0.2.1', 'Wisp will reopen'],
+      err: ['Update failed', 'Signature mismatch, nothing installed.', 'Retry', 'Manual download'], mac: ['Update 0.2.1 available', 'macOS: get the .dmg from the release page', 'Download'],
+      latest: ['Up to date', 'v0.2.0 · checked at 14:02'],
+    },
+    updLabels: ['Available', 'Downloading', 'Signature check', 'Installing', 'Error', 'macOS', 'Up to date (in Settings)'],
+    set: {
+      title: 'Settings', general: 'General', lang: 'Language', theme: 'Theme', themeOpts: ['System', 'Dark', 'Light'], mode: 'Display', modeOpts: ['Island', 'Bubble'],
+      bubble: 'Bubble style', screen: 'Screen', screenVal: 'Main screen', mascot: 'Mascot', motion: 'Motion', motionOpts: ['System', 'On', 'Off'], startup: 'Open at login',
+      notif: 'Notifications', sWait: 'Sound when needed', sDone: 'Sound when done', nDone: 'Notify when done', quiet: 'Quiet hours', quietVal: '22:00 – 07:00', qAlert: 'Quota alerts',
+      hooks: 'Hooks', hooksOn: 'On', hooksSub: 'port 47615 · last event 2s ago', hooksBtn: 'Remove hooks', hooksTest: 'Test',
+      quota: 'Quota', warn: 'Warning level', danger: 'Danger level', api: 'Fetch quota from Anthropic API',
+      update: 'Updates', autoUpd: 'Check every 24 hours', checkNow: 'Check now',
+      adv: 'Advanced', openClaude: 'Open ~/.claude', openCfg: 'Open config.json', openLog: 'Open log file', refresh: 'Refresh now', quit: 'Quit Wisp',
+    },
+    menu: {
+      open: 'Open session window', openSub: 'Windows Terminal', folder: 'Open project folder', copy: 'Copy session ID', details: 'Details',
+      detailsSub: '38 messages · 52.1k output · CLI', mute: 'Mute this session', handoff: 'Handoff and close', handoffSub: 'uses tokens',
+      close: 'Close session', closeSub: 'can reopen', del: 'Delete session', delSub: 'deletes transcript', wt: 'Remove worktree', wtSub: 'branch not merged',
+      confirm: 'Delete for good? Cannot reopen', yes: 'Delete', no: 'Cancel', dirty: '3 uncommitted changes',
+      isl: ['Refresh now', 'Settings', 'Switch to bubble', 'Mute sounds for 1 hour', 'Check for updates', 'Quit Wisp'],
+      menuCaps: ['Session ⋯ menu', 'Confirming', 'Right-click island / bubble'],
+    },
+    toast: [['fix-auth-redirect needs approval', 'Bash: git push origin main'], ['release-notes is done', 'Updated CHANGELOG for 0.1.8 and bumped the version.'], ['5-hour quota low', 'Runs out ~15:10, 30m before reset']],
+    later: 'Later', foot: 'Pre-final, sample data. Once picked, this page becomes the README landing (EN/VI) and website. The app ships the Archivo font. Animations here are CSS; the tkinter build uses pre-rendered frames, so it looks close, not identical.',
+  },
+};
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+let LANG = ls('wisp-lang') || 'vi';
+const qlang = new URLSearchParams(location.search).get('lang');
+if (qlang === 'en' || qlang === 'vi') LANG = qlang;
+const L = () => STR[LANG];
+
+// ================================================================ màu
+const T = {
+  dark: { name: 'dark', bg: '#111215', surf: '#1a1b20', line: '#2a2c33', fg: '#f2f2f4', fg2: '#cfd1d8', mut: '#9c9fa9', track: '#2a2c33',
+    wait: '#ffb02e', run: '#58a6ff', done: '#3fd0a4', idle: '#8b8e98', ok: '#3fd0a4', warn: '#ffb02e', danger: '#ff6166', upd: '#58a6ff',
+    waitBg: '#2a2112', runBg: '#15202e', doneBg: '#13241f', idleBg: '#1a1b20', code: '#141210', codeFg: '#ffd79a',
+    isl: '#08080a', islFg: '#f2f2f4', islSep: '#2e3038', dim: '#4a4c55', disc: '#16171b', discBd: '#3a3b45', btnFg: '#1a1205', on: '#3fd0a4', off: '#3a3c44', seg: '#22242a', segOn: '#33363e',
+    shadow: '0 18px 50px rgba(0,0,0,.5)', menuBg: '#1b1c22', hover: '#272830', dangerBg: '#3a2326', scene: '#252a31' },
+  light: { name: 'light', bg: '#f6f6f8', surf: '#ffffff', line: '#e2e4e9', fg: '#16171b', fg2: '#383b44', mut: '#5b5f6a', track: '#e6e7eb',
+    wait: '#a85600', run: '#1f5fd6', done: '#0b7a5a', idle: '#6b6e78', ok: '#0b7a5a', warn: '#a85600', danger: '#c62828', upd: '#1f5fd6',
+    waitBg: '#fff3dc', runBg: '#eaf1ff', doneBg: '#e6f6f0', idleBg: '#ffffff', code: '#fbf3e6', codeFg: '#7a3e00',
+    isl: '#ffffff', islFg: '#16171b', islSep: '#e2e4e9', dim: '#c3c6cd', disc: '#ffffff', discBd: '#d5d8de', btnFg: '#ffffff', on: '#0b7a5a', off: '#c9ccd3', seg: '#eceef2', segOn: '#ffffff',
+    shadow: '0 18px 50px rgba(20,30,50,.22)', menuBg: '#ffffff', hover: '#f0f1f4', dangerBg: '#fde8e8', scene: '#cfd6df' },
+};
+const STATUS_COL = { dark: { idle: '#a3a6af', run: '#58a6ff', wait: '#ffb02e', quota: '#ff6166' }, light: { idle: '#6b6e78', run: '#1f5fd6', wait: '#e08a00', quota: '#c62828' } };
+
+// ================================================================ icon + hình chung
+const P = {
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>', run: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+  done: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', idle: '<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/>',
+  gear: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>', refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>', open: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v6H4V6h6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>', chev: '<path d="M9 6l6 6-6 6"/>', back: '<path d="M15 6l-6 6 6 6"/>',
+  more: '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+  dl: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>', up: '<path d="M12 20V9"/><path d="M7 14l5-5 5 5"/><path d="M5 4h14"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.1"/>', mute: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9l4 6M21 9l-4 6"/>',
+  exit: '<path d="M10 4H5v16h5"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>', trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+  branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10"/><path d="M18 9c0 5-6 4-11 8.5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>', swap: '<path d="M4 8h13l-3-3"/><path d="M20 16H7l3 3"/>', power: '<path d="M12 3v8"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/>', shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', term: '<path d="M4 6l6 6-6 6"/><path d="M12 18h8"/>',
+};
+const ic = (n, s = 16, sw = 1.9) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block">${P[n]}</svg>`;
+const bar = (p, c, tr, h = 5) => `<div style="height:${h}px;border-radius:${h / 2}px;background:${tr};overflow:hidden"><div style="width:${p}%;height:100%;border-radius:${h / 2}px;background:${c}"></div></div>`;
+const lvl = (p, t) => (p >= 85 ? t.danger : p >= 60 ? t.warn : t.ok);
+const ST = { idle: { pct: 12, n: [0, 0, 0] }, run: { pct: 62, n: [0, 1, 0] }, wait: { pct: 62, n: [1, 1, 1] }, quota: { pct: 91, n: [0, 1, 0] }, done: { pct: 62, n: [0, 0, 1] } };
+const both = (fn) => ['dark', 'light'].map((k) => `<div class="stage ${k}"><div class="cap">${L()[k]}</div>${fn(T[k])}</div>`).join('');
+const btn = (t, lab, c, icon) => `<button style="font-size:var(--t-body);font-weight:700;padding:7px 12px;min-height:32px;border-radius:9px;border:0;background:${c};color:${t.btnFg};display:inline-flex;align-items:center;gap:6px;flex:none">${icon ? ic(icon, 14, 2.2) : ''}${lab}</button>`;
+const btn2 = (t, lab) => `<button style="font-size:var(--t-body);padding:7px 12px;min-height:32px;border-radius:9px;border:1px solid ${t.line};background:transparent;color:${t.fg2};flex:none">${lab}</button>`;
+const polar = (cx, cy, r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+const arc = (cx, cy, r, a0, a1) => { const [x0, y0] = polar(cx, cy, r, a0), [x1, y1] = polar(cx, cy, r, a1); return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`; };
+const mix = (a, b, k) => { const h = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)); const A = h(a), B = h(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join(''); };
+
+// ================================================================ 40 mascot
+function starPath(cx, cy, ro, ri, n = 5) {
+  let d = '';
+  for (let i = 0; i < n * 2; i++) { const r = i % 2 ? ri : ro, a = -Math.PI / 2 + (i * Math.PI) / n; d += (i ? 'L' : 'M') + (cx + r * Math.cos(a)).toFixed(1) + ' ' + (cy + r * Math.sin(a)).toFixed(1) + ' '; }
+  return d + 'Z';
+}
+const PIXF = ['....##....', '...####...', '...#####..', '..######..', '.########.', '.########.', '##########', '##########', '.########.', '..######..'];
+const MASCOTS = [
+  { id: 'm01', vi: 'Wisp cổ điển', en: 'Classic wisp', f: [32, 41, 6.5, 2.6], body: '<path d="M32 5C40 15 51 24 51 38a19 18 0 0 1-38 0c0-8 5-12 7-19 3 3 5 7 5 10 1-8 3-15 7-24z" fill="#ff8a4c"/><path d="M32 30c4 4 8 7 8 12a8 8 0 0 1-16 0c0-4 3-7 8-12z" fill="#ffd38a" opacity=".85"/>' },
+  { id: 'm02', vi: 'Đốm tròn', en: 'Round blob', f: [32, 40, 7, 2.8], body: '<path d="M32 9c2 6 6 7 10 9 8 4 12 11 12 19a22 19 0 0 1-44 0c0-10 8-17 18-20 2-2 3-4 4-8z" fill="#ff9f43"/><ellipse cx="25" cy="30" rx="5" ry="3" fill="#fff" opacity=".35"/>' },
+  { id: 'm03', vi: 'Lửa đôi', en: 'Twin flame', f: [32, 41, 6.5, 2.6], body: '<path d="M23 7c4 8 7 12 7 17 1-6 6-12 12-18 2 10 10 18 10 32a20 18 0 0 1-40 0c0-12 10-18 11-31z" fill="#ff7a45"/><path d="M32 31c4 4 7 7 7 11a7 7 0 0 1-14 0c0-4 3-7 7-11z" fill="#ffc46b"/>' },
+  { id: 'm04', vi: 'Ngọn nến', en: 'Candle', f: [32, 44, 6, 2.4], body: '<rect x="17" y="29" width="30" height="31" rx="4" fill="#f4e4c4"/><path d="M17 33c4 0 4 5 8 5s3-5 7-5 4 4 8 4 3-4 7-4v-1a4 4 0 0 0-4-4H21a4 4 0 0 0-4 4z" fill="#fff6e2"/><path d="M32 29v-4" stroke="#5a3b2a" stroke-width="2"/><path d="M32 5c4 6 7 10 7 15a7 7 0 0 1-14 0c0-5 3-9 7-15z" fill="#ff8a4c"/><path d="M32 13c2 3 3 5 3 7a3 3 0 0 1-6 0c0-2 1-4 3-7z" fill="#ffe08a"/>' },
+  { id: 'm05', vi: 'Đèn lồng', en: 'Lantern', f: [32, 38, 6.5, 2.5], body: '<rect x="24" y="5" width="16" height="6" rx="2" fill="#5a3b2a"/><path d="M32 2v4" stroke="#5a3b2a" stroke-width="2"/><rect x="14" y="11" width="36" height="42" rx="12" fill="#e2483d"/><rect x="18" y="15" width="28" height="34" rx="9" fill="#ffb347"/><path d="M14 22h36M14 42h36" stroke="#b8322a" stroke-width="2"/><rect x="24" y="53" width="16" height="6" rx="2" fill="#5a3b2a"/>' },
+  { id: 'm06', vi: 'Ma trơi', en: 'Ghost light', f: [32, 30, 7, 2.8], eye: '#123b3a', body: '<path d="M14 30C14 16 22 7 32 7s18 9 18 23v24l-6-6-6 6-6-6-6 6-6-6-6 6z" fill="#7ee0d2"/><ellipse cx="25" cy="19" rx="5" ry="3" fill="#fff" opacity=".45"/>' },
+  { id: 'm07', vi: 'Đom đóm', en: 'Firefly', f: [32, 22, 5.5, 2.3], body: '<ellipse cx="20" cy="30" rx="10" ry="6" fill="#bfe3ff" opacity=".75" transform="rotate(-25 20 30)"/><ellipse cx="44" cy="30" rx="10" ry="6" fill="#bfe3ff" opacity=".75" transform="rotate(25 44 30)"/><ellipse cx="32" cy="44" rx="11" ry="13" fill="#ffe066"/><ellipse cx="32" cy="46" rx="7" ry="8" fill="#fff6b0"/><circle cx="32" cy="23" r="12" fill="#5b4636"/><path d="M27 12l-4-8M37 12l4-8" stroke="#5b4636" stroke-width="2" stroke-linecap="round"/>', eye: '#ffe066' },
+  { id: 'm08', vi: 'Sao chổi', en: 'Comet', f: [40, 32, 6, 2.5], body: '<path d="M4 16l26 8v16L4 50l14-17z" fill="#ffd38a"/><path d="M12 26l18 2v8l-18 4 8-7z" fill="#ffb347"/><circle cx="40" cy="32" r="15" fill="#ff8a4c"/><ellipse cx="35" cy="25" rx="5" ry="3" fill="#fff" opacity=".35"/>' },
+  { id: 'm09', vi: 'Giọt hổ phách', en: 'Amber drop', f: [32, 42, 6.5, 2.6], body: '<path d="M32 5c6 12 17 21 17 35a17 17 0 0 1-34 0C15 26 26 17 32 5z" fill="#ffb347"/><path d="M24 34c0-5 3-9 6-12" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".45"/>' },
+  { id: 'm10', vi: 'Mèo lửa', en: 'Fire cat', f: [32, 39, 7, 2.6], body: '<path d="M17 23l2-15 9 8q4-2 8 0l9-8 2 15c4 5 6 10 6 17a21 18 0 0 1-42 0c0-7 2-12 6-17z" fill="#ff8a4c"/><path d="M21 15l1 6 4-3zM43 15l-1 6-4-3z" fill="#ffc46b"/><path d="M12 44l8-1M12 48l8-2M52 44l-8-1M52 48l-8-2" stroke="#7a2f14" stroke-width="1.4" stroke-linecap="round"/>' },
+  { id: 'm11', vi: 'Than hồng', en: 'Ember coal', f: [32, 38, 6.5, 2.6], eye: '#ffb347', body: '<path d="M12 40c-2-10 6-18 16-18 6-4 16-2 20 4 6 4 6 14 2 20-4 6-12 8-20 7-10 0-17-5-18-13z" fill="#3a2a24"/><path d="M18 46l6-4 4 3M40 30l4 5-3 5M30 50l4-3" stroke="#ff7a3c" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M26 22c1-5 4-8 6-12 1 4 4 6 4 10" fill="#ff8a4c"/>' },
+  { id: 'm12', vi: 'Tinh linh lá', en: 'Leaf sprite', f: [32, 40, 6.5, 2.6], eye: '#15361f', body: '<path d="M32 12c10 8 18 16 18 28a18 16 0 0 1-36 0c0-12 8-20 18-28z" fill="#6fd08c"/><path d="M32 12c-2-6 2-10 8-9 0 6-4 9-8 9z" fill="#2f9e5a"/><path d="M32 12c1-3 3-5 6-6" stroke="#1d6b3c" stroke-width="1.4" fill="none"/><ellipse cx="25" cy="32" rx="4" ry="2.5" fill="#fff" opacity=".35"/>' },
+  { id: 'm13', vi: 'Robot lửa', en: 'Robo flame', f: [32, 38, 7.5, 3], sq: true, eye: '#58e1ff', body: '<path d="M32 16v-5" stroke="#6b7385" stroke-width="2.5"/><path d="M32 2c3 3 4 5 4 7a4 4 0 0 1-8 0c0-2 1-4 4-7z" fill="#ff8a4c"/><rect x="10" y="16" width="44" height="38" rx="9" fill="#9aa4b5"/><rect x="15" y="24" width="34" height="22" rx="6" fill="#1f2633"/><rect x="5" y="30" width="5" height="12" rx="2" fill="#6b7385"/><rect x="54" y="30" width="5" height="12" rx="2" fill="#6b7385"/>' },
+  { id: 'm14', vi: 'Pixel', en: 'Pixel', f: [32, 39, 7, 3], sq: true, body: PIXF.map((r, y) => [...r].map((c, x) => (c === '#' ? `<rect x="${7 + x * 5}" y="${8 + y * 5}" width="5" height="5" fill="${y < 3 ? '#ffb347' : '#ff7a45'}"/>` : '')).join('')).join('') },
+  { id: 'm15', vi: 'Bong bóng', en: 'Bubble', f: [32, 36, 7, 2.8], eye: '#123a5c', body: '<circle cx="32" cy="35" r="21" fill="#7cc4ff"/><path d="M20 27a14 14 0 0 1 10-9" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7" fill="none"/><path d="M32 14c2-3 3-6 3-9 3 3 4 6 3 9" fill="#ff8a4c"/>' },
+  { id: 'm16', vi: 'Cú đêm', en: 'Night owl', f: [32, 31, 9, 2.6], owl: true, body: '<path d="M16 18l-3-13 11 9zM48 18l3-13-11 9z" fill="#ff8a4c"/><path d="M32 11c14 0 20 12 20 26 0 12-8 19-20 19s-20-7-20-19c0-14 6-26 20-26z" fill="#c26a3a"/><path d="M32 36c7 0 11 5 11 11 0 5-5 8-11 8s-11-3-11-8c0-6 4-11 11-11z" fill="#f2c08a"/><circle cx="23" cy="31" r="7" fill="#fff4e0"/><circle cx="41" cy="31" r="7" fill="#fff4e0"/><path d="M30 37l2 3 2-3z" fill="#5a3b2a"/>' },
+  { id: 'm17', vi: 'Mây lửa', en: 'Fire cloud', f: [33, 39, 6.5, 2.5], eye: '#3b3466', body: '<path d="M32 18c-1-5 2-10 5-13 1 4 4 6 3 11" fill="#ff8a4c"/><path d="M15 50a11 11 0 0 1 1-21 13 13 0 0 1 25-5 11 11 0 0 1 9 22c-1 3-3 4-6 4z" fill="#e8e4ff"/><ellipse cx="25" cy="33" rx="5" ry="3" fill="#fff" opacity=".6"/>' },
+  { id: 'm18', vi: 'Ngôi sao', en: 'Star', f: [32, 36, 6, 2.5], body: `<path d="${starPath(32, 35, 27, 13)}" fill="#ffd166" stroke="#ffd166" stroke-width="5" stroke-linejoin="round"/>` },
+  { id: 'm19', vi: 'Ngọc lửa', en: 'Fire gem', f: [32, 29, 6, 2.5], body: '<path d="M32 5l20 20-20 34-20-34z" fill="#a78bfa"/><path d="M12 25h40M32 5l-8 20 8 34 8-34z" stroke="#d9ccff" stroke-width="1.4" fill="none" opacity=".8"/><path d="M32 33c3 3 5 5 5 8a5 5 0 0 1-10 0c0-3 2-5 5-8z" fill="#ffb347"/>' },
+  { id: 'm20', vi: 'Rồng con', en: 'Baby dragon', f: [32, 40, 6.5, 2.6], fang: true, body: '<path d="M22 19l-5-12 10 8zM42 19l5-12-10 8z" fill="#ffe6b0"/><path d="M32 7c8 9 19 17 19 31a19 18 0 0 1-38 0c0-14 11-22 19-31z" fill="#ff6b4a"/><path d="M47 50c6 0 9-4 8-9-2 3-5 4-8 3" fill="#ff6b4a"/><path d="M26 49c2 3 10 3 12 0" stroke="#ffd0a0" stroke-width="2" fill="none"/>' },
+];
+
+MASCOTS.push(
+  { id: 'm21', vi: 'Cáo', en: 'Fox', f: [32, 34, 8, 2.6], body: '<path d="M10 18l10-10 6 12h12l6-12 10 10-2 16c-2 12-10 20-20 20s-18-8-20-20z" fill="#ff8a3d"/><path d="M14 18l6-7 3 9zM50 18l-6-7-3 9z" fill="#7a2f14"/><path d="M18 38c4 10 10 12 14 12s10-2 14-12c-6 4-10 6-14 6s-8-2-14-6z" fill="#fff3e6"/><circle cx="32" cy="45" r="2.2" fill="#2a1714"/>' },
+  { id: 'm22', vi: 'Thỏ', en: 'Bunny', f: [32, 40, 7, 2.6], body: '<ellipse cx="24" cy="15" rx="5" ry="13" fill="#f3f0ff"/><ellipse cx="40" cy="15" rx="5" ry="13" fill="#f3f0ff"/><ellipse cx="24" cy="16" rx="2.3" ry="9" fill="#ffb3c7"/><ellipse cx="40" cy="16" rx="2.3" ry="9" fill="#ffb3c7"/><circle cx="32" cy="40" r="18" fill="#f3f0ff"/><circle cx="21" cy="46" r="3" fill="#ffb3c7" opacity=".7"/><circle cx="43" cy="46" r="3" fill="#ffb3c7" opacity=".7"/>' },
+  { id: 'm23', vi: 'Cánh cụt', en: 'Penguin', f: [32, 33, 6.5, 2.5], body: '<path d="M32 8c13 0 19 12 19 26 0 14-8 22-19 22S13 48 13 34C13 20 19 8 32 8z" fill="#263040"/><ellipse cx="32" cy="38" rx="13" ry="16" fill="#fff"/><path d="M28 39h8l-4 4z" fill="#ff9f1c"/><ellipse cx="25" cy="57" rx="5" ry="2.5" fill="#ff9f1c"/><ellipse cx="39" cy="57" rx="5" ry="2.5" fill="#ff9f1c"/>' },
+  { id: 'm24', vi: 'Ếch', en: 'Frog', f: [32, 24, 12, 3], body: '<circle cx="20" cy="24" r="9" fill="#7bd389"/><circle cx="44" cy="24" r="9" fill="#7bd389"/><circle cx="20" cy="24" r="6" fill="#fff"/><circle cx="44" cy="24" r="6" fill="#fff"/><ellipse cx="32" cy="41" rx="23" ry="16" fill="#7bd389"/><circle cx="18" cy="44" r="3" fill="#ff9aa2" opacity=".6"/><circle cx="46" cy="44" r="3" fill="#ff9aa2" opacity=".6"/>' },
+  { id: 'm25', vi: 'Bạch tuộc', en: 'Octopus', f: [32, 27, 7, 2.6], body: '<path d="M14 34C14 18 22 9 32 9s18 9 18 25c0 6 4 12 2 18-4-2-6-8-8-12 0 6-2 12-6 14-2-4-2-10-2-14-2 4-4 10-8 14-4-2-4-8-4-14-2 4-4 10-8 12-2-6 2-12 0-19z" fill="#ff7eb6"/><ellipse cx="25" cy="18" rx="5" ry="3" fill="#fff" opacity=".35"/>' },
+  { id: 'm26', vi: 'Gà con', en: 'Chick', f: [32, 35, 7, 2.4], body: '<path d="M29 21c-1-5 2-8 3-9 1 2 4 4 3 9" fill="#ffb000"/><circle cx="32" cy="38" r="18" fill="#ffd84d"/><ellipse cx="15" cy="40" rx="4" ry="7" fill="#ffc21a"/><ellipse cx="49" cy="40" rx="4" ry="7" fill="#ffc21a"/><path d="M29 40h6l-3 4z" fill="#ff7a1a"/>' },
+  { id: 'm27', vi: 'Slime', en: 'Slime', f: [32, 38, 7, 2.8], eye: '#0f3a4d', body: '<path d="M10 50c0-16 10-32 22-32s22 16 22 32c0 4-4 6-8 4s-6 2-10 0-8 2-12 0-8 2-12 0c-2-1-2-2-2-4z" fill="#8be0ff"/><ellipse cx="24" cy="30" rx="5" ry="3" fill="#fff" opacity=".55"/>' },
+  { id: 'm28', vi: 'Sứa', en: 'Jellyfish', f: [32, 24, 7, 2.5], eye: '#3b2a66', body: '<path d="M20 34c-2 8 2 14-2 22M28 34c2 8-2 14 2 22M36 34c-2 8 2 14-2 22M44 34c2 8-2 14 2 22" stroke="#c4a7ff" stroke-width="3" stroke-linecap="round" fill="none"/><path d="M12 32C12 18 22 10 32 10s20 8 20 22c-6-2-12 2-20 0s-14 2-20 0z" fill="#c4a7ff"/><ellipse cx="24" cy="19" rx="5" ry="3" fill="#fff" opacity=".4"/>' },
+  { id: 'm29', vi: 'Gấu', en: 'Bear', f: [32, 33, 8, 2.5], body: '<circle cx="17" cy="18" r="7" fill="#b07a4f"/><circle cx="47" cy="18" r="7" fill="#b07a4f"/><circle cx="17" cy="18" r="3.5" fill="#e9c9a5"/><circle cx="47" cy="18" r="3.5" fill="#e9c9a5"/><circle cx="32" cy="36" r="20" fill="#b07a4f"/><ellipse cx="32" cy="44" rx="9" ry="6.5" fill="#e9c9a5"/><ellipse cx="32" cy="41" rx="3" ry="2" fill="#2a1714"/>' },
+  { id: 'm30', vi: 'Kỳ giông', en: 'Axolotl', f: [32, 37, 9, 2.4], body: '<path d="M13 30l-8-5M12 36H3M13 42l-8 5M51 30l8-5M52 36h9M51 42l8 5" stroke="#ff7aa2" stroke-width="3.5" stroke-linecap="round"/><ellipse cx="32" cy="38" rx="20" ry="16" fill="#ffb3c7"/><circle cx="20" cy="44" r="3" fill="#ff7aa2" opacity=".5"/><circle cx="44" cy="44" r="3" fill="#ff7aa2" opacity=".5"/>' },
+  { id: 'm31', vi: 'Ong', en: 'Bee', f: [32, 27, 7, 2.4], body: '<ellipse cx="20" cy="16" rx="8" ry="6" fill="#e8f4ff" opacity=".85"/><ellipse cx="44" cy="16" rx="8" ry="6" fill="#e8f4ff" opacity=".85"/><ellipse cx="32" cy="38" rx="18" ry="17" fill="#ffd23f"/><path d="M15 36h34v5H15zM17 46h30v5H17z" fill="#2a2a2a"/><path d="M27 22l-3-8M37 22l3-8" stroke="#2a2a2a" stroke-width="2" stroke-linecap="round"/>' },
+  { id: 'm32', vi: 'Cốc cà phê', en: 'Coffee cup', f: [30, 38, 6.5, 2.5], body: '<path d="M22 14c-2-3 2-5 0-8M30 14c-2-3 2-5 0-8M38 14c-2-3 2-5 0-8" stroke="#c9c2bb" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M46 28a7 7 0 0 1 0 14" stroke="#f4f4f4" stroke-width="4" fill="none"/><path d="M13 20h34l-3 32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4z" fill="#f4f4f4"/><ellipse cx="30" cy="21" rx="16" ry="3" fill="#6b4226"/>' },
+  { id: 'm33', vi: 'Màn hình', en: 'Terminal', f: [32, 28, 8, 3], sq: true, eye: '#3fd0a4', body: '<rect x="8" y="11" width="48" height="35" rx="6" fill="#3b4252"/><rect x="12" y="15" width="40" height="27" rx="3" fill="#0e1116"/><path d="M28 46h8l2 8H26z" fill="#3b4252"/><rect x="20" y="54" width="24" height="4" rx="2" fill="#3b4252"/>' },
+  { id: 'm34', vi: 'Tên lửa', en: 'Rocket', f: [32, 34, 5.5, 2.2], body: '<path d="M26 48c2 6 4 9 6 12 2-3 4-6 6-12z" fill="#ff8a4c"/><path d="M22 36l-8 12h9zM42 36l8 12h-9z" fill="#ff6166"/><path d="M32 4c10 8 12 22 10 44H22c-2-22 0-36 10-44z" fill="#e8ecf3"/><circle cx="32" cy="22" r="5" fill="#58a6ff" stroke="#9aa4b5" stroke-width="2"/>' },
+  { id: 'm35', vi: 'Đồng hồ báo thức', en: 'Alarm clock', f: [32, 36, 6, 2.4], body: '<circle cx="15" cy="16" r="7" fill="#ffd166"/><circle cx="49" cy="16" r="7" fill="#ffd166"/><path d="M20 54l-4 5M44 54l4 5" stroke="#5a3b2a" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="36" r="20" fill="#ff6b6b"/><circle cx="32" cy="36" r="15" fill="#fff8ee"/>' },
+  { id: 'm36', vi: 'Bóng đèn', en: 'Light bulb', f: [32, 27, 7, 2.6], body: '<path d="M32 5c12 0 20 9 20 21 0 8-6 13-8 19H20c-2-6-8-11-8-19C12 14 20 5 32 5z" fill="#ffe066"/><rect x="21" y="45" width="22" height="5" rx="2" fill="#9aa4b5"/><rect x="23" y="51" width="18" height="4" rx="2" fill="#7d8698"/><rect x="27" y="56" width="10" height="3" rx="1.5" fill="#5f6878"/><ellipse cx="24" cy="17" rx="4" ry="3" fill="#fff" opacity=".5"/>' },
+  { id: 'm37', vi: 'Xương rồng', en: 'Cactus', f: [32, 29, 6, 2.4], eye: '#103b1f', body: '<path d="M21 34h-5a4 4 0 0 1-4-4v-8M43 30h5a4 4 0 0 0 4-4v-8" stroke="#58b368" stroke-width="7" stroke-linecap="round" fill="none"/><rect x="20" y="12" width="24" height="40" rx="12" fill="#58b368"/><circle cx="32" cy="11" r="4" fill="#ff7eb6"/><path d="M15 50h34l-3 10H18z" fill="#d9774b"/>' },
+  { id: 'm38', vi: 'Nấm', en: 'Mushroom', f: [32, 43, 5, 2.2], body: '<path d="M22 32h20v16a6 6 0 0 1-6 6h-8a6 6 0 0 1-6-6z" fill="#fff0dc"/><path d="M8 32C8 16 20 8 32 8s24 8 24 24z" fill="#ff5d5d"/><circle cx="22" cy="20" r="4" fill="#fff"/><circle cx="38" cy="16" r="3" fill="#fff"/><circle cx="45" cy="26" r="3.5" fill="#fff"/>' },
+  { id: 'm39', vi: 'Trăng tròn', en: 'Full moon', f: [32, 34, 7, 2.6], eye: '#4a3f2a', body: '<circle cx="32" cy="32" r="23" fill="#f1e6c8"/><circle cx="21" cy="22" r="4" fill="#ddd0ab"/><circle cx="44" cy="44" r="5" fill="#ddd0ab"/><circle cx="45" cy="22" r="2.5" fill="#ddd0ab"/>' },
+  { id: 'm40', vi: 'Mặt trời', en: 'Sun', f: [32, 33, 6, 2.4], body: Array.from({ length: 10 }, (_, i) => { const a = (i * Math.PI) / 5, [x1, y1] = polar(32, 32, 30, a), [x2, y2] = polar(32, 32, 19, a - 0.22), [x3, y3] = polar(32, 32, 19, a + 0.22); return `<path d="M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}L${x3.toFixed(1)} ${y3.toFixed(1)}z" fill="#ffb000"/>`; }).join('') + '<circle cx="32" cy="32" r="17" fill="#ffc93c"/>' },
+);
+const CAT = { fire: ['m01', 'm02', 'm03', 'm04', 'm05', 'm07', 'm08', 'm09', 'm11', 'm18', 'm19', 'm36'], crit: ['m06', 'm10', 'm16', 'm20', 'm21', 'm22', 'm23', 'm24', 'm25', 'm26', 'm27', 'm28', 'm29', 'm30', 'm31'],
+  thing: ['m13', 'm14', 'm32', 'm33', 'm34', 'm35'], nature: ['m12', 'm15', 'm17', 'm37', 'm38', 'm39', 'm40'] };
+const HUES = [0, -30, -60, 120, 175, 145, 85, 25];  // hue-rotate (độ); bản tkinter xoay hue màu thân trước khi vẽ
+const HUE_SW = ['#ff8a4c', '#ff5d5d', '#ff7eb6', '#a78bfa', '#58a6ff', '#3fd0c0', '#6fd08c', '#ffd23f'];
+
+// biểu cảm: rảnh = mắt nhắm + "z", chạy = mắt mở, cần bạn = mắt to + "!", xong = mắt cười, gần hết quota = lo + giọt mồ hôi
+function face(m, mood, t) {
+  const [x, y, dx, r] = m.f, e = m.eye || '#2a1714';
+  const L2 = x - dx, R2 = x + dx;
+  let s = '';
+  const eyeOpen = (cx, rr) => m.sq ? `<rect x="${cx - rr}" y="${y - rr}" width="${rr * 2}" height="${rr * 2}" rx="1" fill="${e}"/>` : `<circle cx="${cx}" cy="${y}" r="${rr}" fill="${e}"/><circle cx="${cx + rr * 0.35}" cy="${y - rr * 0.4}" r="${rr * 0.32}" fill="#fff" opacity=".9"/>`;
+  if (mood === 'idle') {
+    s += [L2, R2].map((c) => `<path d="M${c - r} ${y} q${r} ${r * 0.9} ${r * 2} 0" stroke="${e}" stroke-width="${r * 0.7}" fill="none" stroke-linecap="round"/>`).join('');
+    s += `<text x="52" y="16" font-family="Archivo" font-weight="800" font-size="9" fill="${t.idle}">z</text><text x="57" y="9" font-family="Archivo" font-weight="800" font-size="7" fill="${t.idle}">z</text>`;
+  } else if (mood === 'run') {
+    s += eyeOpen(L2, r) + eyeOpen(R2, r) + `<path d="M${x - 2.5} ${y + r * 2.4}h5" stroke="${e}" stroke-width="1.6" stroke-linecap="round"/>`;
+  } else if (mood === 'wait') {
+    s += [L2, R2].map((c) => `<circle cx="${c}" cy="${y}" r="${r * 1.45}" fill="#fff"/><circle cx="${c}" cy="${y}" r="${r * 0.8}" fill="${e}"/>`).join('');
+    s += `<circle cx="${x}" cy="${y + r * 2.7}" r="${r * 0.6}" fill="${e}"/><circle cx="54" cy="10" r="8" fill="${t.wait}"/><path d="M54 6v5M54 13.6v.1" stroke="${t.name === 'light' ? '#fff' : '#1a1205'}" stroke-width="2.4" stroke-linecap="round"/>`;
+  } else if (mood === 'quota') {
+    s += eyeOpen(L2, r * 0.9) + eyeOpen(R2, r * 0.9);
+    s += `<path d="M${L2 - r * 1.3} ${y - r * 2.3}l${r * 2} ${r * 0.9}M${R2 + r * 1.3} ${y - r * 2.3}l${-r * 2} ${r * 0.9}" stroke="${e}" stroke-width="1.5" stroke-linecap="round"/>`;
+    s += `<path d="M${x - 4} ${y + r * 3}q4 ${-r * 1.4} 8 0" stroke="${e}" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M53 14c3 4 4 6 4 8a4 4 0 0 1-8 0c0-2 1-4 4-8z" fill="#7cc4ff"/>`;
+  } else {
+    s += [L2, R2].map((c) => `<path d="M${c - r} ${y + r * 0.4} q${r} ${-r * 1.6} ${r * 2} 0" stroke="${e}" stroke-width="${r * 0.7}" fill="none" stroke-linecap="round"/>`).join('');
+    s += `<path d="M${x - 4} ${y + r * 1.8} q4 ${r * 1.6} 8 0" stroke="${e}" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M9 12l1.5 3 3 1.5-3 1.5L9 21l-1.5-3-3-1.5 3-1.5z" fill="${t.done}"/>`;
+  }
+  if (m.fang && mood !== 'idle') s += `<path d="M${x + 1} ${y + r * 2.6}l1.5 2.5 1.5-2.5" fill="#fff"/>`;
+  return s;
+}
+let MASCOT = ls('wisp-mascot') || 'm01', HUE = +(ls('wisp-hue') || 0), CATSEL = 'all';
+const mascot = (id, size, mood, t, cls = 'm-' + mood) => {
+  const m = MASCOTS.find((x) => x.id === id) || MASCOTS[0];
+  const hue = HUES[HUE] ? `filter:hue-rotate(${HUES[HUE]}deg);` : '';
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true" style="flex:none;display:block;overflow:visible"><g style="${hue}">${m.body}</g><g class="${mood === 'run' ? 'look-run' : ''}">${face(m, mood, t)}</g></svg>`;
+};
+
+// ================================================================ island (đã chốt)
+const abCls = (v) => 'ab ab-' + v;
+function island(v, t, upd = false) {
+  const s = ST[v];
+  const lamp = (c, k, x, anim) => `<span class="${anim && x ? 'breathe' : ''}" style="display:flex;align-items:center;gap:4px;color:${x ? c : t.dim};font-size:13px;font-weight:700">${ic(k, 14, 2.2)}<span class="num">${x}</span></span>`;
+  const bd = t.name === 'light' ? `box-shadow:0 0 0 1px ${t.discBd};` : '';
+  return `<div class="${abCls(v)}" style="--bw:2.5px;height:34px;border-radius:17px;background:${t.isl};${bd}display:inline-flex;align-items:center;gap:12px;padding:0 15px;color:${t.islFg}">
+    <span class="num" style="font-size:13px;font-weight:700;color:${lvl(s.pct, t)}">${s.pct}%</span><span style="width:1px;height:14px;background:${t.islSep}"></span>
+    ${lamp(t.wait, 'bell', s.n[0])}${lamp(t.run, 'run', s.n[1], true)}${lamp(t.done, 'done', s.n[2])}${upd ? `<span style="display:flex;color:${t.upd}">${ic('dl', 14, 2.4)}</span>` : ''}</div>`;
+}
+
+// ================================================================ bóng nổi đèn tín hiệu: 12 kiểu viền / thanh quota
+const D = 88, C0 = D / 2, A0 = -Math.PI / 2;
+// vùng an toàn: % và đèn nằm gọn trong vòng tròn bán kính 28px quanh tâm, có viền chữ cùng màu đĩa
+const center = (v, t) => {
+  const s = ST[v], halo = `text-shadow:0 0 3px ${t.disc},0 0 3px ${t.disc},0 0 2px ${t.disc}`;
+  const lamp = (col, k, x) => `<span class="${k === 'run' && x ? 'breathe' : ''}" style="display:flex;align-items:center;gap:1px;color:${x ? col : t.dim};font-size:9.5px;font-weight:800;${halo}">${ic(k, 9, 2.6)}${x}</span>`;
+  return `<div style="position:absolute;left:50%;top:50%;width:56px;height:46px;margin:-23px 0 0 -28px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;pointer-events:none"><span class="num" style="font-size:19px;line-height:1;font-weight:800;color:${t.fg};${halo}">${s.pct}%</span><span style="display:flex;gap:3px">${lamp(t.wait, 'bell', s.n[0])}${lamp(t.run, 'run', s.n[1])}${lamp(t.done, 'done', s.n[2])}</span></div>`;
+};
+const svgWrap = (inner) => `<svg width="${D}" height="${D}" viewBox="0 0 ${D} ${D}" aria-hidden="true" style="position:absolute;inset:0;overflow:visible">${inner}</svg>`;
+function ringSvg(p, r, w, c, tr, cap = 'round') {
+  const C = 2 * Math.PI * r;
+  return `<circle cx="${C0}" cy="${C0}" r="${r}" fill="none" stroke="${tr}" stroke-width="${w}"/><circle cx="${C0}" cy="${C0}" r="${r}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="${cap}" stroke-dasharray="${(C * p) / 100} ${C}" transform="rotate(-90 ${C0} ${C0})"/>`;
+}
+const SIG = [
+  { id: 's01', vi: 'Vòng liền', en: 'Solid ring', g: (p, c, t) => svgWrap(ringSvg(p, 36, 5, c, t.track)) },
+  { id: 's02', vi: 'Vòng mảnh + chấm', en: 'Thin ring + dot', g: (p, c, t) => { const a = A0 + (2 * Math.PI * p) / 100, [x, y] = polar(C0, C0, 36, a); return svgWrap(ringSvg(p, 36, 2.5, c, t.track) + `<circle cx="${x}" cy="${y}" r="4.5" fill="${c}" stroke="${t.disc}" stroke-width="2"/>`); } },
+  { id: 's03', vi: 'Vòng dày', en: 'Thick ring', g: (p, c, t) => svgWrap(ringSvg(p, 34, 9, c, t.track, 'butt')) },
+  { id: 's04', vi: 'Phân đoạn', en: 'Segments', g: (p, c, t) => { const n = 20, k = Math.round((p / 100) * n); return svgWrap(Array.from({ length: n }, (_, i) => `<path d="${arc(C0, C0, 35, A0 + (i * 2 * Math.PI) / n + 0.05, A0 + ((i + 1) * 2 * Math.PI) / n - 0.05)}" stroke="${i < k ? c : t.track}" stroke-width="6" fill="none"/>`).join('')); } },
+  { id: 's05', vi: 'Vạch chia', en: 'Ticks', g: (p, c, t) => { const n = 48, k = Math.round((p / 100) * n); return svgWrap(Array.from({ length: n }, (_, i) => { const a = A0 + (i * 2 * Math.PI) / n, [x1, y1] = polar(C0, C0, 31, a), [x2, y2] = polar(C0, C0, 38, a); return `<path d="M${x1} ${y1}L${x2} ${y2}" stroke="${i < k ? c : t.track}" stroke-width="2" stroke-linecap="round"/>`; }).join('')); } },
+  { id: 's06', vi: 'Hai vòng 5h / 7d', en: 'Two rings 5h / 7d', g: (p, c, t) => svgWrap(ringSvg(p, 37, 4, c, t.track) + ringSvg(38, 31, 4, t.ok, t.track)) },
+  { id: 's07', vi: 'Đồng hồ 270°', en: '270° gauge', g: (p, c, t) => { const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25, ap = a0 + ((a1 - a0) * p) / 100; return svgWrap(`<path d="${arc(C0, C0, 35, a0, a1)}" stroke="${t.track}" stroke-width="6" fill="none" stroke-linecap="round"/><path d="${arc(C0, C0, 35, a0, ap)}" stroke="${c}" stroke-width="6" fill="none" stroke-linecap="round"/>`); } },
+  { id: 's08', vi: 'Mực nước', en: 'Liquid fill', g: (p, c, t, id) => { const h = D - 8, y = 4 + h * (1 - p / 100); return svgWrap(`<defs><clipPath id="cl${id}"><circle cx="${C0}" cy="${C0}" r="${C0 - 4}"/></clipPath></defs><g clip-path="url(#cl${id})"><path d="M0 ${y} q11 -5 22 0 t22 0 t22 0 t22 0 V${D} H0z" fill="${c}" opacity=".22"/><path d="M0 ${y} q11 -5 22 0 t22 0 t22 0 t22 0" stroke="${c}" stroke-width="2" fill="none"/></g>`); } },
+  { id: 's09', vi: 'Gradient theo mức', en: 'Level gradient', g: (p, c, t) => { const n = 60, k = Math.round((p / 100) * n); return svgWrap(`<circle cx="${C0}" cy="${C0}" r="35" fill="none" stroke="${t.track}" stroke-width="6"/>` + Array.from({ length: k }, (_, i) => { const f = i / n, col = f < 0.6 ? mix(t.ok, t.warn, f / 0.6) : mix(t.warn, t.danger, (f - 0.6) / 0.4); return `<path d="${arc(C0, C0, 35, A0 + (i * 2 * Math.PI) / n, A0 + ((i + 1.15) * 2 * Math.PI) / n)}" stroke="${col}" stroke-width="6" fill="none"/>`; }).join('')); } },
+  { id: 's10', vi: 'Chấm tròn', en: 'Dots', g: (p, c, t) => { const n = 24, k = Math.round((p / 100) * n); return svgWrap(Array.from({ length: n }, (_, i) => { const [x, y] = polar(C0, C0, 35, A0 + (i * 2 * Math.PI) / n); return `<circle cx="${x}" cy="${y}" r="${i < k ? 3.2 : 2.2}" fill="${i < k ? c : t.track}"/>`; }).join('')); } },
+  { id: 's11', vi: 'Bo vuông', en: 'Squircle', sq: true, g: (p, c, t) => svgWrap(`<rect x="7" y="7" width="${D - 14}" height="${D - 14}" rx="22" fill="none" stroke="${t.track}" stroke-width="5"/><rect x="7" y="7" width="${D - 14}" height="${D - 14}" rx="22" fill="none" stroke="${c}" stroke-width="5" pathLength="100" stroke-dasharray="${p} 100" stroke-linecap="round" transform="rotate(90 ${C0} ${C0}) scale(-1 1) translate(${-D} 0)"/>`) },
+  { id: 's12', vi: 'Viền là thanh quota', en: 'Border is the bar', edge: true, g: (p, c, t, id, v) => { const sc = STATUS_COL[t.name][v]; return svgWrap(`<circle cx="${C0}" cy="${C0}" r="${C0 - 3}" fill="none" stroke="${t.track}" stroke-width="5"/><circle cx="${C0}" cy="${C0}" r="${C0 - 3}" fill="none" stroke="${c}" stroke-width="5" pathLength="100" stroke-dasharray="${p} 100" transform="rotate(-90 ${C0} ${C0})" stroke-linecap="round"/><circle class="comet" cx="${C0}" cy="${C0}" r="${C0 - 3}" fill="none" stroke="${sc}" stroke-width="5" pathLength="100" stroke-dasharray="7 93" stroke-linecap="round" transform="rotate(-90 ${C0} ${C0})" style="--sp:${v === 'idle' ? 6 : v === 'wait' ? 1.4 : 2.4}s;opacity:.95"/>`); } },
+];
+const SIG_KEEP = ['s01', 's02', 's05', 's08', 's10', 's11'];  // 6 kiểu đã chọn
+SIG.splice(0, SIG.length, ...SIG.filter((x) => SIG_KEEP.includes(x.id)));
+let SIGSEL = ls('wisp-sig') || 's01', BUBTYPE = ls('wisp-bubtype') || 'signal', CHIP = +(ls('wisp-chip') || 0), uid = 0;
+if (!SIG_KEEP.includes(SIGSEL)) SIGSEL = 's01';
+function sigBubble(sv, v, t, upd = false) {
+  const s = ST[v], c = lvl(s.pct, t), r = sv.sq ? '26px' : '50%';
+  const shell = sv.edge ? '' : abCls(v);
+  return `<div style="position:relative;width:${D}px;height:${D}px"><div class="${shell}" style="--bw:3px;position:absolute;inset:0;border-radius:${r};background:${t.disc};box-shadow:0 6px 18px rgba(0,0,0,.25)${t.name === 'light' ? `,0 0 0 1px ${t.discBd}` : ''}">
+    ${sv.g(s.pct, c, t, ++uid, v)}${center(v, t)}</div>
+    ${upd ? `<span style="position:absolute;right:0;top:0;width:24px;height:24px;border-radius:50%;background:${t.upd};color:#fff;display:grid;place-items:center;box-shadow:0 0 0 3px ${t.scene}">${ic('dl', 13, 2.6)}</span>` : ''}</div>`;
+}
+
+// ================================================================ bóng nổi mascot (cả 40 mẫu)
+function fxLayer(v, t) {
+  if (v === 'idle') return `<span class="fx fx-z" style="left:58px;top:14px;font-size:11px;color:${t.idle}">z</span><span class="fx fx-z" style="left:62px;top:10px;font-size:9px;color:${t.idle};animation-delay:1.2s">z</span>`;
+  if (v === 'run') return [0, 0.3, 0.6].map((d) => `<span class="fx fx-dust" style="left:22px;bottom:16px;width:7px;height:7px;border-radius:50%;background:${t.mut};opacity:.5;animation-delay:${d}s"></span>`).join('');
+  if (v === 'wait') return `<span class="fx fx-wave" style="left:6px;top:10px;width:80px;height:80px;border:2px solid ${t.wait}"></span><span class="fx fx-wave" style="left:6px;top:10px;width:80px;height:80px;border:2px solid ${t.wait};animation-delay:.6s"></span>`;
+  if (v === 'done') return [['#ffd23f', 10, 18, 0], ['#3fd0a4', 70, 12, 0.3], ['#ff7eb6', 76, 44, 0.6], ['#58a6ff', 8, 50, 0.9]].map(([c, x, y, d]) => `<span class="fx fx-pop" style="left:${x}px;top:${y}px;width:7px;height:7px;border-radius:2px;background:${c};animation-delay:${d}s"></span>`).join('');
+  return `<span class="fx fx-glow" style="left:16px;bottom:10px;width:60px;height:16px;border-radius:50%;background:${t.danger};filter:blur(6px)"></span><span class="fx fx-drip" style="left:68px;top:18px;width:6px;height:9px;border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;background:#7cc4ff"></span>`;
+}
+function chip(v, t) {
+  const s = ST[v], c = lvl(s.pct, t);
+  const lamp = (col, k, x) => (x ? `<span style="display:flex;align-items:center;gap:1px;color:${col}">${ic(k, 10, 2.6)}${x}</span>` : '');
+  const lamps = lamp(t.wait, 'bell', s.n[0]) + lamp(t.run, 'run', s.n[1]) + lamp(t.done, 'done', s.n[2]);
+  const base = `position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:999px;background:${t.isl};box-shadow:0 0 0 1px ${t.discBd}`;
+  if (CHIP === 1) {
+    const what = v === 'wait' ? `<span style="color:${t.wait};display:flex;align-items:center;gap:2px">${ic('bell', 10, 2.6)}fix-auth…</span>` : v === 'run' ? `<span style="color:${t.run}">${LANG === 'vi' ? '1 chạy' : '1 running'}</span>` : v === 'done' ? `<span style="color:${t.done}">${LANG === 'vi' ? '1 xong' : '1 done'}</span>` : '';
+    return `<span class="num" style="${base};color:${c}">${s.pct}%${what}</span>`;
+  }
+  if (CHIP === 2) {
+    const mini = (p) => `<span style="width:22px;height:4px;border-radius:2px;background:${t.track};overflow:hidden;display:block"><span style="display:block;height:100%;width:${p}%;background:${lvl(p, t)}"></span></span>`;
+    return `<span class="num" style="${base};color:${t.fg2}"><span style="display:flex;flex-direction:column;gap:2px">${mini(s.pct)}${mini(v === 'quota' ? 72 : 38)}</span>${lamps}</span>`;
+  }
+  return `<span class="num" style="${base};color:${c}">${s.pct}%${lamps}</span>`;
+}
+function mascotBubble(id, v, t) {
+  return `<div style="position:relative;width:92px;height:108px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">${fxLayer(v, t)}
+    <div class="b-${v}" style="margin-bottom:-2px;position:relative;z-index:1">${mascot(id, 72, v, t, '')}</div>
+    <div class="sh-${v}" style="width:46px;height:8px;border-radius:50%;background:#000;opacity:.4;filter:blur(2px)"></div>${chip(v, t)}</div>`;
+}
+
+// ================================================================ panel
+function ctxRow(p, txt, t) {
+  const c = lvl(p, t);
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:var(--t-meta);margin-top:4px"><span style="color:${t.mut}">${L().ctx}</span><span class="num"><span style="color:${t.fg2}">${txt}</span>&nbsp; <b style="color:${c}">${p}%</b></span></div>${bar(p, c, t.track, 4)}`;
+}
+const moreBtn = (t) => `<span aria-label="⋯" style="color:${t.mut};width:28px;height:28px;display:grid;place-items:center;flex:none;border-radius:7px">${ic('more', 17)}</span>`;
+function updBanner(t, kind) {
+  const u = L().upd;
+  const wrap = (inner, cls = '') => `<div class="${cls}" style="--bw:1.5px;color:${t.fg};background:${t.runBg};border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 0 0 1px ${t.name === 'light' ? 'rgba(31,95,214,.3)' : 'rgba(88,166,255,.35)'}">${inner}</div>`;
+  const head = (icon, a, b, right = '') => `<div style="display:flex;align-items:center;gap:10px"><span style="color:${t.upd}">${ic(icon, 18, 2.2)}</span><div style="flex:1;min-width:0"><div style="font-size:var(--t-body);font-weight:700">${a}</div><div class="ell" style="font-size:var(--t-meta);color:${t.mut}">${b}</div></div>${right}</div>`;
+  if (kind === 'avail') return wrap(head('dl', u.avail[0], u.avail[1], btn(t, u.avail[2], t.upd)), 'ab ab-update');
+  if (kind === 'mac') return wrap(head('dl', u.mac[0], u.mac[1], btn(t, u.mac[2], t.upd)));
+  if (kind === 'dl') return wrap(head('dl', u.dl[0], u.dl[1]) + bar(42, t.upd, t.track, 6));
+  if (kind === 'verify' || kind === 'install') return wrap(head(kind === 'verify' ? 'shield' : 'refresh', u[kind][0], u[kind][1]) + `<div style="height:6px;border-radius:3px;background:${t.track};overflow:hidden"><div class="indet" style="width:40%;height:100%;border-radius:3px;background:${t.upd}"></div></div>`);
+  if (kind === 'err') return `<div style="color:${t.fg};background:${t.dangerBg};border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 0 0 1px ${t.danger}55">
+    <div style="display:flex;align-items:center;gap:10px"><span style="color:${t.danger}">${ic('info', 18, 2.2)}</span><div style="flex:1"><div style="font-size:var(--t-body);font-weight:700">${u.err[0]}</div><div style="font-size:var(--t-meta);color:${t.mut}">${u.err[1]}</div></div></div>
+    <div style="display:flex;gap:8px">${btn(t, u.err[2], t.danger)}${btn2(t, u.err[3])}</div></div>`;
+  return `<div style="color:${t.fg};display:flex;align-items:center;gap:10px;padding:4px 2px"><span style="color:${t.ok}">${ic('done', 18, 2.4)}</span><div><div style="font-size:var(--t-body);font-weight:700">${u.latest[0]}</div><div style="font-size:var(--t-meta);color:${t.mut}">${u.latest[1]}</div></div></div>`;
+}
+function sessCard(t, k, inner) {
+  const abk = k === 'wait' || k === 'run' ? 'ab ab-' + k : '';
+  const bd = { wait: t.wait, run: t.run, done: t.done, idle: t.line }[k];
+  return `<div class="${abk}" style="--bw:1.5px;background:${t[k + 'Bg']};border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;box-shadow:inset 0 0 0 1px ${k === 'idle' ? bd : bd + '66'}">${inner}</div>`;
+}
+let COLL = {};
+try { COLL = JSON.parse(ls('wisp-coll') || '{"idle":true,"closed":true}'); } catch (e) { COLL = { idle: true, closed: true }; }
+function panel(t) {
+  const l = L(), ln = l.lane;
+  const lane = (k, n, body) => {
+    const open = !COLL[k];
+    return `<div style="display:flex;flex-direction:column;gap:6px"><button class="lane-h" data-lane="${k}" aria-expanded="${open}" style="color:${k === 'closed' ? t.mut : t[k]}">${ic(k === 'closed' ? 'exit' : { wait: 'bell', run: 'run', done: 'done', idle: 'idle' }[k], 15, 2.2)}${ln[k]}<span style="color:${t.mut};font-weight:500">${n}</span><span style="margin-left:auto;color:${t.mut}">${ic(open ? 'down' : 'chev', 15)}</span></button>${open ? body : ''}</div>`;
+  };
+  const meta = (model, effort, ago) => `<span style="margin-left:auto;font-size:var(--t-meta);color:${t.mut};flex:none">${ago} · ${model} · <b style="font-weight:600;color:${t.fg2}">${effort}</b></span>`;
+  const title = (name) => `<span class="ell" style="font-size:var(--t-title);font-weight:700">${name}</span>`;
+  const q = (lab, sub, p, extra = '') => `<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:var(--t-body);font-weight:700">${lab}</span><span class="ell" style="font-size:var(--t-meta);color:${t.mut}">${sub}</span><span class="num" style="margin-left:auto;font-size:var(--t-num);font-weight:700;color:${lvl(p, t)}">${p}%</span></div>${bar(p, lvl(p, t), t.track, 6)}${extra}</div>`;
+  const loc = (lab, v) => `<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:var(--t-meta);color:${t.mut}">${lab}</span><span class="num" style="font-size:var(--t-num);font-weight:700">${v}</span></div>`;
+  const tray = `<div style="display:flex;align-items:center;gap:6px;font-size:var(--t-meta);color:${t.mut}">${ic('term', 13, 2)}Windows Terminal</div>`;
+  return `<div style="width:400px;border-radius:18px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:${t.shadow};overflow:hidden">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 10px 12px 14px">${mascot(MASCOT, 64, 'wait', t)}
+      <div style="flex:1;min-width:0"><div style="font-size:var(--t-head);font-weight:800">Wisp</div><div class="ell" style="font-size:var(--t-meta);color:${t.fg2};margin-top:3px">${l.count(1, 1, 1, 1)}</div><div class="ell" style="font-size:var(--t-meta);color:${t.mut};margin-top:2px">ban@example.com · Max 20x</div></div>
+      <div style="display:flex;flex-direction:column;gap:2px;align-self:flex-start"><span style="color:${t.mut};width:32px;height:32px;display:grid;place-items:center">${ic('gear', 18)}</span><span style="color:${t.mut};width:32px;height:32px;display:grid;place-items:center">${ic('refresh', 17)}</span></div></div>
+    <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:12px">
+      ${updBanner(t, 'avail')}
+      <div style="background:${t.surf};border:1px solid ${t.line};border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:11px">
+        ${q(l.q5, l.reset5, 62, `<div style="display:flex;align-items:center;gap:6px;font-size:var(--t-meta);color:${t.warn}">${ic('trend', 14, 2.2)}${l.fc}</div>`)}
+        <div style="height:1px;background:${t.line}"></div>${q(l.q7, l.reset7, 38)}</div>
+      <div style="background:${t.surf};border:1px solid ${t.line};border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:var(--t-body);font-weight:700">${l.local}</span><span style="font-size:var(--t-meta);color:${t.mut}">${l.localNote}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">${loc(l.today, '4.2M')}${loc(l.week, '38.6M')}${loc(l.month, '152M')}</div></div>
+      ${lane('wait', '1', sessCard(t, 'wait', `<div style="display:flex;align-items:center;gap:8px">${title('fix-auth-redirect')}${meta('Opus 5.5', 'high', l.ago40)}${moreBtn(t)}</div>
+        <div class="mono" style="font-size:var(--t-body);background:${t.code};border-radius:8px;padding:7px 10px;color:${t.codeFg}"><span style="opacity:.7">Bash ›</span> git push origin main</div>
+        <div style="font-size:var(--t-meta);color:${t.mut}">pet-tracker · hakienit/fix-auth</div>${ctxRow(71, '142k / 200k', t)}
+        <div style="display:flex;gap:10px;align-items:center;margin-top:4px">${btn(t, l.open, t.wait, 'open')}${tray}</div>`))}
+      ${lane('run', '1', sessCard(t, 'run', `<div style="display:flex;gap:8px;align-items:center">${title('landing-hero')}${meta('Sonnet 5.5', 'medium', l.agoNow)}${moreBtn(t)}</div><div class="ell mono" style="font-size:var(--t-meta);color:${t.fg2}">Edit src/components/Hero.tsx</div><div style="font-size:var(--t-meta);color:${t.mut}">vinova-web · feat/hero · ${l.task}</div>${ctxRow(34, '340k / 1M', t)}`))}
+      ${lane('done', '1', sessCard(t, 'done', `<div style="display:flex;gap:8px;align-items:center">${title('release-notes')}${meta('Haiku 5.5', 'low', l.ago2)}${moreBtn(t)}</div><div class="ell" style="font-size:var(--t-body);color:${t.fg2}">${l.doneMsg}</div>${ctxRow(18, '180k / 1M', t)}`))}
+      ${lane('idle', '1', sessCard(t, 'idle', `<div style="display:flex;gap:8px;align-items:center">${title('api-refactor')}${meta('Opus 5.5', 'high', l.ago25)}${moreBtn(t)}</div>${ctxRow(88, '176k / 200k', t)}`))}
+      ${lane('closed', '3', `<div style="background:${t.surf};border:1px solid ${t.line};border-radius:12px;padding:8px 12px;font-size:var(--t-body);color:${t.fg2}">old-migration · ${LANG === 'vi' ? 'đóng 1 giờ trước' : 'closed 1h ago'} <span style="float:right;color:${t.run};font-weight:700">${LANG === 'vi' ? 'Mở lại' : 'Reopen'}</span></div>`)}
+    </div></div>`;
+}
+
+// ================================================================ cài đặt
+function settings(t) {
+  const s = L().set;
+  const grp = (title, rows) => `<div style="display:flex;flex-direction:column;gap:2px"><div style="font-size:var(--t-meta);font-weight:700;color:${t.mut};padding:0 2px 6px">${title}</div><div style="background:${t.surf};border:1px solid ${t.line};border-radius:12px;overflow:hidden">${rows.join(`<div style="height:1px;background:${t.line};margin:0 12px"></div>`)}</div></div>`;
+  const row = (lab, ctrl, sub) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;min-height:44px"><div style="flex:1;min-width:0"><div style="font-size:var(--t-body)">${lab}</div>${sub ? `<div class="ell" style="font-size:var(--t-meta);color:${t.mut}">${sub}</div>` : ''}</div>${ctrl}</div>`;
+  const seg = (opts, on) => `<div style="display:flex;background:${t.seg};border-radius:8px;padding:2px;flex:none">${opts.map((o, i) => `<span style="font-size:var(--t-meta);font-weight:600;padding:4px 9px;border-radius:6px;${i === on ? `background:${t.segOn};color:${t.fg};box-shadow:0 1px 2px rgba(0,0,0,.2)` : `color:${t.mut}`}">${o}</span>`).join('')}</div>`;
+  const sw = (on) => `<span class="sw" role="switch" aria-checked="${on}" style="background:${on ? t.on : t.off}"><i style="${on ? 'right:3px' : 'left:3px'}"></i></span>`;
+  const val = (v) => `<span style="display:flex;align-items:center;gap:6px;font-size:var(--t-body);color:${t.fg2};flex:none">${v}${ic('chev', 14)}</span>`;
+  const stepper = (v) => `<span style="display:flex;align-items:center;border:1px solid ${t.line};border-radius:8px;overflow:hidden;flex:none"><span style="width:28px;text-align:center;color:${t.mut}">−</span><span class="num" style="font-size:var(--t-body);font-weight:600;padding:3px 6px">${v}</span><span style="width:28px;text-align:center;color:${t.mut}">+</span></span>`;
+  const act = (lab, icon, danger) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;min-height:42px;color:${danger ? t.danger : t.fg}"><span style="color:${danger ? t.danger : t.mut}">${ic(icon, 16)}</span><span style="font-size:var(--t-body)">${lab}</span></div>`;
+  const sig = SIG.find((x) => x.id === SIGSEL) || SIG[0];
+  const bub = BUBTYPE === 'mascot' ? `Mascot · ${(MASCOTS.find((x) => x.id === MASCOT) || {})[LANG]}` : `${s.typeOpts[0]} · ${sig[LANG]}`;
+  return `<div style="width:400px;border-radius:18px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:${t.shadow};overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 14px"><span style="width:32px;height:32px;display:grid;place-items:center;color:${t.fg}">${ic('back', 18, 2.2)}</span><span style="font-size:var(--t-head);font-weight:800">${s.title}</span></div>
+    <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:14px">
+      ${grp(s.general, [row(s.lang, seg(['Tiếng Việt', 'English'], LANG === 'vi' ? 0 : 1)), row(s.theme, seg(s.themeOpts, 0)), row(s.mode, seg(s.modeOpts, 0)), row(s.bubble, val(bub)), row(s.screen, val(s.screenVal)),
+        row(s.mascot, `<span style="display:flex;align-items:center;gap:6px;flex:none">${mascot(MASCOT, 28, 'run', t, '')}${ic('chev', 14)}</span>`), row(s.motion, seg(s.motionOpts, 0)), row(s.startup, sw(true))])}
+      ${grp(s.notif, [row(s.sWait, sw(true)), row(s.sDone, sw(false)), row(s.nDone, sw(true)), row(s.quiet, sw(false), s.quietVal), row(s.qAlert, val('80% · 95%'))])}
+      ${grp(s.hooks, [row(`<span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:4px;background:${t.ok}"></span>${s.hooksOn}</span>`, '', s.hooksSub), `<div style="display:flex;gap:8px;padding:9px 12px">${btn2(t, s.hooksTest)}${btn2(t, s.hooksBtn)}</div>`])}
+      ${grp(s.quota, [row(s.warn, stepper('60%')), row(s.danger, stepper('85%')), row(s.api, sw(true))])}
+      ${grp(s.update, [`<div style="padding:8px 12px">${updBanner(t, 'latest')}</div>`, row(s.autoUpd, sw(true)), row(s.checkNow, `<span style="color:${t.mut};border:1px solid ${t.line};border-radius:8px;width:32px;height:30px;display:grid;place-items:center">${ic('refresh', 14)}</span>`)])}
+      ${grp(s.adv, [act(s.refresh, 'refresh'), act(s.openClaude, 'folder'), act(s.openCfg, 'info'), act(s.openLog, 'info'), act(s.quit, 'power', true)])}
+    </div></div>`;
+}
+
+// ================================================================ menu + thông báo
+function menus(t) {
+  const m = L().menu;
+  const box = (inner, w = 340) => `<div style="width:${w}px;background:${t.menuBg};border:1px solid ${t.line};border-radius:12px;box-shadow:${t.shadow};padding:6px 0;color:${t.fg}">${inner}</div>`;
+  const it = (icon, lab, sub, o = {}) => `<div style="display:flex;align-items:center;gap:10px;margin:0 6px;padding:8px 10px;min-height:36px;border-radius:8px;${o.hover ? `background:${t.hover};` : ''}${o.dis ? 'opacity:.5;' : ''}color:${o.danger ? t.danger : t.fg}"><span style="color:${o.danger ? t.danger : t.mut}">${ic(icon, 16)}</span><span style="flex:1;font-size:var(--t-body)">${lab}</span>${sub ? `<span class="ell" style="font-size:var(--t-meta);color:${t.mut};max-width:170px">${sub}</span>` : ''}</div>`;
+  const sep = `<div style="height:1px;background:${t.line};margin:5px 12px"></div>`;
+  const head = `<div style="padding:8px 16px 10px"><div style="font-size:var(--t-title);font-weight:700">fix-auth-redirect</div><div class="ell" style="font-size:var(--t-meta);color:${t.mut}">D:\\vinova\\pet-tracker</div><div style="font-size:var(--t-meta);color:${t.warn}">⎇ hakienit/fix-auth · ${m.dirty}</div></div>${sep}`;
+  const sess = box(head + it('open', m.open, m.openSub, { hover: true }) + it('folder', m.folder) + it('copy', m.copy) + it('info', m.details, m.detailsSub) + sep + it('mute', m.mute) + sep
+    + it('exit', m.handoff, m.handoffSub) + it('x', m.close, m.closeSub) + it('trash', m.del, m.delSub, { danger: true }) + it('branch', m.wt, m.wtSub, { danger: true, dis: true }));
+  const conf = confirmDemo(0, t);  // kiểu 01 đã chốt: khối xác nhận trong menu
+  const isl = box(it('refresh', m.isl[0]) + it('gear', m.isl[1]) + it('swap', m.isl[2]) + it('mute', m.isl[3]) + it('dl', m.isl[4], 'v0.2.0') + sep + it('power', m.isl[5], '', { danger: true }), 260);
+  return `<div class="row" style="align-items:flex-start;gap:16px">${[sess, conf, isl].map((h, i) => `<div style="display:flex;flex-direction:column;gap:8px"><span class="lb">${m.menuCaps[i]}</span>${h}</div>`).join('')}</div>`;
+}
+function toasts(t) {
+  const l = L();
+  const one = (k, [a, b], btns) => `<div style="width:340px;background:${t.surf};color:${t.fg};border:1px solid ${t.line};border-radius:12px;box-shadow:${t.shadow};padding:12px 14px;display:flex;gap:12px;align-items:flex-start">
+    <span style="color:${t[k]};margin-top:1px">${ic(k === 'wait' ? 'bell' : k === 'done' ? 'done' : 'trend', 18, 2.2)}</span>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><div style="font-size:var(--t-body);font-weight:700">${a}</div><div class="ell ${k === 'wait' ? 'mono' : ''}" style="font-size:var(--t-meta);color:${t.mut}">${b}</div>${btns ? `<div style="display:flex;gap:8px;margin-top:8px">${btns}</div>` : ''}</div></div>`;
+  return [one('wait', l.toast[0], btn(t, l.open, t.wait) + btn2(t, l.later)), one('done', l.toast[1], btn2(t, l.open)), one('danger', l.toast[2], '')].join('');
+}
+
+// ================================================================ 6 kiểu xác nhận xoá
+function confirmDemo(i, t) {
+  const c = L().cf;
+  const lines = `<ul style="margin:6px 0 0;padding-left:18px;font-size:var(--t-meta);color:${t.fg2};line-height:1.6">${c.lines.map((x) => `<li>${x}</li>`).join('')}</ul>`;
+  const head = `<div style="padding:8px 14px 10px;border-bottom:1px solid ${t.line}"><div style="font-size:var(--t-title);font-weight:700">fix-auth-redirect</div><div class="ell" style="font-size:var(--t-meta);color:${t.mut}">D:\\vinova\\pet-tracker</div></div>`;
+  const box = (inner, w = 340) => `<div style="width:${w}px;max-width:100%;background:${t.menuBg};border:1px solid ${t.line};border-radius:12px;box-shadow:${t.shadow};color:${t.fg};overflow:hidden">${inner}</div>`;
+  const dangerBtn = (lab, extra = '') => `<button style="font-size:var(--t-body);font-weight:700;padding:7px 12px;min-height:34px;border-radius:9px;border:0;background:${t.danger};color:#fff;${extra}">${lab}</button>`;
+  if (i === 0) return box(head + `<div style="margin:8px;padding:12px;border-radius:10px;background:${t.dangerBg};box-shadow:inset 0 0 0 1px ${t.danger}44">
+      <div style="display:flex;align-items:center;gap:8px;color:${t.danger};font-size:var(--t-body);font-weight:700">${ic('trash', 16)}${c.title}</div>${lines}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">${btn2(t, c.cancel)}${dangerBtn(c.del)}</div></div>`);
+  if (i === 1) return `<div style="position:relative;width:340px;max-width:100%;height:250px;border-radius:14px;overflow:hidden;background:${t.bg};border:1px solid ${t.line}">
+      <div style="padding:14px;display:flex;flex-direction:column;gap:8px;opacity:.5">${[1, 2, 3].map(() => `<div style="height:44px;border-radius:10px;background:${t.surf};border:1px solid ${t.line}"></div>`).join('')}</div>
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center"><div style="width:290px;background:${t.surf};color:${t.fg};border-radius:14px;padding:16px;box-shadow:${t.shadow}">
+        <div style="width:36px;height:36px;border-radius:50%;background:${t.dangerBg};color:${t.danger};display:grid;place-items:center">${ic('trash', 18, 2.2)}</div>
+        <div style="font-size:var(--t-head);font-weight:800;margin-top:10px">${c.title}</div>${lines}
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px">${btn2(t, c.cancel).replace('flex:none', 'width:100%')}${dangerBtn(c.del, 'width:100%')}</div></div></div></div>`;
+  if (i === 2) return box(head + `<div style="padding:12px;display:flex;flex-direction:column;gap:8px">${lines}
+      <div style="position:relative;height:40px;border-radius:10px;background:${t.dangerBg};box-shadow:inset 0 0 0 1px ${t.danger}66;overflow:hidden">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;font-size:var(--t-body);font-weight:700;color:${t.danger}">${ic('trash', 15, 2.2)}${c.hold}</div>
+      <div class="holdfill" style="position:absolute;inset:0 auto 0 0;background:${t.danger};overflow:hidden"><div style="position:absolute;left:0;top:0;width:314px;height:40px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:var(--t-body);font-weight:700;color:#fff">${ic('trash', 15, 2.2)}${c.hold}</div></div></div>
+      <div style="font-size:var(--t-meta);color:${t.mut};text-align:center">1,5 s · Esc = ${c.cancel}</div></div>`);
+  if (i === 3) return box(head + `<div style="padding:12px;display:flex;flex-direction:column;gap:10px">${lines}
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1.5px solid ${t.danger};color:${t.danger}"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="${t.danger}33" stroke-width="3"/><circle class="countdown" cx="12" cy="12" r="9" fill="none" stroke="${t.danger}" stroke-width="3" pathLength="100" stroke-dasharray="100 100" transform="rotate(-90 12 12)"/></svg>
+      <span style="flex:1;font-size:var(--t-body);font-weight:700">${c.again}</span><span class="num" style="font-size:var(--t-meta)">5 s</span></div></div>`);
+  if (i === 4) return `<div style="width:340px;max-width:100%;display:flex;flex-direction:column;gap:8px"><div style="opacity:.45">${box(head)}</div>
+      <div style="background:${t.surf};color:${t.fg};border:1px solid ${t.line};border-radius:12px;box-shadow:${t.shadow};overflow:hidden"><div style="display:flex;align-items:center;gap:10px;padding:11px 12px">
+      <span style="color:${t.danger}">${ic('trash', 17, 2.2)}</span><div style="flex:1;min-width:0"><div style="font-size:var(--t-body);font-weight:700">${c.undoMsg}</div><div style="font-size:var(--t-meta);color:${t.mut}">${c.undoSub}</div></div>
+      <button style="font-size:var(--t-body);font-weight:700;padding:7px 12px;border-radius:9px;border:0;background:${t.run};color:#fff">${c.undo}</button></div><div style="height:3px;background:${t.track}"><div class="holdfill" style="height:100%;background:${t.danger};animation-duration:8s;animation-direction:reverse"></div></div></div></div>`;
+  return box(head + `<div style="padding:12px;display:flex;flex-direction:column;gap:10px">${lines}
+      <div style="position:relative;height:42px;border-radius:21px;background:${t.dangerBg};box-shadow:inset 0 0 0 1px ${t.danger}55;display:flex;align-items:center;justify-content:center;font-size:var(--t-body);font-weight:700;color:${t.danger}">${c.slide} →
+      <span class="slidehint" style="position:absolute;left:4px;top:4px;width:34px;height:34px;border-radius:50%;background:${t.danger};color:#fff;display:grid;place-items:center">${ic('trash', 15, 2.2)}</span></div></div>`);
+}
+
+// ================================================================ bóng nổi theo lựa chọn của người dùng
+Object.assign(STR.vi.set, { bubblePage: 'Bóng nổi', type: 'Kiểu', typeOpts: ['Tín hiệu', 'Mascot'], style: 'Kiểu viền', color: 'Màu', chip: 'Chip dưới chân', preview: 'Xem trước', custom: 'Ảnh của bạn', more: 'Xem tất cả 40' });
+Object.assign(STR.en.set, { bubblePage: 'Bubble', type: 'Type', typeOpts: ['Signal', 'Mascot'], style: 'Border style', color: 'Colour', chip: 'Chip under the feet', preview: 'Preview', custom: 'Your image', more: 'See all 40' });
+// bóng đang dùng: tín hiệu (SIGSEL) hoặc mascot (MASCOT, cùng mascot ở đầu panel)
+const bubble = (v, t, upd = false) => (BUBTYPE === 'mascot' ? mascotBubble(MASCOT, v, t) : sigBubble(SIG.find((x) => x.id === SIGSEL) || SIG[0], v, t, upd));
+
+// trang con Cài đặt → Bóng nổi. interactive = true: bấm được (landing, spec); false: ảnh tĩnh
+function bubbleSettings(t, interactive = true) {
+  const s = L().set, d = interactive ? '' : ' disabled';
+  const grp = (title, body) => `<div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:var(--t-meta);font-weight:700;color:${t.mut};padding:0 2px">${title}</div><div style="background:${t.surf};border:1px solid ${t.line};border-radius:12px;padding:10px">${body}</div></div>`;
+  const opt = (attr, val, on, inner, w = 64) => `<button${d} ${attr}="${val}" aria-pressed="${on}" style="width:${w}px;padding:6px 4px;border-radius:10px;border:1.5px solid ${on ? t.wait : 'transparent'};background:${on ? t.waitBg : 'transparent'};color:${t.fg};display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer">${inner}</button>`;
+  const seg = `<div style="display:flex;background:${t.seg};border-radius:9px;padding:3px">${s.typeOpts.map((o, i) => { const v = i ? 'mascot' : 'signal', on = BUBTYPE === v; return `<button${d} data-bubtype="${v}" aria-pressed="${on}" style="flex:1;font-size:var(--t-body);font-weight:600;padding:6px 0;border:0;border-radius:7px;cursor:pointer;${on ? `background:${t.segOn};color:${t.fg};box-shadow:0 1px 2px rgba(0,0,0,.2)` : `background:transparent;color:${t.mut}`}">${o}</button>`; }).join('')}</div>`;
+  const mini = (sv) => `<div style="transform:scale(.6);transform-origin:top left;width:53px;height:53px">${sigBubble(sv, 'run', t)}</div>`;
+  const sigGrid = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px">${SIG.map((sv) => opt('data-sig', sv.id, sv.id === SIGSEL, `${mini(sv)}<span style="font-size:11px;color:${t.fg2};text-align:center;line-height:1.2">${sv[LANG]}</span>`, '100%')).join('')}</div>`;
+  const firstM = MASCOTS.slice(0, 11);
+  const mGrid = `<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px">${firstM.map((m) => opt('data-m', m.id, m.id === MASCOT, mascot(m.id, 32, 'run', t, ''), '100%')).join('')}
+    <button${d} style="border-radius:10px;border:1.5px dashed ${t.line};background:transparent;color:${t.mut};display:grid;place-items:center;font-size:11px;cursor:pointer" title="${s.custom}">${ic('up', 18, 2)}</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span style="font-size:var(--t-meta);color:${t.mut}">${s.color}</span><span style="display:flex;gap:5px">${HUE_SW.map((c, i) => `<button${d} data-hue="${i}" aria-pressed="${i === HUE}" aria-label="${L().hueNames[i]}" style="width:20px;height:20px;border-radius:50%;padding:0;cursor:pointer;background:${c};border:2px solid ${i === HUE ? t.fg : 'transparent'}"></button>`).join('')}</span></div>
+    <div style="font-size:var(--t-meta);color:${t.run};margin-top:8px;font-weight:600">${s.more} ›</div>`;
+  const chips = `<div style="display:flex;flex-direction:column;gap:4px">${L().chips.map((c, i) => `<button${d} data-chip="${i}" aria-pressed="${i === CHIP}" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;border:0;cursor:pointer;background:${i === CHIP ? t.hover : 'transparent'};color:${t.fg};font-size:var(--t-body);text-align:left"><span style="width:16px;height:16px;border-radius:50%;border:2px solid ${i === CHIP ? t.wait : t.mut};display:grid;place-items:center">${i === CHIP ? `<span style="width:7px;height:7px;border-radius:50%;background:${t.wait}"></span>` : ''}</span>${c}</button>`).join('')}</div>`;
+  const prev = `<div style="display:flex;justify-content:center;gap:6px;padding:6px 0 10px">${['idle', 'run', 'wait', 'quota'].map((v) => `<div style="transform:scale(.8);transform-origin:top center;width:74px;height:${BUBTYPE === 'mascot' ? 90 : 74}px">${bubble(v, t)}</div>`).join('')}</div>`;
+  return `<div style="width:400px;max-width:100%;border-radius:18px;background:${t.bg};border:1px solid ${t.line};color:${t.fg};box-shadow:${t.shadow};overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 14px"><span style="width:32px;height:32px;display:grid;place-items:center">${ic('back', 18, 2.2)}</span><span style="font-size:var(--t-head);font-weight:800">${s.bubblePage}</span></div>
+    <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:12px">
+      ${grp(s.preview, prev + seg)}
+      ${BUBTYPE === 'signal' ? grp(s.style, sigGrid) : grp(s.mascot, mGrid) + grp(s.chip, chips)}
+    </div></div>`;
+}
+// một handler cho mọi nút tuỳ biến; trang gọi lại render() sau khi đổi
+function handleCustomize(b) {
+  if (b.dataset.bubtype) { BUBTYPE = b.dataset.bubtype; ls('wisp-bubtype', BUBTYPE); return true; }
+  if (b.dataset.sig) { SIGSEL = b.dataset.sig; ls('wisp-sig', SIGSEL); return true; }
+  if (b.dataset.m) { MASCOT = b.dataset.m; ls('wisp-mascot', MASCOT); return true; }
+  if (b.dataset.hue) { HUE = +b.dataset.hue; ls('wisp-hue', String(HUE)); return true; }
+  if (b.dataset.chip) { CHIP = +b.dataset.chip; ls('wisp-chip', String(CHIP)); return true; }
+  if (b.dataset.lane) { COLL[b.dataset.lane] = !COLL[b.dataset.lane]; ls('wisp-coll', JSON.stringify(COLL)); return true; }
+  if (b.dataset.l) { LANG = b.dataset.l; ls('wisp-lang', LANG); return true; }
+  return false;
+}

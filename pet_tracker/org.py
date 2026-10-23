@@ -37,7 +37,8 @@ _COUNT_KEYS = ("total", "running", "stuck", "done", "failed", "killed", "ended")
 
 # ---------------------------------------------------------------- làm sạch giá trị không tin cậy
 def _s(v) -> str:
-    return _CTRL.sub("", v)[:MAX_STR] if isinstance(v, str) else ""
+    # cắt trước rồi mới lọc: chuỗi 1 MB không bị quét hết; đầu ra giống bản lọc-rồi-cắt khi chuỗi <= MAX_STR * 8
+    return _CTRL.sub("", v[:MAX_STR * 8])[:MAX_STR] if isinstance(v, str) else ""
 
 
 def _clean(d: dict, skip=()) -> dict:
@@ -46,9 +47,14 @@ def _clean(d: dict, skip=()) -> dict:
 
 
 def _num(v):
-    """float hữu hạn hoặc None (bool không tính là số)."""
-    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
-        return float(v)
+    """float hữu hạn hoặc None (bool không tính là số; số lớn hơn float không đổi được thì None)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        try:
+            f = float(v)
+        except OverflowError:
+            return None
+        if math.isfinite(f):
+            return f
     return None
 
 

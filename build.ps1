@@ -54,6 +54,9 @@ VSVersionInfo(
     --icon assets\wisp.ico `
     --version-file build\version_info.txt `
     --add-data "assets\wisp.ico;assets" `
+    --add-data "assets\fonts;assets\fonts" `
+    --add-data "assets\sounds;assets\sounds" `
+    --add-data "assets\mascots.json;assets" `
     main.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller lỗi (exit $LASTEXITCODE)" }
 

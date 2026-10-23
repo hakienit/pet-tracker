@@ -5,6 +5,7 @@ Interface chung (win.py và mac.py đều cài đủ):
   Hằng       NAME, IS_WINDOWS, IS_MAC, GLOBAL_MOUSE, CAN_SELF_UPDATE, RIGHT_CLICK_EVENTS
   Cửa sổ     init_process(), dpi_scale(root), work_area(root, pt), cursor_pos(root), mouse_down(),
              transparent_key(), make_transparent(toplevel), round_corners(win, border_hex)
+             clip_round(win, radius, border_hex) (chỉ macOS cắt cửa sổ; Windows trả False)
   Hệ thống   state_dir(), open_path(target), process_alive(pid, proc_start), read_credentials(claude_dir)
   Session    focus_session(sess)
   Khởi động  autostart_command(), autostart_is_enabled(), autostart_enable(), autostart_disable(),

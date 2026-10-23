@@ -9,6 +9,7 @@ from unittest import mock
 
 from pet_tracker import control_room as cr
 from pet_tracker import org
+from pet_tracker.i18n import t
 
 NOW = 10_000.0
 CFG = {"agent_prefixes": ["les-"], "stuck_after_sec": 120}
@@ -188,7 +189,7 @@ class FlattenTest(unittest.TestCase):
         self.assertEqual(len(rows), 2 + 2000)        # project, team + 2000 dòng cho một session
         more = rows[-1]
         self.assertEqual((more["kind"], more["state"]), ("more", ""))
-        self.assertEqual(more["name"], "+3003 more")  # 5000 subagent, giữ 1997
+        self.assertEqual(more["name"], t("cr.more", n=3003))  # 5000 subagent, giữ 1997
         self.assertEqual(more["ag"], 3003)            # 3003 dòng đang chạy bị gộp vẫn được cộng cho cha
         self.assertEqual(len([r for r in rows if r["kind"] == "subagent"]), 1997)
 
@@ -411,10 +412,21 @@ class SourceSafetyTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------- Tk smoke test
+def _register_fonts_first():
+    """Archivo phải đăng ký trước root Tk đầu tiên của process: Tk chốt danh sách font lúc đó, root tạo trước thì
+    test_mac_session (chạy sau) không thấy Archivo."""
+    try:
+        from pet_tracker.ui.kit import register_fonts
+        register_fonts()
+    except ImportError:     # không có Tk: test Tk sẽ tự bỏ qua
+        pass
+
+
 def _make_root():
     if cr.tk is None:
         return None
     try:
+        _register_fonts_first()
         root = cr.tk.Tk()
     except Exception:       # TclError: không có display
         return None

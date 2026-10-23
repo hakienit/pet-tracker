@@ -4,7 +4,7 @@ Chia hai lớp:
   - hàm thuần (không Tk, kiểm bằng unit test): sanitize, fmt_*, flatten, struct_sig, live_sig, clamp_geometry...
   - `ControlRoom`: Toplevel + ttk.Treeview, chạy ở main thread; không I/O, git, subprocess.
 
-Giao diện cho ui.py nối dây (không import ui, không vòng import):
+Giao diện cho ui/app.py nối dây (không import ui, không vòng import):
 
     room = ControlRoom(root, theme, state, save_state, focus_session, log=None)
     room.show()          # tạo lười lần đầu, lần sau đưa cửa sổ lên trước
@@ -30,6 +30,8 @@ import re
 import sys
 import time
 
+from .i18n import t
+
 try:
     import tkinter as tk
     from tkinter import font as tkfont
@@ -47,11 +49,16 @@ MIN_SIZE = (640, 380)
 MAX_ROWS_PER_SESSION = 2000     # trần số dòng dưới một session (gồm dòng session và dòng "+N more")
 MAX_BAR_COUNT = 10 ** 6         # trần số hiển thị trên thanh tổng; số lớn hơn chỉ hiện trần
 
-# state (enum của org) -> nhãn hiển thị và tag Treeview; tag là hằng cố định, không bao giờ lấy từ chuỗi agent
-STATE_LABEL = {"running": "đang chạy", "stuck": "treo", "done": "xong", "failed": "lỗi",
-               "killed": "đã dừng", "ended": "đã kết thúc"}
+# state (enum của org) -> khoá i18n của nhãn; tag Treeview là hằng cố định, không bao giờ lấy từ chuỗi agent
+STATE_LABEL = {"running": "cr.st.running", "stuck": "cr.st.stuck", "done": "cr.st.done", "failed": "cr.st.failed",
+               "killed": "cr.st.killed", "ended": "cr.st.ended"}
 STATE_TAG = {s: "st_" + s for s in STATE_LABEL}
 _LIVE = ("running", "stuck")
+
+
+def state_label(st) -> str:
+    """Nhãn hiển thị của state worker theo ngôn ngữ đang chọn; state lạ thì rỗng."""
+    return t(STATE_LABEL[st]) if st in STATE_LABEL else ""
 
 _SPACE = re.compile("[\t\n\r\x0b\x0c\x85  ]")
 _DROP = re.compile("[\x00-\x1f\x7f-\x9f​-‏‪-‮⁠-⁯؜﻿"
@@ -71,8 +78,15 @@ def sanitize(v, limit: int = MAX_TEXT) -> str:
 
 
 def _n(v):
-    """float hữu hạn hoặc None (bool không tính)."""
-    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+    """float hữu hạn hoặc None (bool không tính; số lớn hơn float không đổi được thì None)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        try:
+            f = float(v)
+        except OverflowError:
+            return None
+        if math.isfinite(f):
+            return f
+    return None
 
 
 def _i(v) -> int:
@@ -112,9 +126,9 @@ def counts_text(agents: int, tasks: int, stuck: int = 0) -> str:
     """'2 agent (1 treo) · 1 task'; không có việc đang sống thì rỗng."""
     parts = []
     if agents:
-        parts.append(f"{agents} agent" + (f" ({stuck} treo)" if stuck else ""))
+        parts.append(t("cr.agent_n", n=agents) + (f" ({t('cr.stuck_n', n=stuck)})" if stuck else ""))
     if tasks:
-        parts.append(f"{tasks} task")
+        parts.append(t("cr.task_n", n=tasks))
     return " · ".join(parts)
 
 
@@ -145,7 +159,7 @@ def _state(v) -> str:
 
 
 def _team_label(top: str, branch: str) -> str:
-    base = ntpath.basename(top.rstrip("\\/")) or top or "(không rõ)"
+    base = ntpath.basename(top.rstrip("\\/")) or top or t("cr.unknown")
     return f"{base} · {branch}" if branch else base
 
 
@@ -177,13 +191,13 @@ def flatten(org_out, now=None) -> list:
 
     for p in _dicts((org_out if isinstance(org_out, dict) else {}).get("projects")):
         root = _t(p.get("root"))
-        pr = add("project", "p:" + root, None, _t(p.get("name"), MAX_NAME) or root or "(không rõ)",
-                 detail=[("Thư mục gốc", root)])
-        for t in _dicts(p.get("teams")):
-            top, branch = _t(t.get("top")), _t(t.get("branch"), 80)
+        pr = add("project", "p:" + root, None, _t(p.get("name"), MAX_NAME) or root or t("cr.unknown"),
+                 detail=[(t("cr.f.root"), root)])
+        for tm in _dicts(p.get("teams")):
+            top, branch = _t(tm.get("top")), _t(tm.get("branch"), 80)
             tr = add("team", pr["key"] + "/t:" + top, pr["key"], _team_label(top, branch),
-                     detail=[("Worktree", top), ("Nhánh", branch)])
-            for s in _dicts(t.get("sessions")):
+                     detail=[(t("cr.f.worktree"), top), (t("cr.f.branch"), branch)])
+            for s in _dicts(tm.get("sessions")):
                 mark = len(rows)
                 _session_rows(add, tr, s, now)
                 _cap_rows(rows, add, mark)
@@ -196,10 +210,28 @@ def flatten(org_out, now=None) -> list:
                 up[k] += r[k]
     for r in rows:
         if r["kind"] in ("subagent", "bgtask"):
-            r["summary"] = STATE_LABEL.get(r["state"], "")
+            r["summary"] = state_label(r["state"])
         else:
             r["summary"] = counts_text(r["ag"], r["tk"], r["stuck"])
-    return rows
+    return _cap_global(rows)
+
+
+MAX_ROWS_TOTAL = 5000   # trần toàn cây (đã cộng dồn trước khi cắt, nên cha vẫn đúng số)
+
+
+def _cap_global(rows):
+    """Giữ MAX_ROWS_TOTAL dòng đầu (cha đứng trước con nên phần giữ lại vẫn là cây hợp lệ). Phần dư thành một dòng
+    '+N more' gốc, chỉ đọc, mang số việc đang sống của phần bị cắt. ponytail: global cap, paged tree if fan-out grows."""
+    if len(rows) <= MAX_ROWS_TOTAL:
+        return rows
+    keep, dropped = rows[:MAX_ROWS_TOTAL - 1], rows[MAX_ROWS_TOTAL - 1:]
+    leaves = [r for r in dropped if r["kind"] in ("subagent", "bgtask")]
+    more = {"key": "#more", "kind": "more", "parent": None, "name": t("cr.more", n=len(dropped)), "state": "",
+            "summary": "", "status": "", "elapsed": "", "ago": "", "tokens": 0, "session_id": "", "detail": [],
+            "ag": sum(r["ag"] for r in leaves), "tk": sum(r["tk"] for r in leaves),
+            "stuck": sum(r["stuck"] for r in leaves)}
+    more["summary"] = counts_text(more["ag"], more["tk"], more["stuck"])
+    return keep + [more]
 
 
 def _cap_rows(rows, add, mark):
@@ -212,7 +244,7 @@ def _cap_rows(rows, add, mark):
     keep, dropped = own[:MAX_ROWS_PER_SESSION - 1], own[MAX_ROWS_PER_SESSION - 1:]
     workers = [r for r in dropped if r["kind"] in ("subagent", "bgtask")]
     del rows[mark + len(keep):]
-    add("more", own[0]["key"] + "/w:more", own[0]["key"], _t(f"+{len(workers)} more", MAX_NAME),
+    add("more", own[0]["key"] + "/w:more", own[0]["key"], _t(t("cr.more", n=len(workers)), MAX_NAME),
         ag=sum(r["ag"] for r in workers), tk=sum(r["tk"] for r in workers), stuck=sum(r["stuck"] for r in workers))
 
 
@@ -225,11 +257,13 @@ def _session_rows(add, team, s, now):
     elapsed = fmt_elapsed(now - started) if started else ""
     ago = fmt_elapsed(now - last) if last else ""
     status = _t(s.get("status"), MAX_STATUS)
-    sr = add("session", team["key"] + "/s:" + sid, team["key"], _t(s.get("name"), MAX_NAME) or sid[:8] or "(session)",
+    sr = add("session", team["key"] + "/s:" + sid, team["key"],
+             _t(s.get("name"), MAX_NAME) or _t(sid, 8) or t("cr.anon_session"),
              status=status, elapsed=elapsed, ago=ago, tokens=tokens, session_id=sid, detail=[
-                 ("Session", _t(s.get("session_id"), 64)), ("Trạng thái", status), ("Model", _t(s.get("model"), 60)),
-                 ("Thư mục", _t(s.get("cwd"))), ("Nhánh", _t(git.get("branch"), 80)), ("Đã chạy", elapsed),
-                 ("Hoạt động cuối", ago + " trước" if ago else ""), ("Token", fmt_tokens(tokens))])
+                 (t("cr.f.session"), _t(s.get("session_id"), 64)), (t("cr.f.status"), status),
+                 (t("cr.f.model"), _t(s.get("model"), 60)), (t("cr.f.folder"), _t(s.get("cwd"))),
+                 (t("cr.f.branch"), _t(git.get("branch"), 80)), (t("cr.f.elapsed"), elapsed),
+                 (t("cr.f.last"), t("cr.ago", ago=ago) if ago else ""), (t("cr.f.tokens"), fmt_tokens(tokens))])
     ws = _dicts(s.get("workers"))
     subs = [w for w in ws if w.get("kind") == "subagent"]
     tasks = [w for w in ws if w.get("kind") == "bgtask"]
@@ -263,17 +297,18 @@ def _session_rows(add, team, s, now):
             ag = fmt_elapsed(now - last_w) if last_w is not None else ""
             tok = _i(w.get("tokens"))
             desc, typ = _t(w.get("description")), _t(w.get("agent_type"), 80)
-            r = add("subagent", sr["key"] + "/w:sub:" + _t(w.get("id"), 80), pk, _t(desc, MAX_NAME) or typ or "(subagent)",
+            r = add("subagent", sr["key"] + "/w:sub:" + _t(w.get("id"), 80), pk,
+                    _t(desc, MAX_NAME) or typ or t("cr.anon_subagent"),
                     state=st, elapsed=el, ago=ag, tokens=tok, ag=int(st in _LIVE), stuck=int(st == "stuck"), detail=[
-                        ("Mô tả", desc), ("Loại agent", typ), ("Phòng ban", _t(w.get("department"), 80)),
-                        ("Trạng thái", STATE_LABEL.get(st, "")), ("Đã chạy", el),
-                        ("Hoạt động cuối", ag + " trước" if ag else ""), ("Token", fmt_tokens(tok)),
-                        ("Độ sâu", str(_i(w.get("depth"))))])
+                        (t("cr.f.desc"), desc), (t("cr.f.agent_type"), typ), (t("cr.f.dept"), _t(w.get("department"), 80)),
+                        (t("cr.f.status"), state_label(st)), (t("cr.f.elapsed"), el),
+                        (t("cr.f.last"), t("cr.ago", ago=ag) if ag else ""), (t("cr.f.tokens"), fmt_tokens(tok)),
+                        (t("cr.f.depth"), str(_i(w.get("depth"))))])
             for c in reversed(kids[j]):
                 stack.append((c, r["key"]))
 
     def group_of(j):
-        name = _t(subs[j].get("department"), 80) or _t(subs[j].get("agent_type"), 80) or "(khác)"
+        name = _t(subs[j].get("department"), 80) or _t(subs[j].get("agent_type"), 80) or t("cr.other")
         if name not in groups:
             groups[name] = add("dept", sr["key"] + "/d:" + name, sr["key"], name)
         return groups[name]["key"]
@@ -284,15 +319,15 @@ def _session_rows(add, team, s, now):
         if j not in seen:
             emit(j, group_of(j))
     if tasks:
-        gk = add("dept", sr["key"] + "/d:#tasks", sr["key"], "Task nền")["key"]
+        gk = add("dept", sr["key"] + "/d:#tasks", sr["key"], t("cr.bg_group"))["key"]
         for w in tasks:
             st = _state(w.get("state"))
             started_w = _n(w.get("started"))
             el = fmt_elapsed(now - started_w) if st == "running" and started_w is not None else ""
             tid = _t(w.get("id"), 80)
-            add("bgtask", sr["key"] + "/w:bg:" + tid, gk, "Task " + _t(w.get("id"), 24), state=st, elapsed=el,
-                tk=int(st == "running"), detail=[("Task id", tid), ("Trạng thái", STATE_LABEL.get(st, "")),
-                                                 ("Đã chạy", el), ("tool_use", _t(w.get("tool_use_id"), 80))])
+            add("bgtask", sr["key"] + "/w:bg:" + tid, gk, t("cr.bg_task", id=_t(w.get("id"), 24)), state=st, elapsed=el,
+                tk=int(st == "running"), detail=[(t("cr.f.task_id"), tid), (t("cr.f.status"), state_label(st)),
+                                                 (t("cr.f.elapsed"), el), (t("cr.f.tool_use"), _t(w.get("tool_use_id"), 80))])
 
 
 def row_tag(r):
@@ -306,8 +341,8 @@ def live_text(r) -> str:
     """Cột 'Hoạt động': thời gian chạy, token, lần hoạt động cuối."""
     if r["kind"] in ("project", "team", "dept"):
         return ""
-    parts = [r["status"], r["elapsed"], fmt_tokens(r["tokens"]) + " tok" if r["tokens"] else "",
-             r["ago"] + " trước" if r["ago"] else ""]
+    parts = [r["status"], r["elapsed"], t("cr.tok", n=fmt_tokens(r["tokens"])) if r["tokens"] else "",
+             t("cr.ago", ago=r["ago"]) if r["ago"] else ""]
     return " · ".join(p for p in parts if p)
 
 
@@ -455,7 +490,7 @@ class ControlRoom:
                                     (int(DEFAULT_SIZE[0] * S), int(DEFAULT_SIZE[1] * S)),
                                     (int(MIN_SIZE[0] * S), int(MIN_SIZE[1] * S)), int(top * S))
         win = self.win = tk.Toplevel(self.root)
-        win.title("Wisp · Control room")
+        win.title(t("cr.window"))
         win.configure(bg=th["bg"])
         win.geometry(f"{w}x{h}+{x}+{y}")
         win.minsize(int(MIN_SIZE[0] * S), int(MIN_SIZE[1] * S))
@@ -469,11 +504,12 @@ class ControlRoom:
         bar = tk.Frame(win, bg=th["surface"])
         bar.grid(row=0, column=0, sticky="ew")
         self._sum = {}
-        for i, (key, cap) in enumerate((("projects", "Dự án"), ("teams", "Team"), ("subagents", "Subagent chạy"),
-                                        ("tasks", "Task nền chạy"), ("stuck", "Treo"))):
+        for i, (key, cap) in enumerate((("projects", t("cr.sum.projects")), ("teams", t("cr.sum.teams")),
+                                        ("subagents", t("cr.sum.subagents")), ("tasks", t("cr.sum.tasks")),
+                                        ("stuck", t("cr.sum.stuck")))):
             cell = tk.Frame(bar, bg=th["surface"])
             cell.pack(side="left", padx=(pad, int(8 * S)), pady=int(8 * S))
-            var = tk.StringVar(value="0")
+            var = tk.StringVar(master=win, value="0")
             lbl = tk.Label(cell, textvariable=var, bg=th["surface"], fg=th["fg"], font=self._font("f_big"))
             lbl.pack(anchor="w")
             tk.Label(cell, text=cap, bg=th["surface"], fg=th["muted"], font=self._font("f_xs")).pack(anchor="w")
@@ -492,9 +528,9 @@ class ControlRoom:
         left.rowconfigure(0, weight=1)
         tree = self.tree = ttk.Treeview(left, style="Cr.Treeview", columns=("state", "live"), show="tree headings",
                                         selectmode="browse")
-        tree.heading("#0", text="Dự án / team / session / worker", anchor="w")
-        tree.heading("state", text="Trạng thái", anchor="w")
-        tree.heading("live", text="Chạy · token · hoạt động cuối", anchor="w")
+        tree.heading("#0", text=t("cr.col.tree"), anchor="w")
+        tree.heading("state", text=t("cr.col.state"), anchor="w")
+        tree.heading("live", text=t("cr.col.live"), anchor="w")
         tree.column("#0", width=int(340 * S), stretch=True)
         tree.column("state", width=int(110 * S), stretch=False)
         tree.column("live", width=int(260 * S), stretch=False)
@@ -505,7 +541,7 @@ class ControlRoom:
         for st, tag in STATE_TAG.items():
             tree.tag_configure(tag, foreground={"running": th["green"], "stuck": th["yellow"], "failed": th["red"],
                                                 "done": th["muted"]}.get(st, th["faint"]))
-        self._empty = tk.Label(tree, text="Chưa có session nào đang chạy", bg=th["surface"], fg=th["muted"],
+        self._empty = tk.Label(tree, text=t("cr.empty"), bg=th["surface"], fg=th["muted"],
                                font=self._font("f_sm"))
         tree.bind("<<TreeviewSelect>>", lambda e: self._show_detail())
         tree.bind("<Double-1>", self._on_double)          # bấm đơn chỉ chọn; bấm đúp hoặc Enter mới focus session
@@ -514,7 +550,7 @@ class ControlRoom:
         right = tk.Frame(body, bg=th["surface"], width=int(300 * S))
         right.grid(row=0, column=1, sticky="ns", padx=pad, pady=pad)
         right.grid_propagate(False)
-        self._detail_title, self._detail = tk.StringVar(), tk.StringVar()
+        self._detail_title, self._detail = tk.StringVar(master=win), tk.StringVar(master=win)
         tk.Label(right, textvariable=self._detail_title, bg=th["surface"], fg=th["fg"], font=self._font("f_title"),
                  anchor="w", justify="left", wraplength=int(272 * S)).pack(fill="x", padx=pad, pady=(pad, int(6 * S)))
         tk.Label(right, textvariable=self._detail, bg=th["surface"], fg=th["fg2"], font=self._font("f_sm"),
@@ -603,8 +639,8 @@ class ControlRoom:
     def _show_detail(self):
         r = self._rows.get(self._selected())
         if r is None:
-            self._detail_title.set("Chi tiết")
-            self._detail.set("Chọn một mục trong cây để xem chi tiết.")
+            self._detail_title.set(t("cr.detail"))
+            self._detail.set(t("cr.detail.hint"))
         else:
             self._detail_title.set(r["name"])
             self._detail.set("\n".join(f"{k}: {v}" for k, v in r["detail"] if v))
