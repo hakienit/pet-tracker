@@ -13,11 +13,13 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import re
 import shlex
 import socket
 import subprocess
 import sys
 import threading
+import urllib.parse
 from pathlib import Path
 
 __all__ = [
@@ -201,11 +203,19 @@ return "notfound"
 '''
 
 
+def deep_link(host) -> str | None:
+    """Deep link mở session trong Claude desktop; None nếu host không đúng charset của app (xem win_focus.py)."""
+    if not isinstance(host, str) or not re.fullmatch(r"local_[A-Za-z0-9-]{1,64}", host):
+        return None
+    return "claude://code/continue?session=" + urllib.parse.quote(host, safe="")
+
+
 def focus_session(sess: dict) -> tuple:
     host = sess.get("host_session_id") or ""
-    if sess.get("entrypoint") == "claude-desktop" and host.startswith("local_"):
+    link = deep_link(host) if sess.get("entrypoint") == "claude-desktop" else None
+    if link:
         # TODO(mac): xác minh Claude desktop trên macOS xử lý deep link này giống Windows.
-        open_path(f"claude://code/continue?session={host}")
+        open_path(link)
         return True, "deep link Claude desktop"
     pid = int(sess["pid"])
     tty = _ps(pid, "tty")
