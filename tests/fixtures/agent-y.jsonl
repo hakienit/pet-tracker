@@ -1,0 +1,1 @@
+{"parentUuid":null,"isSidechain":true,"message":{"id":"msg_y1","type":"message","role":"assistant","model":"claude-test-1","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"type":"assistant","uuid":"u-msg_y1","timestamp":"2026-10-22T08:03:00.000Z","cwd":"/tmp/fx","gitBranch":"main"}
