@@ -54,6 +54,9 @@ DEFAULTS = {
     "agent_prefixes": ["les-"],
     # Worker đang chạy mà im lặng quá số giây này thì tính là "stuck"
     "stuck_after_sec": 120,
+    # Board 2.5D: trần số bàn vẽ ra (mọi sàn cộng lại, kẹp [1, 200]) và số subagent vẽ quanh mỗi bàn (kẹp [0, 12])
+    "board_max_desks": 48,
+    "board_max_workers": 12,
 }
 
 

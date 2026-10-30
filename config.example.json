@@ -10,5 +10,7 @@
   "danger_percent": 85,
   "bubble_size": 64,
   "agent_prefixes": ["les-"],
-  "stuck_after_sec": 120
+  "stuck_after_sec": 120,
+  "board_max_desks": 48,
+  "board_max_workers": 12
 }
