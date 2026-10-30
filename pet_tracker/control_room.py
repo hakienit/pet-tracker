@@ -296,7 +296,7 @@ def _session_rows(add, team, s, now):
                 el = fmt_elapsed(last_w - started_w) if started_w is not None and last_w is not None else ""
             ag = fmt_elapsed(now - last_w) if last_w is not None else ""
             tok = _i(w.get("tokens"))
-            desc, typ = _t(w.get("description")), _t(w.get("agent_type"), 80)
+            desc, typ = _t(w.get("description")), _t(w.get("type"), 80)
             r = add("subagent", sr["key"] + "/w:sub:" + _t(w.get("id"), 80), pk,
                     _t(desc, MAX_NAME) or typ or t("cr.anon_subagent"),
                     state=st, elapsed=el, ago=ag, tokens=tok, ag=int(st in _LIVE), stuck=int(st == "stuck"), detail=[
@@ -308,7 +308,7 @@ def _session_rows(add, team, s, now):
                 stack.append((c, r["key"]))
 
     def group_of(j):
-        name = _t(subs[j].get("department"), 80) or _t(subs[j].get("agent_type"), 80) or t("cr.other")
+        name = _t(subs[j].get("department"), 80) or _t(subs[j].get("type"), 80) or t("cr.other")
         if name not in groups:
             groups[name] = add("dept", sr["key"] + "/d:" + name, sr["key"], name)
         return groups[name]["key"]

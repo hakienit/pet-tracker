@@ -247,6 +247,17 @@ class FlattenTest(unittest.TestCase):
         eng = [r for r in rows_of() if r["kind"] == "dept" and r["name"] == "engineering"][0]
         self.assertEqual(eng["summary"], "2 agent")
 
+    def test_subagent_detail_shows_type(self):
+        # org.build xuất khoá "type"; dòng "Loại agent" phải đọc khoá đó
+        a = [r for r in rows_of() if r["kind"] == "subagent" and r["name"] == "desc A"][0]
+        self.assertIn((t("cr.f.agent_type"), "les-engineering"), a["detail"])
+
+    def test_empty_description_names_row_by_type(self):
+        sessions = [sess(workers=[sub("A", description="")])]
+        rows = [r for r in rows_of(sessions) if r["kind"] == "subagent"]
+        self.assertEqual([r["name"] for r in rows], ["les-engineering"])
+        self.assertNotEqual(rows[0]["name"], t("cr.anon_subagent"))
+
 
 class SignatureTest(unittest.TestCase):
     def sigs(self, sessions=None, now=NOW):
