@@ -31,3 +31,12 @@ Plan: `docs/plans/2026-10-30-board-and-3d-viewer-plan.md`, mục "Bằng chứng
   `SPRITE_SIZE = 128`, không lùi cỡ. Board: cỡ bàn 36 (`36 * kit.S`, S = 1) có tổng 8 ảnh chậm nhất 24,1 đến 25,9 ms,
   thấp hơn 100 ms, nên không đổi `MAX_SPRITES_PER_RENDER`. Máy tải nên số đo có thể cao hơn số thật một chút; biên rất lớn
   nên không đổi kết luận. Chưa đo trên Windows.
+
+## S1 `office.py` và hai khoá config (T-L12), 2026-10-30
+- commit: chưa (working tree sau `73c04df`)  python: 3.13.1  máy: Apple M2, macOS 27.0.1 arm64
+- lệnh: `$PY -m unittest tests.test_office -v` (T-L12 in số đo ra stderr, test không khẳng định thời gian)
+- kết quả: `office_layout` với 60 session x 500 worker: 67,4 ms (`prev=None`), 60,5 ms (`prev=layout`); các lượt khác
+  khoảng 64 đến 71 ms (`prev=None`). `tests.test_office`: 76 test OK. Toàn bộ suite: 496 test OK. Mutation check của
+  agent: 16 lỗi cố ý, 15 bị bắt, lỗi thứ 16 ("cụm mới lấy slot cao nhất") được thêm test và nay bị bắt.
+- kết luận: đạt. Review S1 chưa báo khi commit; người dùng yêu cầu commit và push trước. Hai cách đọc spec của agent
+  (thay thế chỉ khi newcomer còn sống ở bước 4c/4d/5; điều kiện 4d) đang chờ phán quyết của Review.
