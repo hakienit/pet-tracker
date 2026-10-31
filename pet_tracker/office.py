@@ -208,6 +208,11 @@ def _lowest_free(used) -> int:
 
 
 # ---------------------------------------------------------------- worker và device quanh một bàn
+def _order(w):
+    """Thứ tự xử lý worker: (running và stuck trước, started tăng dần với None cuối, id)."""
+    return w["state"] not in _ALIVE, w["started"] is None, w["started"] or 0.0, w["id"], w["key"]
+
+
 def _place_workers(subs, prev_slots, cap):
     """Trả (cells[lane][slot] -> worker|None, danh sách worker không vẽ)."""
     cells = [[None] * len(LANES[0]) for _ in LANES]
@@ -216,53 +221,60 @@ def _place_workers(subs, prev_slots, cap):
     def owner(lane):
         return next((c["dept"] for c in cells[lane] if c is not None), None)
 
-    order = sorted(subs, key=lambda w: (w["state"] not in _ALIVE, w["started"] is None, w["started"] or 0.0,
-                                         w["id"], w["key"]))
-    fresh = []
-    for w in order:                                           # 1. giữ ô đã gán
+    def place(w):                                             # 4. một worker mới; worker bị thay vào `more`
+        nonlocal drawn
+        if drawn < cap:
+            for ln in range(len(LANES)):                      # a. ô trống thấp nhất trong lane của phòng ban
+                if owner(ln) == w["dept"] and None in cells[ln]:
+                    cells[ln][cells[ln].index(None)] = w
+                    drawn += 1
+                    return True
+            for ln in range(len(LANES)):                      # b. ô 0 của lane không chủ thấp nhất
+                if owner(ln) is None:
+                    cells[ln][0] = w
+                    drawn += 1
+                    return True
+        # c, d chỉ cho worker còn sống: worker đã xong mà thay được nhau thì cùng đầu vào sẽ đổi chỗ vòng tròn
+        if w["state"] not in _ALIVE:
+            return False
+        cand = [(c["last"] or 0.0, c["key"], ln, sl) for ln in range(len(LANES)) if owner(ln) == w["dept"]
+                for sl, c in enumerate(cells[ln]) if c is not None and c["state"] not in _ALIVE]
+        if cand:                                              # c. thay worker đã xong có last_activity nhỏ nhất
+            _, _, ln, sl = min(cand)
+            more.append(cells[ln][sl])
+            cells[ln][sl] = w
+            return True
+        for ln in range(len(LANES)):                          # d. giải phóng lane thấp nhất chỉ có worker đã xong
+            ws = [c for c in cells[ln] if c is not None]
+            if ws and all(c["state"] not in _ALIVE for c in ws):
+                more.extend(ws)
+                cells[ln] = [w] + [None] * (len(LANES[0]) - 1)
+                drawn += 1 - len(ws)
+                return True
+        return False
+
+    queue = []
+    for w in sorted(subs, key=_order):                        # 1. giữ ô đã gán
         p = prev_slots.get(w["key"])
         if p is not None and drawn < cap and cells[p[0]][p[1]] is None and owner(p[0]) in (None, w["dept"]):
             cells[p[0]][p[1]] = w
             drawn += 1
         else:
-            fresh.append(w)
-    for w in fresh:                                           # 4. worker mới theo thứ tự xử lý
-        alive, placed = w["state"] in _ALIVE, False
-        if drawn < cap:
-            for ln in range(len(LANES)):                      # a. ô trống thấp nhất trong lane của phòng ban
-                if owner(ln) == w["dept"] and None in cells[ln]:
-                    cells[ln][cells[ln].index(None)] = w
-                    placed = True
-                    break
-            if not placed:                                    # b. ô 0 của lane không chủ thấp nhất
-                for ln in range(len(LANES)):
-                    if owner(ln) is None:
-                        cells[ln][0] = w
-                        placed = True
-                        break
-            drawn += placed
-        # ponytail: thay thế (c, d) chỉ khi worker mới còn sống. Spec không nói, nhưng nếu worker đã xong cũng được
-        # thay worker đã xong khác thì worker vào `more` ở lần gọi này lại thành "mới" ở lần sau và đổi chỗ vòng tròn.
-        if not placed and alive:
-            cand = [(c["last"] or 0.0, c["key"], ln, sl) for ln in range(len(LANES)) if owner(ln) == w["dept"]
-                    for sl, c in enumerate(cells[ln]) if c is not None and c["state"] not in _ALIVE]
-            if cand:                                          # c. thay worker đã xong có last_activity nhỏ nhất
-                _, _, ln, sl = min(cand)
-                more.append(cells[ln][sl])
-                cells[ln][sl] = w
-                placed = True
-            elif all(owner(ln) is not None for ln in range(len(LANES))):
-                for ln in range(len(LANES)):                  # d. giải phóng lane thấp nhất chỉ có worker đã xong
-                    ws = [c for c in cells[ln] if c is not None]
-                    if ws and all(c["state"] not in _ALIVE for c in ws):
-                        more.extend(ws)
-                        cells[ln] = [w] + [None] * (len(LANES[0]) - 1)
-                        drawn += 1 - len(ws)
-                        placed = True
-                        break
-        if not placed:                                        # e.
-            more.append(w)
-    return cells, more
+            queue.append(w)
+    # Lặp tới khi một lượt không đặt thêm ai: 4d giải phóng nhiều ô hơn số nó dùng, phần dư phải được xét lại ngay,
+    # nếu không lần gọi sau (cùng đầu vào) sẽ đặt chúng và Layout đổi. Lượt cuối không đổi gì nên lần gọi sau lặp lại
+    # đúng lượt đó. Dừng vì worker sống không bị thay và ô trống mới chỉ sinh ra khi một worker sống được đặt.
+    for _ in range(len(subs) + len(LANES) * len(LANES[0]) + 1):  # chặn trên: hồi quy thành lỗi thay vì treo UI
+        more, progressed = [], False
+        for w in sorted(queue, key=_order):
+            if place(w):
+                progressed = True
+            else:
+                more.append(w)                                # e.
+        if not progressed:
+            return cells, more
+        queue = more
+    raise AssertionError("_place_workers không dừng")
 
 
 def _place_devices(bgs, prev_slots):
@@ -280,7 +292,7 @@ def _place_devices(bgs, prev_slots):
         if None in cells:
             cells[cells.index(None)] = v
             continue
-        # ponytail: chỉ device đang chạy mới thay được device khác (cùng lý do ở _place_workers)
+        # chỉ device đang chạy mới thay được device khác (cùng lý do ở _place_workers)
         cand = [(c["started"] or 0.0, c["key"], i) for i, c in enumerate(cells) if c["state"] != "running"]
         if v["state"] == "running" and cand:
             i = min(cand)[2]
@@ -299,16 +311,8 @@ def _limits(cfg) -> dict:
             "devices": DEVICE_SLOTS}
 
 
-def office_layout(org_out, cfg, prev=None) -> dict:
-    limits = _limits(cfg)
-    out = {"version": VERSION, "limits": limits, "styles": _styles(), "floors": [],
-           "more": {"desks": 0, "stuck_desks": 0}}
-    if not valid_org(org_out):
-        return out
-    floors = _parse(org_out)
-    slots = _prev_slots(prev, limits)
-
-    # --- bàn: giữ trước, rồi nhận bàn mới theo (started_at, None cuối, khoá)
+def _assign_desks(floors, slots, limits, more) -> dict:
+    """Khoá bàn -> pod: giữ trước, rồi nhận bàn mới theo (started_at, None cuối, khoá); bàn dư đếm vào `more`."""
     pods, placed, drawn = {}, {}, 0
     pending = []
     for f in floors:
@@ -331,8 +335,20 @@ def office_layout(org_out, cfg, prev=None) -> dict:
             placed[d["key"]] = p
             drawn += 1
         else:
-            out["more"]["desks"] += 1
-            out["more"]["stuck_desks"] += d["stuck"] > 0
+            more["desks"] += 1
+            more["stuck_desks"] += d["stuck"] > 0
+    return placed
+
+
+def office_layout(org_out, cfg, prev=None) -> dict:
+    limits = _limits(cfg)
+    out = {"version": VERSION, "limits": limits, "styles": _styles(), "floors": [],
+           "more": {"desks": 0, "stuck_desks": 0}}
+    if not valid_org(org_out):
+        return out
+    floors = _parse(org_out)
+    slots = _prev_slots(prev, limits)
+    placed = _assign_desks(floors, slots, limits, out["more"])
 
     # --- sàn và cụm chỉ gồm nút có bàn vẽ; kept trước, mới theo (root | top, khoá)
     live = []

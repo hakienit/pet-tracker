@@ -1,6 +1,7 @@
 # Board 2.5D: văn phòng isometric của các agent
 
-Trạng thái: rev 4, người dùng đã duyệt (2026-10-30, errata sau review plan). Rev 3 tích hợp báo cáo của Review; rev 4
+Trạng thái: rev 5 (2026-10-31, người dùng chọn F1 và F2 của Review S1: sửa bước 4 và 5 của "Quy tắc xếp").
+Rev 4 người dùng đã duyệt (2026-10-30, errata sau review plan). Rev 3 tích hợp báo cáo của Review; rev 4
 chỉ sửa errata (lặp chữ, thứ tự test, mô tả lỗi `type`/`agent_type`, cách test phần App, che tên `theme`, mục Tài liệu, ngưỡng
 rasterize), không đổi quyết định nào. Mọi mục đánh dấu "Quyết định mới (cần duyệt)" đã được người dùng duyệt nguyên văn;
 tổng hợp ở cuối file. Slice S0 (sửa lỗi `type`/`agent_type` của Control room) làm trước, người dùng đã duyệt.
@@ -177,20 +178,30 @@ Mọi cấp dùng chung một quy tắc: **giữ ô đã gán, chỉ cấp ô tr
 3. Slot mới: sàn lấy `level` trống thấp nhất (sàn mới theo thứ tự `root` tăng dần); cụm lấy `slot` trống thấp nhất
    (theo `top` tăng dần); bàn lấy pod trống thấp nhất (theo thứ tự nhận ở bước 2). Sàn hoặc cụm không còn bàn nào bị
    bỏ khỏi Layout và `level`/`slot` của nó được giải phóng. Sàn và cụm chỉ có bàn không vẽ không xuất hiện.
-4. Worker (subagent) của một bàn, theo thứ tự xử lý `(running và stuck trước, started tăng dần, id)`. Mỗi lane có
-   tối đa một phòng ban sở hữu, một phòng ban có thể sở hữu nhiều lane; lane không còn worker nào thì hết chủ.
-   Worker mới lấy, lần lượt, ô đầu tiên khớp:
+4. Worker (subagent) của một bàn, theo thứ tự xử lý `(running và stuck trước, started tăng dần với None cuối, id)`.
+   Mỗi lane có tối đa một phòng ban sở hữu, một phòng ban có thể sở hữu nhiều lane; lane không còn worker nào thì hết
+   chủ.
+   Worker mới lấy, lần lượt, ô đầu tiên khớp (a và b chỉ khi số worker vẽ còn dưới `limits.workers`; c và d chỉ cho
+   worker mới còn sống, state `running`/`stuck`):
    a. ô trống thấp nhất (lane tăng, ô tăng) trong lane do phòng ban của nó sở hữu;
    b. ô 0 của lane không chủ có số thấp nhất, lane đó thành của phòng ban của nó;
    c. thay thế một worker không còn sống (state khác `running`/`stuck`) trong lane do phòng ban của nó sở hữu, chọn
       `last_activity` nhỏ nhất (None tính 0), hoà thì theo khoá; worker bị thay vào `more` của bàn;
-   d. nếu mọi lane đều có chủ khác và có lane chỉ chứa worker không còn sống: giải phóng cả lane (các worker đó vào
-      `more`) rồi làm như b; có nhiều lane như vậy thì giải phóng lane có số thấp nhất;
+   d. nếu có lane chỉ chứa worker không còn sống: giải phóng cả lane (các worker đó vào `more`) và đặt worker mới vào
+      ô 0 của lane đó, lane thành của phòng ban của nó; có nhiều lane như vậy thì giải phóng lane có số thấp nhất;
    e. không được thì vào `more` của bàn.
+   Sau một lượt qua mọi worker mới, các worker trong `more` (kể cả worker vừa bị thay ở c, d) được xét lại theo đúng
+   luật a đến e và theo thứ tự xử lý; lặp tới khi một lượt không đặt thêm worker nào. Lý do: d giải phóng cả lane nhưng
+   chỉ dùng một ô, số worker vẽ giảm `số worker của lane - 1`; nếu không xét lại ngay thì lần gọi sau với cùng đầu vào
+   sẽ đặt các worker đó vào ô trống và Layout đổi.
    Worker đang sống không bao giờ bị thay. Tổng số worker vẽ của bàn không vượt `limits.workers`; chạm trần thì chỉ
-   còn c và d (thay, không thêm), còn lại vào `more`.
-5. Device (BgTask), theo thứ tự `(running trước, started tăng dần, id)`: lấy device slot trống thấp nhất; hết chỗ thì
-   thay device không `running` có `started` nhỏ nhất; không được thì vào `more` của bàn. Device `running` không bị thay.
+   còn c và d (thay, không thêm; d có thể làm số worker vẽ giảm), còn lại vào `more`. Worker mới đã xong không thay
+   worker đã xong, kể cả khi nó mới hơn: nếu cho thay thì worker vào `more` ở lần gọi này lại là worker mới ở lần sau,
+   và cùng đầu vào làm worker đổi chỗ vòng tròn (L-S2 hỏng).
+5. Device (BgTask), theo thứ tự `(running trước, started tăng dần với None cuối, id)`: lấy device slot trống thấp
+   nhất; hết chỗ thì device mới `running` thay device không `running` có `started` nhỏ nhất (None tính 0, nên bị thay
+   trước; hoà thì theo khoá); không được thì vào `more` của bàn. Device `running` không bị thay; device mới không
+   `running` không thay device nào (cùng lý do ở bước 4).
 6. `desk.more.n` là số worker (subagent) và device không vẽ; `counts` đếm chúng theo `state`.
 
 Lần gọi đầu (`prev=None`) cho cùng vị trí (slot và ô) với mọi thứ tự của đầu vào, nhờ thứ tự cố định ở bước 2, 3, 4, 5.

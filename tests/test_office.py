@@ -103,6 +103,20 @@ def big_org(projects=2, teams=8, desks=48, subs=12, tasks=3, now=NOW):
     return org.build(sessions, CFG, now)
 
 
+def org_none(o, sids=(), wids=(), field="started"):
+    """Đặt None tại chỗ cho `started_at` của session trong `sids` và `field` của worker trong `wids` (org.build không
+    sinh None ở đây)."""
+    for p in o["projects"]:
+        for t in p["teams"]:
+            for ss in t["sessions"]:
+                if ss["session_id"] in sids:
+                    ss["started_at"] = None
+                for w in ss["workers"]:
+                    if w["id"] in wids:
+                        w[field] = None
+    return o
+
+
 # ---------------------------------------------------------------- tiện ích đọc Layout
 def all_desks(l):
     return [(f, c, d) for f in l["floors"] for c in f["clusters"] for d in c["desks"]]
@@ -305,6 +319,14 @@ class RobustTest(unittest.TestCase):
         for prev in (5, "x", [], {}, {"version": 2}, {"version": 1}):
             self.assertEqual(office.office_layout(o, LCFG, prev), base)
 
+    def test_started_none_sorts_last(self):
+        o = org_none(org_of([S("n", started=1), S("a", started=5), S("b", started=1)]), sids=("n",))
+        self.assertEqual({k: d["slot"] for k, d in by_sid(office.office_layout(o, LCFG)).items()},
+                         {"b": 0, "a": 1, "n": 2})
+        self.assertEqual(sorted(by_sid(office.office_layout(o, {"board_max_desks": 2}))), ["a", "b"])
+        o = org_none(org_of([S("a", workers=[sub("e1", started=5), sub("e0", started=9)])]), wids=("e0",))
+        self.assertEqual(wpos(by_sid(office.office_layout(o, LCFG))["a"])["e0"][:2], (0, 1))
+
 
 # ================================================================ T-L3
 class DeterminismTest(unittest.TestCase):
@@ -375,7 +397,7 @@ class DeskStabilityTest(unittest.TestCase):
         # khoá cũ s2 trở lại: như session mới, không đẩy bàn khác
         l3 = lay(mk(["s2", "s3", "s5", "s6", "s7", "s8"]), prev=l2)
         p3 = by_sid(l3)
-        self.assertEqual(p3["s2"]["slot"], 2 if p2["s3"]["slot"] != 2 else 5)
+        self.assertEqual(p3["s2"]["slot"], 5)
         for i in (3, 5, 6, 7, 8):
             self.assertEqual(p3["s%d" % i]["slot"], p2["s%d" % i]["slot"])
 
@@ -522,6 +544,41 @@ class LaneRulesTest(unittest.TestCase):
         self.assertEqual(a1["d5"][:2], (a0["d2"][0], 0))
         self.assertEqual(d["more"], {"n": 1, "counts": {"done": 1}})
 
+    def _4c_victim(self, last1, last2, none2=False):
+        base = [sub("ea", started=1), sub("q", dept="qa", started=2), sub("r", dept="review", started=3),
+                sub("o", dept="ops", started=4), sub("ed1", "done", started=6, last=last1),
+                sub("ed2", "done", started=5, last=last2)]  # ed1 khoá nhỏ hơn nhưng ở ô cao hơn
+        o0, o1 = org_of([S("a", workers=base)]), org_of([S("a", workers=base + [sub("en", started=7)])])
+        if none2:
+            org_none(o0, wids=("ed2",), field="last_activity")
+            org_none(o1, wids=("ed2",), field="last_activity")
+        l1 = office.office_layout(o1, LCFG, office.office_layout(o0, LCFG))
+        return ({"ed1", "ed2"} - set(wpos(by_sid(l1)["a"]))).pop()
+
+    def test_4c_last_none_counts_as_zero_and_ties_by_key(self):
+        self.assertEqual(self._4c_victim(50, 99, none2=True), "ed2")
+        self.assertEqual(self._4c_victim(10, 10), "ed1")
+        self.assertEqual(self._4c_victim(20, 10), "ed2")
+
+    def test_4d_at_low_cap_with_free_lane_frees_finished_lane(self):
+        # F1 của Review S1: chạm trần mà còn lane không chủ, worker đang chạy vẫn lấy lane toàn worker đã xong
+        cfg = {"board_max_workers": 4}
+        base = [sub("e%d" % i, "done", started=i, last=100 + i) for i in range(3)] + \
+               [sub("q", "done", dept="qa", started=5, last=105)]
+        l0 = lay([S("a", workers=base)], cfg)
+        a0 = wpos(by_sid(l0)["a"])
+        self.assertEqual(({a0["e%d" % i][0] for i in range(3)}, a0["q"][0]), ({0}, 1))
+        l1 = lay([S("a", workers=base + [sub("o1", dept="ops", started=7), sub("o2", dept="ops", started=8)])],
+                 cfg, l0)
+        d = by_sid(l1)["a"]
+        a1 = wpos(d)
+        # 4d trừ 3 worker đã vẽ: o2 vào ô kế tiếp của lane, không giải phóng lane của qa; còn một chỗ dưới trần nên
+        # e0 (đầu thứ tự xử lý) được xét lại ngay và lấy ô 0 của lane không chủ thấp nhất
+        self.assertEqual((a1["o1"][:2], a1["o2"][:2], a1["q"], a1["e0"][:2]), ((0, 0), (0, 1), a0["q"], (2, 0)))
+        self.assertEqual(d["more"], {"n": 2, "counts": {"done": 2}})
+        self.assertEqual(lay([S("a", workers=base + [sub("o1", dept="ops", started=7),
+                                                     sub("o2", dept="ops", started=8)])], cfg, l1), l1)
+
     def test_fixed_point_no_churn_with_same_input(self):
         # cùng đầu vào, `prev` là Layout vừa dựng: không worker/device/bàn nào đổi chỗ (không đổi chỗ vòng tròn)
         for seed in (1, 2, 3):
@@ -532,6 +589,26 @@ class LaneRulesTest(unittest.TestCase):
                 l2 = office.office_layout(o, cfg, l1)
                 self.assertEqual(l1, l0)
                 self.assertEqual(l2, l0)
+
+    def test_fixed_point_after_replacement_from_older_prev(self):
+        # prev từ đầu vào cũ rồi thêm worker sống: 4d và 4c chạy thật; lần gọi kế với cùng đầu vào không đổi Layout
+        ws = [sub("e%d" % i, "done", started=i, last=100 + i) for i in range(4)] + \
+             [sub("r", dept="review", started=10), sub("o", dept="ops", started=11)]
+        l1 = lay([S("a", workers=ws + [sub("x1", dept="qa", started=20)])], prev=lay([S("a", workers=ws)]))
+        self.assertEqual(lay([S("a", workers=ws + [sub("x1", dept="qa", started=20)])], prev=l1), l1)
+        rnd = random.Random(7)
+        for _ in range(400):
+            cfg = {"board_max_workers": rnd.randint(1, 12)}
+            old = [sub("w%d" % i, rnd.choice(("running", "done", "done", "failed")), dept=rnd.choice(DEPTS + ("x",)),
+                       started=rnd.randint(1, 50), last=rnd.randint(1, 50)) for i in range(rnd.randint(0, 14))]
+            keep = [w for w in old if rnd.random() < 0.8]
+            new = keep + [sub("n%d" % i, rnd.choice(("running", "stuck", "done")), dept=rnd.choice(DEPTS + ("x",)),
+                              started=rnd.randint(1, 60)) for i in range(rnd.randint(0, 8))]
+            l1 = lay([S("a", workers=new)], cfg, lay([S("a", workers=old)], cfg))
+            d = by_sid(l1)["a"]
+            self.assertLessEqual(len(d["workers"]), cfg["board_max_workers"])
+            self.assertEqual(len(d["workers"]) + d["more"]["n"], len(new))
+            self.assertEqual(lay([S("a", workers=new)], cfg, l1), l1)
 
     def test_finished_newcomer_does_not_evict_finished_worker(self):
         ws = [sub("d%d" % i, "done", started=i, last=100 + i) for i in range(1, 5)]
@@ -585,6 +662,20 @@ class DeviceTest(unittest.TestCase):
         self.assertIn("r", {v["id"] for v in d["devices"]})
         self.assertEqual(len(d["devices"]), 3)
         self.assertEqual(d["more"]["n"], 1)
+
+    def test_running_take_lowest_slots_before_finished(self):
+        ds = [bg("d%d" % i, "done", started=5900.0 + i) for i in range(3)] + \
+             [bg("r2", started=5990.0), bg("r1", started=5980.0)]
+        d = by_sid(lay([S("a", workers=ds)]))["a"]
+        self.assertEqual([(v["id"], v["slot"]) for v in d["devices"]], [("r1", 0), ("r2", 1), ("d0", 2)])
+        self.assertEqual(d["more"], {"n": 2, "counts": {"done": 2}})
+
+    def test_started_none_device_replaced_first(self):
+        ds = [bg("d0", "done", started=5900.0), bg("d1", "done", started=5901.0), bg("dn", "done", started=5902.0)]
+        o0 = org_none(org_of([S("a", workers=ds)]), wids=("dn",))
+        o1 = org_none(org_of([S("a", workers=ds + [bg("r", started=5999.0)])]), wids=("dn",))
+        l1 = office.office_layout(o1, LCFG, office.office_layout(o0, LCFG))
+        self.assertEqual({v["id"] for v in by_sid(l1)["a"]["devices"]}, {"d0", "d1", "r"})
 
 
 # ================================================================ T-L8
