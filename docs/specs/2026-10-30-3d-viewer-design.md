@@ -1,6 +1,6 @@
 # Viewer 3D: xem "văn phòng" của các agent trong tab trình duyệt
 
-Trạng thái: rev 6, **người dùng đã duyệt (2026-10-30), errata sau review plan** (E1 đến E6, không đổi quyết định nào): bỏ `Wisp.spec` khỏi đóng gói (E1), chốt payload > 1 MiB (E2), chốt `strings` và bỏ `lang` khỏi `ViewerServer` (E3), sửa bước 3 của lệnh tái lập checksum (E4), ghi chú mã S (E5), đổi nhãn "T2" (E6).
+Trạng thái: rev 6, **người dùng đã duyệt (2026-10-30), errata sau review plan** (E1 đến E6, không đổi quyết định nào; E7 `surrogatepass` ở quy tắc 7 và E8 `live` sau trần ở quy tắc 8 và C12, E9 nhãn `sid[:8]` ở quy tắc 5, ghi 2026-10-31 sau Review S2b): bỏ `Wisp.spec` khỏi đóng gói (E1), chốt payload > 1 MiB (E2), chốt `strings` và bỏ `lang` khỏi `ViewerServer` (E3), sửa bước 3 của lệnh tái lập checksum (E4), ghi chú mã S (E5), đổi nhãn "T2" (E6).
 Rev 5: người dùng đã duyệt (2026-10-30). Mọi "Quyết định mới (cần duyệt)" A đến AB của rev 4 đã được duyệt; riêng **B và I theo phương án rẻ hơn của Review**:
 B là vendor `OrbitControls.js` của three r186 (không tự viết orbit), I là vài dòng `test -f`/`Test-Path` trong script build (không có `tools/check_bundle.py`). Mục cuối đổi tên thành "Quyết định đã duyệt".
 Rev 2 khớp spec với Layout thật của spec board 2.5D (lồng floors/clusters/desks, toạ độ cục bộ theo sàn, `prev`, `styles`, `seed`, `ref`). Rev 3 tích hợp báo cáo của `les-security`
@@ -223,7 +223,8 @@ Quy tắc chuyển đổi (mỗi dòng có test, xem "Kiểm thử" C1 đến C1
    chạy lại bộ làm sạch của `org.py` (bỏ ký tự điều khiển C0/C1, bidi, U+200B-U+200F, U+2028/U+2029, U+FEFF) rồi mới cắt:
    - `project`: `label = floor.name`, `sub = ""`.
    - `team`: `label` là tên thư mục cuối của `top` (cắt dấu phân cách cuối; nếu rỗng thì `top`), `sub = branch` (hoặc `""`).
-   - `session`: `label = desk.name`, `sub = ""`.
+   - `session`: `label = desk.name`, `sub = ""`; nếu `desk.name` bằng `session_id[:8]` (tên dự phòng của `claude_data`
+     cho phiên chưa có tên) thì `label = ""` (errata E9, người dùng chọn 2026-10-31: S21 cấm session id trong payload).
    - `subagent`: `label = department` (của Layout); `sub` là `description` của worker trong `org_out`, tra theo `ref`
      (`[pi, ti, si, wi]` trong `projects[pi].teams[ti].sessions[si].workers[wi]`), `""` nếu `ref` hỏng hoặc worker không phải
      subagent hoặc `description` không phải chuỗi.
@@ -235,7 +236,9 @@ Quy tắc chuyển đổi (mỗi dòng có test, xem "Kiểm thử" C1 đến C1
      `tokens` không làm thay đổi `nodes` (phần mà trang diff).
 6. **Cờ cảnh báo.** `session.alert = desk.alert.stuck` (int >= 0) và chỉ có trường khi lớn hơn 0; trang vẽ ring `warn` quanh
    bàn như board.
-7. **Khoá.** `key` trong payload là `hmac.new(key_secret, <khoá Layout>.encode("utf-8"), hashlib.sha256).hexdigest()[:16]`, với `key_secret` là
+7. **Khoá.** `key` trong payload là `hmac.new(key_secret, <khoá Layout>.encode("utf-8", "surrogatepass"), hashlib.sha256).hexdigest()[:16]`
+   (errata E7: `surrogatepass` để khoá chứa surrogate lẻ do agent đưa vào không làm `encode` ném lỗi; với chuỗi hợp lệ
+   kết quả không đổi), với `key_secret` là
    `bytes` (16 byte) do **`ViewerServer` chọn một lần cho mỗi vòng đời server bằng `secrets.token_bytes(16)`** và truyền vào `viewer_payload`
    qua tham số (nên hàm vẫn thuần: không tự sinh ngẫu nhiên, không đọc đĩa, test truyền khoá cố định); `parent` dùng cùng cách. Khoá của nút `overflow` là
    HMAC của `<khoá bàn>/more` (global: `more:desks`). Lý do dùng HMAC có khoá thay cho SHA-256 trần: khoá Layout chứa `root`, `top`, `session_id` và có thể
@@ -245,8 +248,8 @@ Quy tắc chuyển đổi (mỗi dòng có test, xem "Kiểm thử" C1 đến C1
    một vòng đời server** (cùng khoá Layout, cùng `key_secret` cho cùng `key`), vì `prev` cũng mất khi server dừng; qua hai lần mở viewer hoặc hai tiến trình `key` khác nhau
    (Quyết định P, AA). Hai nút ra cùng `key`: giữ nút đầu, bỏ nút sau (va chạm tình cờ 64 bit; có test).
 8. **Trần.** Tối đa `MAX_NODES = 1000` nút (hằng của `viewer_payload.py`). Vượt thì giữ 1000 nút đầu theo thứ tự cha trước con
-   (nên cắt từ cuối: bàn, worker của sàn sau cùng) và `hidden = số nút bị bỏ`. Các số liệu của `more`, `alert` và `live`
-   không bị ảnh hưởng. 1000 vừa đủ cho trần mặc định của board (48 bàn x (1 bàn + tối đa 12 subagent + 3 thiết bị + 1
+   (nên cắt từ cuối: bàn, worker của sàn sau cùng) và `hidden = số nút bị bỏ`. Các số liệu của `more` và `alert` không bị ảnh hưởng;
+   `live` chỉ giữ khoá của nút còn lại, giá trị không đổi so với không cắt (errata E8, theo allowlist C9). 1000 vừa đủ cho trần mặc định của board (48 bàn x (1 bàn + tối đa 12 subagent + 3 thiết bị + 1
    overflow) cộng cụm và sàn, khoảng 830 nút) và vẫn chặn được `board_max_desks` đặt tới 200.
 9. **Không có trong payload**: `ref`, `session_id`, `root`, `top`, `seed`, khoá Layout gốc, `limits`, đường dẫn, và bất kỳ trường
    nào ngoài danh sách ở "Đầu ra". Có test quét khoá của mọi nút theo allowlist.
@@ -880,7 +883,8 @@ chúng qua `cfg` truyền vào, không sửa `config.py`.
 - C11: `alert`: session có `alert.stuck = 2` ra `alert: 2`; `0` thì không có trường; `stuck_desks` của `more` toàn cục đi vào `alert` của
   overflow toàn cục; giá trị âm, không phải số thì thành `0` (bỏ).
 - C12: trần: fixture có 1200 nút Layout (đặt `board_max_desks` cao) cho `len(nodes) == 1000` và `hidden == 200`; cắt từ cuối theo thứ tự
-  cha trước con (không nút nào mất cha); `more`, `alert`, `live` không đổi so với không cắt.
+  cha trước con (không nút nào mất cha); `more`, `alert` không đổi so với không cắt; `live` chỉ còn khoá của nút còn lại,
+  giá trị bằng bản không cắt (E8).
 - C13: `live`: có `tokens` (int >= 0), `started`, `last_activity` cho subagent và `started` cho bgtask, khoá bằng `key` của nút; số lạ thành
   `null`/`0`; `nodes` giống hệt nhau khi chỉ `tokens` hoặc `last_activity` đổi (nên diff của trang không dựng lại).
 - C14: (Layout dựng tay) `layout["version"]` khác `1`, hoặc `layout` không phải dict, ném `ValueError`; `org_out` hỏng (sai kiểu) không ném lỗi.
