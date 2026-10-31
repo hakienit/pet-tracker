@@ -147,6 +147,13 @@ board:
 - Layout chỉ gồm kiểu JSON; `ref` chỉ có nghĩa với đúng `org_out` của lần gọi; `styles` là bản sao sâu.
 - S2a-1, S2a-2 và S2b chỉ đọc các tên trên; cần đổi hình dạng hay tên thì báo Lead, không tự sửa `office.py`.
 
+**Hợp đồng S2a-1 → S2a-2 (ghi 2026-10-31 sau Review S2a-1).** `board.node_detail` trả `(tiêu đề, rows)`; trong `rows`,
+giá trị `None` nghĩa là dòng là một câu đầy đủ (`cr.board.cap`, `cr.board.stuck_desks`): panel in riêng nhãn; giá trị `""`
+vẫn nghĩa là ẩn dòng như panel của cây. Khoá chip là tuple (`board.chip_key(desk)`, `board.MORE_DESKS_KEY`), chỉ dùng làm
+khoá dict/lựa chọn, không thành tag Tk. Nơi gọi chịu trách nhiệm ghép đúng Layout với `org_out` của cùng lần dựng
+(`node_detail` không đối chiếu `session_id`). Kiểm tay S2a-2 soi thứ tự vẽ: worker ở ô pod `(2, 0)` cùng `x+y` với bàn
+nên được vẽ sau và có thể đè góc mặt bàn vài px (Review S2a-1 L5, đúng spec).
+
 **Hợp đồng S2a ‖ S2b (hai consumer độc lập của Layout).** Hai nhánh không gọi nhau và không chia sẻ trạng thái:
 - Mỗi nơi gọi giữ `prev` riêng (L-S5, Quyết định O của viewer). Board giữ `self._layout` trong `Board`; viewer giữ
   `self._prev` trong `ViewerServer` (S3a-1). Không đối tượng Layout nào được truyền giữa hai nơi.
@@ -163,7 +170,9 @@ board:
   là hàm `big_org(...)` trong `tests/test_office.py` (S1 viết, hai nhánh chỉ import).
 
 **Hợp đồng S2b → S3a-1 (bộ chuyển đổi).** `viewer_payload(layout, org_out, theme, mascot_ids, key_secret) -> dict`, đầu ra
-đúng mục "Bộ chuyển đổi" (allowlist C9), `ValueError` khi `layout["version"] != 1` hoặc `layout` không phải dict (C14),
+đúng mục "Bộ chuyển đổi" (allowlist C9), `ValueError` khi `layout["version"] != 1` hoặc `layout` không phải dict (C14), hoặc khi `key_secret` không phải `bytes`
+dài tối thiểu 16 byte (thêm 2026-10-31 sau Security S2b; `ViewerServer` phải có khoá trước lần `publish` đầu, test và
+fake không truyền khoá ngắn),
 hằng `MAX_NODES = 1000`, `FLOOR_GAP = 6`. S3a-* không sửa `viewer_payload.py`.
 
 **Hợp đồng S3a-1 → S3a-2, S3b, S4b, S4c (server).** Giao diện module của viewer ("Giao diện module" và "Trang" của spec
