@@ -248,22 +248,62 @@ def _cap_rows(rows, add, mark):
         ag=sum(r["ag"] for r in workers), tk=sum(r["tk"] for r in workers), stuck=sum(r["stuck"] for r in workers))
 
 
-def _session_rows(add, team, s, now):
-    sid = s.get("session_id") if isinstance(s.get("session_id"), str) else ""
+# chi tiết (nhãn, giá trị) của session, subagent, task nền: dùng chung cho cây và tab Board
+def _session_vals(s, now):
     started, last = _n(s.get("started_at")), _n(s.get("last_activity"))
     totals = s.get("totals") if isinstance(s.get("totals"), dict) else {}
     tokens = sum(_i(totals.get(k)) for k in ("input", "cache_create", "cache_read", "output"))
-    git = s.get("git") if isinstance(s.get("git"), dict) else {}
     elapsed = fmt_elapsed(now - started) if started else ""
     ago = fmt_elapsed(now - last) if last else ""
-    status = _t(s.get("status"), MAX_STATUS)
+    return _t(s.get("status"), MAX_STATUS), elapsed, ago, tokens
+
+
+def session_detail(s, now) -> list:
+    status, elapsed, ago, tokens = _session_vals(s, now)
+    git = s.get("git") if isinstance(s.get("git"), dict) else {}
+    return [(t("cr.f.session"), _t(s.get("session_id"), 64)), (t("cr.f.status"), status),
+            (t("cr.f.model"), _t(s.get("model"), 60)), (t("cr.f.folder"), _t(s.get("cwd"))),
+            (t("cr.f.branch"), _t(git.get("branch"), 80)), (t("cr.f.elapsed"), elapsed),
+            (t("cr.f.last"), t("cr.ago", ago=ago) if ago else ""), (t("cr.f.tokens"), fmt_tokens(tokens))]
+
+
+def _subagent_vals(w, now):
+    st = _state(w.get("state"))
+    started_w, last_w = _n(w.get("started")), _n(w.get("last_activity"))
+    if st in _LIVE:
+        el = fmt_elapsed(now - started_w) if started_w is not None else ""
+    else:
+        el = fmt_elapsed(last_w - started_w) if started_w is not None and last_w is not None else ""
+    ag = fmt_elapsed(now - last_w) if last_w is not None else ""
+    return st, el, ag, _i(w.get("tokens")), _t(w.get("description")), _t(w.get("type"), 80)
+
+
+def subagent_detail(w, now) -> list:
+    st, el, ag, tok, desc, typ = _subagent_vals(w, now)
+    return [(t("cr.f.desc"), desc), (t("cr.f.agent_type"), typ), (t("cr.f.dept"), _t(w.get("department"), 80)),
+            (t("cr.f.status"), state_label(st)), (t("cr.f.elapsed"), el),
+            (t("cr.f.last"), t("cr.ago", ago=ag) if ag else ""), (t("cr.f.tokens"), fmt_tokens(tok)),
+            (t("cr.f.depth"), str(_i(w.get("depth"))))]
+
+
+def _bgtask_vals(w, now):
+    st = _state(w.get("state"))
+    started_w = _n(w.get("started"))
+    return st, fmt_elapsed(now - started_w) if st == "running" and started_w is not None else ""
+
+
+def bgtask_detail(w, now) -> list:
+    st, el = _bgtask_vals(w, now)
+    return [(t("cr.f.task_id"), _t(w.get("id"), 80)), (t("cr.f.status"), state_label(st)),
+            (t("cr.f.elapsed"), el), (t("cr.f.tool_use"), _t(w.get("tool_use_id"), 80))]
+
+
+def _session_rows(add, team, s, now):
+    sid = s.get("session_id") if isinstance(s.get("session_id"), str) else ""
+    status, elapsed, ago, tokens = _session_vals(s, now)
     sr = add("session", team["key"] + "/s:" + sid, team["key"],
              _t(s.get("name"), MAX_NAME) or _t(sid, 8) or t("cr.anon_session"),
-             status=status, elapsed=elapsed, ago=ago, tokens=tokens, session_id=sid, detail=[
-                 (t("cr.f.session"), _t(s.get("session_id"), 64)), (t("cr.f.status"), status),
-                 (t("cr.f.model"), _t(s.get("model"), 60)), (t("cr.f.folder"), _t(s.get("cwd"))),
-                 (t("cr.f.branch"), _t(git.get("branch"), 80)), (t("cr.f.elapsed"), elapsed),
-                 (t("cr.f.last"), t("cr.ago", ago=ago) if ago else ""), (t("cr.f.tokens"), fmt_tokens(tokens))])
+             status=status, elapsed=elapsed, ago=ago, tokens=tokens, session_id=sid, detail=session_detail(s, now))
     ws = _dicts(s.get("workers"))
     subs = [w for w in ws if w.get("kind") == "subagent"]
     tasks = [w for w in ws if w.get("kind") == "bgtask"]
@@ -288,22 +328,11 @@ def _session_rows(add, team, s, now):
                 continue
             seen.add(j)
             w = subs[j]
-            st = _state(w.get("state"))
-            started_w, last_w = _n(w.get("started")), _n(w.get("last_activity"))
-            if st in _LIVE:
-                el = fmt_elapsed(now - started_w) if started_w is not None else ""
-            else:
-                el = fmt_elapsed(last_w - started_w) if started_w is not None and last_w is not None else ""
-            ag = fmt_elapsed(now - last_w) if last_w is not None else ""
-            tok = _i(w.get("tokens"))
-            desc, typ = _t(w.get("description")), _t(w.get("type"), 80)
+            st, el, ag, tok, desc, typ = _subagent_vals(w, now)
             r = add("subagent", sr["key"] + "/w:sub:" + _t(w.get("id"), 80), pk,
                     _t(desc, MAX_NAME) or typ or t("cr.anon_subagent"),
-                    state=st, elapsed=el, ago=ag, tokens=tok, ag=int(st in _LIVE), stuck=int(st == "stuck"), detail=[
-                        (t("cr.f.desc"), desc), (t("cr.f.agent_type"), typ), (t("cr.f.dept"), _t(w.get("department"), 80)),
-                        (t("cr.f.status"), state_label(st)), (t("cr.f.elapsed"), el),
-                        (t("cr.f.last"), t("cr.ago", ago=ag) if ag else ""), (t("cr.f.tokens"), fmt_tokens(tok)),
-                        (t("cr.f.depth"), str(_i(w.get("depth"))))])
+                    state=st, elapsed=el, ago=ag, tokens=tok, ag=int(st in _LIVE), stuck=int(st == "stuck"),
+                    detail=subagent_detail(w, now))
             for c in reversed(kids[j]):
                 stack.append((c, r["key"]))
 
@@ -321,13 +350,9 @@ def _session_rows(add, team, s, now):
     if tasks:
         gk = add("dept", sr["key"] + "/d:#tasks", sr["key"], t("cr.bg_group"))["key"]
         for w in tasks:
-            st = _state(w.get("state"))
-            started_w = _n(w.get("started"))
-            el = fmt_elapsed(now - started_w) if st == "running" and started_w is not None else ""
-            tid = _t(w.get("id"), 80)
-            add("bgtask", sr["key"] + "/w:bg:" + tid, gk, t("cr.bg_task", id=_t(w.get("id"), 24)), state=st, elapsed=el,
-                tk=int(st == "running"), detail=[(t("cr.f.task_id"), tid), (t("cr.f.status"), state_label(st)),
-                                                 (t("cr.f.elapsed"), el), (t("cr.f.tool_use"), _t(w.get("tool_use_id"), 80))])
+            st, el = _bgtask_vals(w, now)
+            add("bgtask", sr["key"] + "/w:bg:" + _t(w.get("id"), 80), gk, t("cr.bg_task", id=_t(w.get("id"), 24)),
+                state=st, elapsed=el, tk=int(st == "running"), detail=bgtask_detail(w, now))
 
 
 def row_tag(r):
